@@ -3,13 +3,15 @@
 #include <QHash>
 #include <QList>
 #include <QMutex>
+#include <QObject>
 #include <QString>
 #include <QVariantMap>
 
 // Maximum entries kept in memory before oldest are dropped.
 static constexpr int kDefaultMaxEntries = 10000;
 
-class DiagnosticsLogger {
+class DiagnosticsLogger : public QObject {
+    Q_OBJECT
 public:
     static DiagnosticsLogger &instance();
 
@@ -45,9 +47,14 @@ public:
     static QString levelName(LogLevel l);
     static QString categoryName(LogCategory c);
 
+signals:
+    // Emitted on the calling thread after each accepted log entry is stored.
+    // Connect with Qt::QueuedConnection from background threads.
+    void entryAdded(const LogEntry &entry);
+
 private:
-    DiagnosticsLogger();
-    ~DiagnosticsLogger() = default;
+    explicit DiagnosticsLogger(QObject *parent = nullptr);
+    ~DiagnosticsLogger() override = default;
     DiagnosticsLogger(const DiagnosticsLogger &) = delete;
     DiagnosticsLogger &operator=(const DiagnosticsLogger &) = delete;
 

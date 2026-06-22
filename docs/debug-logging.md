@@ -153,14 +153,72 @@ This prevents unbounded growth during long calls with DEBUG or RAW enabled.
 
 ---
 
-## DiagnosticsPanel UI
+## Diagnostics GUI Console (Task 4)
 
-- Level toggle buttons (INFO WARN ERROR DEBUG RAW) — persistent state via `AppSettings`.
-- Category filter (planned — not yet implemented).
-- Search field (planned — not yet implemented).
-- Clear, Copy Selected, Export Visible, Export Bundle buttons.
-- Log table: Time | Level | Category | Message | Payload.
-- Color coding: INFO=blue, WARN=yellow, ERROR=red, DEBUG=grey, RAW=dark grey.
+The Diagnostics / Logs panel is docked at the bottom of the main window (min 160 px, default 240 px, non-floating). It consumes `DiagnosticsLogger::entryAdded` directly — no duplicate logging logic.
+
+### Level Toggles
+
+| Button | Default | Notes |
+|---|---|---|
+| INFO  | checked   | |
+| WARN  | checked   | |
+| ERROR | checked   | |
+| DEBUG | unchecked | |
+| RAW   | unchecked | Requires confirmation dialog; always reset to OFF on launch |
+
+Toggle states are persisted via `AppSettings`. RAW is **always reset to unchecked** on startup regardless of the saved state — the user must confirm each session.
+
+When RAW is enabled a confirmation dialog warns the user that full protocol payloads will be visible. The Details column is hidden until RAW is enabled.
+
+### Category Filter
+
+A combo box filters by: **All, APP, SIP, SDP, MEDIA, RTT, LMPE, ETSI, PLATFORM**.
+
+### Search
+
+A text field filters by case-insensitive substring against the Message and Details columns.
+
+### Log Table
+
+| Column  | Notes |
+|---|---|
+| Time    | `hh:mm:ss.zzz` |
+| Level   | Color-coded: INFO=blue, WARN=yellow, ERROR=red, DEBUG=grey, RAW=dark grey |
+| Category | APP / SIP / SDP / MEDIA / RTT / LMPE / ETSI / PLATFORM |
+| Message | Stretches to fill available width |
+| Details | Hidden unless RAW is enabled; shows raw protocol payload |
+
+### Action Buttons
+
+| Button       | Behaviour |
+|---|---|
+| Clear        | Removes all entries from table and in-memory filter model |
+| Copy Sel     | Copies selected rows as tab-separated text to clipboard |
+| Export Logs  | Saves visible (filtered) rows to a .txt file |
+| Debug Bundle | Placeholder — not yet implemented |
+
+### Filter Logic
+
+Filtering is handled by `LogFilterModel` (`src/diagnostics/LogFilterModel.h`), which is independent of any GUI class and covered by unit tests in `tests/gui/LogFilterModelTests.cpp`.
+
+An entry passes the filter when all of the following are true:
+1. Its level toggle is checked.
+2. If the level is RAW, `isRawVisible()` is `true`.
+3. Category matches the combo selection (or combo is "All").
+4. Search text (if non-empty) appears in Message or Details (case-insensitive).
+
+### Startup Sample Logs
+
+On launch, these entries appear in the panel immediately after startup:
+
+| Level | Category | Message |
+|---|---|---|
+| INFO  | APP      | Application started v0.1.0 |
+| INFO  | PLATFORM | Platform: \<OS name from QSysInfo\> |
+| DEBUG | APP      | Diagnostics console initialized |
+
+The DEBUG entry is only visible if the DEBUG toggle is checked.
 
 ---
 
@@ -181,4 +239,7 @@ Use the Export function to save logs to a file before closing the application.
 | `src/diagnostics/LogEntry.h`         | `LogEntry` struct |
 | `src/diagnostics/DiagnosticsLogger.h` | Public API |
 | `src/diagnostics/DiagnosticsLogger.cpp` | Implementation |
-| `tests/diagnostics/DiagnosticsLoggerTests.cpp` | Qt Test unit tests |
+| `tests/diagnostics/DiagnosticsLoggerTests.cpp` | Qt Test unit tests (Task 3) |
+| `src/diagnostics/LogFilterModel.h`              | GUI filter model (Task 4)   |
+| `src/diagnostics/LogFilterModel.cpp`            | Filter implementation       |
+| `tests/gui/LogFilterModelTests.cpp`             | Filter unit tests (Task 4)  |

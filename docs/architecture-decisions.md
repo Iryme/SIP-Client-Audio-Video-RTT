@@ -68,16 +68,62 @@
 
 ---
 
-## ADR-009 — DiagnosticsLogger as canonical logging foundation
+## ADR-008 — LogFilterModel isolates filter logic from DiagnosticsPanel (Task 4)
 
-**Decision:** All application modules (SIP, Media, RTT, LMPE, ETSI, App) log through
-`DiagnosticsLogger` in `src/diagnostics/`. The GUI signal adapter (`src/core/Logger`) remains
-as a thin wrapper that re-emits Qt signals for `DiagnosticsPanel`. `DiagnosticsLogger` is
-not a `QObject` and has no Qt event loop dependency.
+**Decision:** Filter, category, and search logic for the Diagnostics GUI Console lives in
+`src/diagnostics/LogFilterModel`, a `QObject` with no GUI dependency, rather than inline
+in `DiagnosticsPanel`.
 
 **Rationale:**
-- A non-QObject singleton can be called from PJSIP callbacks, media threads, and any
-  background thread without marshalling to the main thread first.
+- `DiagnosticsPanel` is a GUI widget — it cannot be instantiated in a headless test
+  (`QTEST_GUILESS_MAIN`). Placing filter logic there makes it untestable without a display.
+- `LogFilterModel` is a plain `QObject` with no widget dependencies, so tests run with
+  `QTEST_GUILESS_MAIN` in CI without a display server.
+- The model emits `filterChanged()` when any filter setter changes a value (no-op if same value),
+  so `DiagnosticsPanel` simply calls `rebuildTable()` on that signal — separation of concerns.
+- `addEntry()` / `clear()` / `filteredEntries()` provide a clean boundary: the panel feeds
+  entries in and queries filtered views out.
+
+**Consequences:**
+- `DiagnosticsPanel` owns `LogFilterModel` as a child QObject; entry storage and Logger's
+  own buffer are independent (the panel's copy is used for re-filtering on demand).
+- 23 unit tests in `tests/gui/LogFilterModelTests.cpp` cover: default states, level filter,
+  RAW visibility, category filter, search text, combined filters, and signal emission.
+
+---
+
+## ADR-009 — DiagnosticsLogger upgraded to QObject with entryAdded signal (Task 4)
+
+**Decision:** `DiagnosticsLogger` was changed from a plain C++ singleton to a `QObject`
+singleton with an `entryAdded(LogEntry)` signal. `DiagnosticsPanel` connects to it directly.
+
+**Rationale:**
+- Eliminates the intermediate `src/core/Logger` class as the GUI signal source. The panel
+  now consumes `DiagnosticsLogger` directly, satisfying the requirement that GUI must consume
+  the DiagnosticsLogger API.
+- Signal is emitted **after** the mutex is released so there is no deadlock risk if a slot
+  calls back into `DiagnosticsLogger::entries()`.
+- Background threads log via `DiagnosticsLogger::log()`, which will emit the signal on the
+  calling thread. Connecting from `DiagnosticsPanel` (main thread) with the default
+  `Qt::AutoConnection` ensures the slot runs on the main thread via queued delivery.
+
+**Consequences:**
+- `src/core/Logger` is now legacy and is compiled but not connected to `DiagnosticsPanel`.
+  It should be removed or unified in a future refactor before SIP integration.
+- RAW is still always `false` on startup — the constructor sets it to `false` and the panel
+  enforces a confirmation dialog before enabling it.
+
+---
+
+## ADR-010 — DiagnosticsLogger as canonical logging foundation (Task 3)
+
+**Decision:** All application modules log through `DiagnosticsLogger` in `src/diagnostics/`.
+In Task 4, DiagnosticsLogger was upgraded to a QObject so DiagnosticsPanel connects to it
+directly. `src/core/Logger` is retained but is no longer the GUI signal source (see ADR-009).
+
+**Rationale:**
+- DiagnosticsLogger can be called from PJSIP callbacks, media threads, and any
+  background thread; the QMutex ensures thread safety.
 - Thread safety is provided by an internal `QMutex`, so callers need no external synchronization.
 - Automatic redaction (passwords, tokens, keys) is enforced at the store boundary — no module
   can accidentally persist sensitive data by forgetting to sanitize before logging.

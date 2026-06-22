@@ -1,9 +1,10 @@
 #include "Application.h"
 #include "gui/MainWindow.h"
+#include "diagnostics/DiagnosticsLogger.h"
 #include "core/Logger.h"
 
 #include <QFile>
-#include <QStyleFactory>
+#include <QSysInfo>
 
 Application::Application(int &argc, char **argv)
     : QApplication(argc, argv)
@@ -16,15 +17,19 @@ Application::Application(int &argc, char **argv)
 
     loadStyleSheet();
 
-    Logger::instance().info(LogCategory::App, "Application starting v0.1.0");
-
     m_mainWindow = new MainWindow();
     m_mainWindow->show();
+
+    // Sample startup logs — emitted after DiagnosticsPanel is connected so they
+    // appear in the console. Order matches expected startup sequence.
+    DiagnosticsLogger::instance().info(LogCategory::App,      "Application started v0.1.0");
+    DiagnosticsLogger::instance().info(LogCategory::Platform, "Platform: " + QSysInfo::prettyProductName());
+    DiagnosticsLogger::instance().debug(LogCategory::App,     "Diagnostics console initialized");
 }
 
 Application::~Application()
 {
-    Logger::instance().info(LogCategory::App, "Application shutting down");
+    DiagnosticsLogger::instance().info(LogCategory::App, "Application shutting down");
     delete m_mainWindow;
 }
 

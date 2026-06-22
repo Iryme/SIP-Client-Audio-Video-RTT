@@ -7,7 +7,7 @@
 #include "panels/DiagnosticsPanel.h"
 #include "widgets/AppStatusBar.h"
 #include "core/AppSettings.h"
-#include "core/Logger.h"
+#include "diagnostics/DiagnosticsLogger.h"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -30,7 +30,7 @@ MainWindow::MainWindow(QWidget *parent)
     buildStatusBar();
     restoreLayout();
 
-    Logger::instance().info(LogCategory::App, "Main window initialized");
+    DiagnosticsLogger::instance().info(LogCategory::App, "Main window initialized");
 }
 
 MainWindow::~MainWindow() = default;

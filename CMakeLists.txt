@@ -37,6 +37,7 @@ set(SOURCES
     src/gui/widgets/AppStatusBar.cpp
     src/core/Logger.cpp
     src/diagnostics/DiagnosticsLogger.cpp
+    src/diagnostics/LogFilterModel.cpp
 )
 
 set(HEADERS
@@ -55,6 +56,7 @@ set(HEADERS
     src/diagnostics/LogCategory.h
     src/diagnostics/LogEntry.h
     src/diagnostics/DiagnosticsLogger.h
+    src/diagnostics/LogFilterModel.h
 )
 
 set(RESOURCES

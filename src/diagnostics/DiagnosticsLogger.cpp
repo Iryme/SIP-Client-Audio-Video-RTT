@@ -2,7 +2,8 @@
 #include <QMutexLocker>
 #include <QRegularExpression>
 
-DiagnosticsLogger::DiagnosticsLogger()
+DiagnosticsLogger::DiagnosticsLogger(QObject *parent)
+    : QObject(parent)
 {
     // Defaults: INFO/WARN/ERROR on; DEBUG/RAW off.
     // RAW must never be enabled without explicit user action.
@@ -22,21 +23,25 @@ DiagnosticsLogger &DiagnosticsLogger::instance()
 void DiagnosticsLogger::log(LogLevel level, LogCategory category,
                              const QString &message, const QString &payload)
 {
-    QMutexLocker locker(&m_mutex);
-    if (!m_enabled.value(level, false))
-        return;
-
     LogEntry entry;
-    entry.timestamp = QDateTime::currentDateTime();
-    entry.level     = level;
-    entry.category  = category;
-    entry.message   = redact(message);
-    entry.payload   = redact(payload);
+    {
+        QMutexLocker locker(&m_mutex);
+        if (!m_enabled.value(level, false))
+            return;
 
-    if (m_entries.size() >= m_maxEntries)
-        m_entries.removeFirst();
+        entry.timestamp = QDateTime::currentDateTime();
+        entry.level     = level;
+        entry.category  = category;
+        entry.message   = redact(message);
+        entry.payload   = redact(payload);
 
-    m_entries.append(entry);
+        if (m_entries.size() >= m_maxEntries)
+            m_entries.removeFirst();
+
+        m_entries.append(entry);
+    }
+    // Emit outside the lock to avoid deadlock if a slot calls back into the logger.
+    emit entryAdded(entry);
 }
 
 void DiagnosticsLogger::setLevelEnabled(LogLevel level, bool enabled)

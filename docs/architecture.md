@@ -29,8 +29,9 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 | Module | Location | Status |
 |---|---|---|
 | GUI panels | `src/gui/` | IMPLEMENTED (skeleton) |
-| DiagnosticsLogger | `src/diagnostics/` | IMPLEMENTED |
-| Logger (GUI adapter) | `src/core/Logger` | IMPLEMENTED |
+| DiagnosticsLogger | `src/diagnostics/DiagnosticsLogger` | IMPLEMENTED — QObject with signal (Task 3+4) |
+| LogFilterModel | `src/diagnostics/LogFilterModel` | IMPLEMENTED — filter/search logic (Task 4) |
+| Logger (legacy) | `src/core/Logger` | IMPLEMENTED — kept; not yet removed |
 | AppSettings | `src/core/AppSettings` | IMPLEMENTED |
 | SIP stack | `src/sip/` | NOT STARTED |
 | Media engine | `src/media/` | NOT STARTED |
@@ -43,24 +44,34 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 - All SIP/media operations will run on background threads or Qt async patterns.
 - The UI thread must never block on network or media I/O.
 - ETSI modules are compiled conditionally via CMake options.
-- `DiagnosticsLogger` is the canonical logging foundation — all modules use it directly.
-- `Logger` (in `src/core/`) is a thin Qt-signal adapter on top of DiagnosticsLogger for GUI delivery.
-- DiagnosticsLogger is thread-safe via `QMutex`; safe to call from PJSIP threads without extra sync.
+- `DiagnosticsLogger` is the canonical logging API — all modules use it directly.
+- `DiagnosticsLogger` is thread-safe via `QMutex`; safe to call from PJSIP threads without extra sync.
+- `LogFilterModel` isolates filter/search logic from the GUI so it can be unit-tested without a display.
+- `Logger` (in `src/core/`) is a legacy standalone class retained for backward compatibility; it is not connected to `DiagnosticsPanel` in Task 4 onwards.
 
-## DiagnosticsLogger Design
+## DiagnosticsLogger Design (updated Task 4)
 
-`src/diagnostics/DiagnosticsLogger` is the single in-memory log store for the application lifetime.
+`src/diagnostics/DiagnosticsLogger` is the single in-memory log store and the primary logging API.
 
 Key properties:
-- **Not a QObject** — no Qt event loop dependency; callable from any thread.
+- **QObject singleton** — emits `entryAdded(LogEntry)` after each accepted log call; `DiagnosticsPanel` connects to this signal directly.
+- **Thread-safe emit** — mutex is released before `emit entryAdded(entry)` to prevent deadlock; connect from background threads with `Qt::QueuedConnection`.
 - **Automatic redaction** — sensitive key patterns (`password`, `token`, `authorization`, `private key`, etc.) are replaced with `***` before storage.
 - **Bounded buffer** — default 10 000 entries; oldest dropped when cap is reached.
 - **Export** — plain text (human-readable) and JSON-ready (`QList<QVariantMap>`) formats.
-- **Category filtering** — `entriesForCategory()` / `entriesForLevel()` return filtered views.
+- **Category/level filtering** — `entriesForCategory()` / `entriesForLevel()` return filtered views.
 - **Clear** — `clear()` wipes in-memory buffer; does not affect exported files.
 
-The GUI adapter (`src/core/Logger`) forwards calls to DiagnosticsLogger and also emits
-`entryAdded(LogEntry)` Qt signal so `DiagnosticsPanel` can update the table in real time.
+## LogFilterModel Design
+
+`src/diagnostics/LogFilterModel` decouples filter and search logic from `DiagnosticsPanel`.
+
+- Stores all received `LogEntry` objects (independent of `DiagnosticsLogger`'s own buffer).
+- Exposes `setLevelVisible()`, `setCategoryFilter()`, `setSearchText()`, `setRawVisible()`.
+- `matchesFilter(entry)` applies all active filters synchronously.
+- Emits `filterChanged()` when any filter setter changes a value (no-op if value unchanged).
+- `DiagnosticsPanel` calls `rebuildTable()` on `filterChanged` to keep the log table in sync.
+- Has no GUI dependency — fully testable with `QTEST_GUILESS_MAIN`.
 
 ## Dependency Graph (current)
 
@@ -74,7 +85,8 @@ main.cpp
               ├── VideoPanel
               │     └── (future: Qt Multimedia video surface)
               ├── RttPanel
-              ├── DiagnosticsPanel ──► Logger (signal)
+              ├── DiagnosticsPanel ──► DiagnosticsLogger (entryAdded signal)
+              │     └── LogFilterModel (filter / search logic)
               └── AppStatusBar
 ```
 

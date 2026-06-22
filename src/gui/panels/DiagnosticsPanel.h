@@ -1,11 +1,13 @@
 #pragma once
 #include <QWidget>
-#include "core/Logger.h"
+#include "diagnostics/LogEntry.h"
 
+class LogFilterModel;
 class QToolButton;
 class QTableWidget;
 class QLineEdit;
 class QPushButton;
+class QComboBox;
 class QHBoxLayout;
 
 class DiagnosticsPanel : public QWidget
@@ -16,23 +18,28 @@ public:
 
 private slots:
     void onEntryAdded(const LogEntry &entry);
+    void onFilterChanged();
     void onClear();
     void onCopySelected();
     void onExportVisible();
     void onExportBundle();
-    void onLevelToggled(bool checked);
+    void onRawToggled(bool checked);
 
 private:
     void buildToolbar(QHBoxLayout *row);
-    void addRow(const LogEntry &entry);
-    bool isLevelVisible(LogLevel level) const;
+    void rebuildTable();
+    void appendRowToTable(const LogEntry &entry);
+    void saveToggleStates();
+    void loadToggleStates();
 
-    QTableWidget *m_table{nullptr};
-    QLineEdit    *m_search{nullptr};
+    LogFilterModel *m_filterModel{nullptr};
+    QTableWidget   *m_table{nullptr};
+    QLineEdit      *m_search{nullptr};
+    QComboBox      *m_categoryCombo{nullptr};
 
-    QToolButton  *m_btnInfo{nullptr};
-    QToolButton  *m_btnWarn{nullptr};
-    QToolButton  *m_btnError{nullptr};
-    QToolButton  *m_btnDebug{nullptr};
-    QToolButton  *m_btnRaw{nullptr};
+    QToolButton    *m_btnInfo{nullptr};
+    QToolButton    *m_btnWarn{nullptr};
+    QToolButton    *m_btnError{nullptr};
+    QToolButton    *m_btnDebug{nullptr};
+    QToolButton    *m_btnRaw{nullptr};
 };
