@@ -1,0 +1,334 @@
+/* ============================================================
+   SIP Client — Dark Professional Theme
+   ============================================================ */
+
+/* --- Global --- */
+QWidget {
+    background-color: #13171f;
+    color: #d4d8e0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+}
+
+QMainWindow {
+    background-color: #0f1218;
+}
+
+/* --- Menu bar --- */
+QMenuBar {
+    background-color: #0f1218;
+    color: #d4d8e0;
+    border-bottom: 1px solid #252a35;
+    padding: 2px 0;
+}
+QMenuBar::item {
+    background: transparent;
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+QMenuBar::item:selected {
+    background-color: #252a35;
+}
+QMenu {
+    background-color: #1a1f2a;
+    border: 1px solid #2e3545;
+    padding: 4px 0;
+}
+QMenu::item {
+    padding: 5px 24px;
+    border-radius: 3px;
+}
+QMenu::item:selected {
+    background-color: #2a4070;
+    color: #ffffff;
+}
+QMenu::separator {
+    height: 1px;
+    background: #2e3545;
+    margin: 4px 0;
+}
+
+/* --- Navigation rail --- */
+#NavRail {
+    background-color: #0c1018;
+    border-right: 1px solid #1e2330;
+}
+#NavButton {
+    background-color: transparent;
+    color: #8899aa;
+    border: none;
+    border-radius: 6px;
+    font-size: 9px;
+}
+#NavButton:hover {
+    background-color: #1e2a3a;
+    color: #c0ccd8;
+}
+#NavButton:checked {
+    background-color: #1a3050;
+    color: #5090d0;
+}
+
+/* --- Sidebar --- */
+#SidebarPanel {
+    background-color: #111620;
+    border-right: 1px solid #1e2330;
+}
+#AccountCard {
+    background-color: #18202e;
+    border: 1px solid #2a3448;
+    border-radius: 6px;
+}
+#AccountName  { color: #d4d8e0; }
+#AccountUri   { color: #7090b0; }
+#RegStatus    { color: #e05858; }
+#ContactList {
+    background-color: #111620;
+    border: 1px solid #1e2330;
+    border-radius: 4px;
+    alternate-background-color: #141820;
+}
+#ContactList::item:selected {
+    background-color: #1a3050;
+    color: #c0d8f0;
+}
+#SearchField {
+    background-color: #18202e;
+    border: 1px solid #2a3448;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #c0ccd8;
+}
+
+/* --- Call panel --- */
+#CallPanel {
+    background-color: #111620;
+    border-bottom: 1px solid #1e2330;
+}
+#RemoteName   { color: #d4d8e0; }
+#CallState    { color: #7090b0; }
+#Duration     { color: #7090b0; }
+#RemoteUri    { color: #506080; }
+
+#CallCtrlBtn {
+    background-color: #1e2a3a;
+    color: #c0ccd8;
+    border: 1px solid #2a3848;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+}
+#CallCtrlBtn:hover    { background-color: #253040; border-color: #3a4858; }
+#CallCtrlBtn:checked  { background-color: #1a3a60; color: #60a0d8; border-color: #2a5080; }
+#CallCtrlBtn:disabled { color: #404850; border-color: #1e2530; }
+
+#HangupBtn {
+    background-color: #5a1515;
+    color: #f08080;
+    border: 1px solid #7a2020;
+    border-radius: 5px;
+    font-weight: bold;
+    min-width: 90px;
+}
+#HangupBtn:hover { background-color: #6a1818; }
+
+/* --- Video panel --- */
+#VideoPanel {
+    background-color: #0d111a;
+}
+#RemoteLabel {
+    background-color: rgba(0,0,0,0.55);
+    color: #c8d4e0;
+    border-radius: 4px;
+    padding: 3px 8px;
+}
+#SignalIndicator {
+    background-color: rgba(0,0,0,0.55);
+    color: #50e050;
+    border-radius: 4px;
+    padding: 3px 8px;
+}
+#LocalPreview {
+    background-color: #1a2030;
+    color: #607080;
+    border: 1px solid #2a3550;
+    border-radius: 4px;
+}
+
+/* --- RTT / LMPE panel --- */
+#RttPanel {
+    background-color: #111620;
+    border-left: 1px solid #1e2330;
+}
+#RttTabs::pane {
+    border: none;
+    background-color: #111620;
+}
+QTabWidget::tab-bar { alignment: left; }
+QTabBar::tab {
+    background-color: #18202e;
+    color: #7090a8;
+    border: 1px solid #1e2a3a;
+    border-bottom: none;
+    padding: 5px 16px;
+    border-radius: 4px 4px 0 0;
+}
+QTabBar::tab:selected {
+    background-color: #111620;
+    color: #c0d8f0;
+    border-bottom-color: #111620;
+}
+QTabBar::tab:hover:!selected { background-color: #1e2a3a; }
+
+#RttState, #LmpeState { color: #506070; }
+#RttRemoteLive {
+    background-color: #181e2a;
+    border: 1px solid #1e2a3a;
+    border-radius: 4px;
+    color: #7090b0;
+    font-style: italic;
+}
+#RttTranscript, #LmpeList {
+    background-color: #141820;
+    border: 1px solid #1e2a3a;
+    border-radius: 4px;
+}
+#RttInput, #LmpeInput {
+    background-color: #18202e;
+    border: 1px solid #2a3448;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #c0ccd8;
+}
+
+#SendBtn {
+    background-color: #1a3a60;
+    color: #80bce0;
+    border: 1px solid #2a5080;
+    border-radius: 4px;
+    padding: 4px 16px;
+    font-weight: bold;
+}
+#SendBtn:hover { background-color: #1e4070; }
+
+/* --- Diagnostics panel --- */
+#DiagnosticsPanel {
+    background-color: #0e1218;
+    border-top: 1px solid #1e2330;
+}
+#LogLevelBtn {
+    background-color: #18202e;
+    color: #6080a0;
+    border: 1px solid #1e2a3a;
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: bold;
+}
+#LogLevelBtn:checked { background-color: #1a3050; color: #60a0d8; border-color: #2a5080; }
+#LogLevelBtn:hover   { background-color: #1e2a3a; }
+
+QTableWidget {
+    background-color: #0e1218;
+    alternate-background-color: #111620;
+    gridline-color: #1a2030;
+    border: 1px solid #1e2a3a;
+    selection-background-color: #1a3050;
+    selection-color: #c0d8f0;
+    font-size: 11px;
+}
+QHeaderView::section {
+    background-color: #18202e;
+    color: #7090a8;
+    border: none;
+    border-right: 1px solid #1e2a3a;
+    border-bottom: 1px solid #1e2a3a;
+    padding: 3px 6px;
+    font-size: 11px;
+}
+
+/* --- Status bar --- */
+#AppStatusBar {
+    background-color: #0c1018;
+    border-top: 1px solid #1e2330;
+}
+
+/* --- Splitter handles --- */
+QSplitter::handle {
+    background-color: #1a2030;
+}
+QSplitter::handle:horizontal { width: 4px; }
+QSplitter::handle:vertical   { height: 4px; }
+QSplitter::handle:hover       { background-color: #2a4060; }
+
+/* --- Scrollbars --- */
+QScrollBar:vertical {
+    background: #111620;
+    width: 8px;
+    border: none;
+}
+QScrollBar::handle:vertical {
+    background: #2a3848;
+    border-radius: 4px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover { background: #3a5070; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal {
+    background: #111620;
+    height: 8px;
+    border: none;
+}
+QScrollBar::handle:horizontal {
+    background: #2a3848;
+    border-radius: 4px;
+    min-width: 24px;
+}
+QScrollBar::handle:horizontal:hover { background: #3a5070; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+
+/* --- Buttons (general) --- */
+QPushButton {
+    background-color: #1e2a3a;
+    color: #c0ccd8;
+    border: 1px solid #2a3848;
+    border-radius: 4px;
+    padding: 4px 12px;
+}
+QPushButton:hover    { background-color: #253040; }
+QPushButton:pressed  { background-color: #1a2535; }
+QPushButton:disabled { color: #404850; border-color: #1a2030; }
+
+/* --- Line edits --- */
+QLineEdit {
+    background-color: #18202e;
+    color: #c0ccd8;
+    border: 1px solid #2a3448;
+    border-radius: 4px;
+    padding: 4px 8px;
+    selection-background-color: #1a3050;
+}
+QLineEdit:focus { border-color: #3a5878; }
+
+/* --- Text edits --- */
+QTextEdit {
+    background-color: #141820;
+    color: #c0ccd8;
+    border: 1px solid #1e2a3a;
+    border-radius: 4px;
+    selection-background-color: #1a3050;
+}
+
+/* --- Frames --- */
+QFrame[frameShape="4"],  /* HLine */
+QFrame[frameShape="5"] { /* VLine */
+    color: #1e2a3a;
+}
+
+/* --- Tool tips --- */
+QToolTip {
+    background-color: #1a2535;
+    color: #c0ccd8;
+    border: 1px solid #2a3848;
+    padding: 4px;
+}

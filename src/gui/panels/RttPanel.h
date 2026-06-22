@@ -1,0 +1,39 @@
+#pragma once
+#include <QWidget>
+
+class QLabel;
+class QTextEdit;
+class QLineEdit;
+class QPushButton;
+class QTabWidget;
+class QListWidget;
+
+class RttPanel : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit RttPanel(QWidget *parent = nullptr);
+
+signals:
+    void rttMessageSent(const QString &text);
+    void lmpeMessageSent(const QString &text);
+
+private slots:
+    void onRttSend();
+    void onLmpeSend();
+
+private:
+    // RTT tab
+    QLabel      *m_rttState{nullptr};
+    QTextEdit   *m_rttTranscript{nullptr};
+    QTextEdit   *m_rttRemoteLive{nullptr};
+    QLineEdit   *m_rttInput{nullptr};
+    QPushButton *m_rttSend{nullptr};
+    QPushButton *m_rttClear{nullptr};
+
+    // LMPE tab
+    QLabel      *m_lmpeState{nullptr};
+    QListWidget *m_lmpeList{nullptr};
+    QLineEdit   *m_lmpeInput{nullptr};
+    QPushButton *m_lmpeSend{nullptr};
+};
