@@ -1,18 +1,28 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 6 of N
+Current task count: 11 of N
 
 ## Completed Tasks
 
 | # | Task | Branch | Status |
 |---|---|---|---|
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | IMPLEMENTED |
+| 2 | GUI layout specification | feature/gui-layout-spec | IMPLEMENTED ON SEPARATE BRANCH |
+| 3 | Diagnostics logger | feature/diagnostics-logger | IMPLEMENTED ON SEPARATE BRANCH |
+| 4 | Diagnostics GUI console | feature/diagnostics-gui-console | IMPLEMENTED ON SEPARATE BRANCH |
+| 5 | Persistent application settings | feature/persistent-settings | IMPLEMENTED ON SEPARATE BRANCH |
 | 6 | SIP profile model, persistence, GUI placeholders | feature/sip-profile-manager | IMPLEMENTED |
 | 7 | Secure credential storage (CredentialStore, Windows Credential Manager) | feature/secure-credential-storage | IMPLEMENTED |
 | 8 | SIP Profile Editor Dialog — Add/Edit/Delete with CredentialStore integration | feature/sip-profile-editor | IMPLEMENTED |
 | 9 | Media device enumeration — MediaDeviceManager, MediaPanel, persistence, fallback | feature/media-device-enumeration | IMPLEMENTED |
 | 10 | PJSIP build integration — FindPJSIP.cmake, ENABLE_PJSIP option, SipManager lifecycle skeleton | feature/pjsip-build-integration | IMPLEMENTED |
+| 11 | Project Handoff 001 — formal project snapshot and continuation prompt | feature/project-handoff-001 | IMPLEMENTED |
+
+> **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
+> are not ancestors of the active Tasks 6-10 lineage. The active code uses the
+> simpler `Logger`, `DiagnosticsPanel`, and `AppSettings` implementations. See
+> `docs/project-handoff/handoff-001.md` before reconciling these branches.
 
 ## Module Status
 

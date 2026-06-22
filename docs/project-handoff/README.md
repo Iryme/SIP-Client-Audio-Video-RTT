@@ -29,4 +29,4 @@ Files are named `handoff-NNN.md` where NNN is zero-padded (e.g., `handoff-010.md
 
 | File | Tasks Covered | Date |
 |---|---|---|
-| *(none yet — first handoff at task 10)* | — | — |
+| [handoff-001.md](handoff-001.md) | Tasks 1-11 | 2026-06-22 |
