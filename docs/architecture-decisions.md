@@ -100,3 +100,21 @@
 - `SipProfileManager` owns its own `QSettings` instance — it does not depend on `ApplicationSettings`.
 - Tests use `IrymeTest/SIPClientTest_Profiles` as the isolated org/app pair.
 - Key layout documented in `docs/sip-profiles.md`.
+
+---
+
+## ADR-011 — CredentialStore abstracts the OS keychain behind a pluggable backend
+
+**Decision:** Credential storage is encapsulated in `CredentialStore` (`src/security/`), which owns an `ICredentialBackend` implementation. The production backend is `WindowsCredentialBackend` (Windows Credential Manager). Tests inject `MemoryCredentialBackend` via `setBackend()`. No production code directly calls WinCred APIs outside `WindowsCredentialBackend`.
+
+**Rationale:**
+- Isolates platform-specific credential APIs to one file, making future Linux/macOS backends easy to add.
+- Enables unit testing without touching the real OS keychain (`MemoryCredentialBackend` is deterministic and ephemeral).
+- Provides a single choke point for logging: only `CredentialStore` logs credential events, and it never logs password values.
+- `SipProfileManager` credential helpers (`setProfilePassword`, `hasProfilePassword`, `removeProfilePassword`) delegate to `CredentialStore` so that call sites never need to know the underlying backend.
+
+**Consequences:**
+- `WindowsCredentialBackend.cpp` is compiled only on Windows (`if(WIN32)` in CMakeLists).
+- On non-Windows platforms `CredentialStore` has no backend (`m_backend = nullptr`) and all operations fail with an error log — there is **no silent insecure fallback**.
+- Tests use `IrymeTest/SIPClientTest_Credentials` QSettings namespace (SipProfileManager part) and a `MemoryCredentialBackend` injected before each test case.
+- Credential key format: `SIPClient/sip/<profileId>/<username>` (documented in `docs/secure-credential-storage.md`).

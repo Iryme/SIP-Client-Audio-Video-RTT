@@ -39,6 +39,22 @@ Payload (optional) is shown in the Payload column only.
 - Debug bundles exported from the application must sanitize authentication headers before packaging.
 - RAW SIP traces include Via, Contact, From, To headers but must strip Authorization and Proxy-Authorization.
 
+### Secret Redaction Checklist
+
+The following must **never** appear in any `LogEntry.message` or `LogEntry.payload`:
+
+| Data class | Examples | Correct substitute |
+|---|---|---|
+| SIP account password | `s3cr3t!` | *(omit entirely)* |
+| Auth token / API key | `Bearer eyJ…` | `[redacted]` |
+| Private key material | PEM blocks | *(omit entirely)* |
+| SIP Authorization header value | `Digest response="…"` | strip from RAW payload |
+| Proxy-Authorization header value | same | strip from RAW payload |
+
+`CredentialStore` enforces this at the implementation level: it logs only `profileId`, `username`, and `backendName`. The password parameter is never forwarded to any Logger call.
+
+Test `noPasswordInLogOutput` in `tests/test_credential_store.cpp` verifies this automatically by collecting all Logger emissions during a `storePassword` call and checking that none contain the password string.
+
 ## Logger API
 
 ```cpp

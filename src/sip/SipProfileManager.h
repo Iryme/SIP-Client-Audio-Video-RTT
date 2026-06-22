@@ -40,6 +40,12 @@ public:
 
     void sync();
 
+    // Credential helpers — delegate to CredentialStore.
+    // Username is derived from authUsername if set, otherwise sipUsername.
+    bool setProfilePassword(const QString &profileId, const QString &password);
+    bool hasProfilePassword(const QString &profileId) const;
+    bool removeProfilePassword(const QString &profileId);
+
     static QString      transportToString(SipTransport t);
     static SipTransport transportFromString(const QString &s, bool *ok = nullptr);
 

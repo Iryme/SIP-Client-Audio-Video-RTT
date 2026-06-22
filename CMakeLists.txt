@@ -37,6 +37,8 @@ set(SOURCES
     src/gui/widgets/AppStatusBar.cpp
     src/core/Logger.cpp
     src/sip/SipProfileManager.cpp
+    src/security/CredentialStore.cpp
+    src/security/MemoryCredentialBackend.cpp
 )
 
 set(HEADERS
@@ -53,7 +55,15 @@ set(HEADERS
     src/core/AppSettings.h
     src/sip/SipProfile.h
     src/sip/SipProfileManager.h
+    src/security/ICredentialBackend.h
+    src/security/CredentialStore.h
+    src/security/MemoryCredentialBackend.h
 )
+
+if(WIN32)
+    list(APPEND SOURCES src/security/WindowsCredentialBackend.cpp)
+    list(APPEND HEADERS src/security/WindowsCredentialBackend.h)
+endif()
 
 set(RESOURCES
     resources/resources.qrc
@@ -72,6 +82,10 @@ target_link_libraries(SIPClient PRIVATE
     Qt6::Multimedia
     Qt6::MultimediaWidgets
 )
+
+if(WIN32)
+    target_link_libraries(SIPClient PRIVATE Advapi32)
+endif()
 
 target_include_directories(SIPClient PRIVATE src)
 

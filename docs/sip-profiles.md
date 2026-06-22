@@ -95,11 +95,24 @@ profileId=<profileId>
 
 ## Credential Storage
 
-SIP account passwords are **not** stored in `SipProfileManager` or any INI file. This is by design (ADR-009). A future `CredentialStore` will wrap:
-- **Windows:** Windows Credential Manager
-- **Linux:** libsecret / KWallet
+SIP account passwords are **not** stored in `SipProfileManager` or any INI file. This is by design (ADR-009, ADR-011).
 
-Until that task is implemented, the SIP stack will be initialized without credentials (registration is not attempted yet).
+`CredentialStore` (`src/security/CredentialStore.h`) is the dedicated credential layer:
+
+```cpp
+// Store a password for a profile (username derived from profile.authUsername ?? sipUsername)
+SipProfileManager::instance().setProfilePassword(profileId, password);
+
+// Or call CredentialStore directly if you already have the username:
+CredentialStore::instance().storePassword(profileId, username, password);
+```
+
+See [secure-credential-storage.md](secure-credential-storage.md) for full API reference.
+
+| Platform | Backend |
+|---|---|
+| Windows | Windows Credential Manager (Advapi32) |
+| Linux/macOS | Not yet implemented — credential operations fail gracefully |
 
 ---
 
@@ -124,6 +137,11 @@ mgr.setActiveProfileId(id);
 QString id     = mgr.activeProfileId();
 bool hasActive = mgr.hasActiveProfile();
 SipProfile p   = mgr.activeProfile();
+
+// Credential helpers (delegate to CredentialStore)
+bool ok        = mgr.setProfilePassword(profileId, password);
+bool exists    = mgr.hasProfilePassword(profileId);
+bool removed   = mgr.removeProfilePassword(profileId);
 
 // Validation
 ProfileValidationResult r = mgr.validate(profile);
@@ -186,5 +204,5 @@ The `init()` and `cleanup()` hooks purge the test settings before and after each
 
 - No profile editor dialog — the Add/Edit buttons in `SidebarPanel` log "not implemented".
 - No SIP registration — `SipProfileManager` is persistence-only; PJSIP integration is deferred.
-- No credential storage — deferred to the Secure Credential Storage task (ADR-009).
+- Credential storage is implemented for Windows only; Linux/macOS deferred (ADR-011).
 - `emergencyServiceUri` is persisted but not used — ETSI emergency integration is future work.

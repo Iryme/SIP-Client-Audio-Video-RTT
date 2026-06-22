@@ -1,5 +1,6 @@
 #include "sip/SipProfileManager.h"
 #include "core/Logger.h"
+#include "security/CredentialStore.h"
 
 // -----------------------------------------------------------------------
 // Singleton
@@ -221,6 +222,44 @@ SipProfile SipProfileManager::activeProfile() const
 void SipProfileManager::sync()
 {
     m_settings.sync();
+}
+
+// -----------------------------------------------------------------------
+// Credential helpers
+// -----------------------------------------------------------------------
+// Returns authUsername if set, otherwise sipUsername (used as CredentialStore key).
+static QString effectiveAuthUsername(const SipProfile &p)
+{
+    return p.authUsername.isEmpty() ? p.sipUsername : p.authUsername;
+}
+
+bool SipProfileManager::setProfilePassword(const QString &profileId, const QString &password)
+{
+    const SipProfile p = profile(profileId);
+    if (p.isNull()) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("setProfilePassword: profile not found: %1").arg(profileId));
+        return false;
+    }
+    return CredentialStore::instance().storePassword(profileId, effectiveAuthUsername(p), password);
+}
+
+bool SipProfileManager::hasProfilePassword(const QString &profileId) const
+{
+    const SipProfile p = profile(profileId);
+    if (p.isNull()) return false;
+    return CredentialStore::instance().hasPassword(profileId, effectiveAuthUsername(p));
+}
+
+bool SipProfileManager::removeProfilePassword(const QString &profileId)
+{
+    const SipProfile p = profile(profileId);
+    if (p.isNull()) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("removeProfilePassword: profile not found: %1").arg(profileId));
+        return false;
+    }
+    return CredentialStore::instance().deletePassword(profileId, effectiveAuthUsername(p));
 }
 
 // -----------------------------------------------------------------------

@@ -33,6 +33,9 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 | AppSettings | `src/core/AppSettings` | IMPLEMENTED |
 | SipProfile model | `src/sip/SipProfile.h` | IMPLEMENTED |
 | SipProfileManager | `src/sip/SipProfileManager` | IMPLEMENTED |
+| CredentialStore | `src/security/CredentialStore` | IMPLEMENTED |
+| WindowsCredentialBackend | `src/security/` | IMPLEMENTED |
+| MemoryCredentialBackend | `src/security/` | IMPLEMENTED (tests only) |
 | SIP stack (PJSIP) | `src/sip/` | NOT STARTED |
 | Media engine | `src/media/` | NOT STARTED |
 | RTT engine | `src/rtt/` | NOT STARTED |
@@ -63,7 +66,20 @@ main.cpp
 
 SipProfileManager ──► Logger (Sip category)
 SipProfileManager ──► QSettings (SIPClientProfiles.ini, UserScope)
+SipProfileManager ──► CredentialStore (credential helpers)
+
+CredentialStore ──► Logger (Platform category)
+CredentialStore ──► WindowsCredentialBackend ──► Advapi32 (Windows Credential Manager)
 ```
+
+## Secure Credential Layer (Task 7)
+
+- `src/security/ICredentialBackend` — pure interface for pluggable backends
+- `src/security/CredentialStore` — singleton, owns the active backend, provides typed API
+- `src/security/WindowsCredentialBackend` — Windows Credential Manager via Advapi32
+- `src/security/MemoryCredentialBackend` — in-memory backend for unit tests (not secure)
+- Passwords never written to QSettings, SipProfile, or Logger
+- Backend injected via `setBackend()` for test isolation
 
 ## SIP Profile Layer (Task 6)
 

@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 2 of N
+Current task count: 3 of N
 
 ## Completed Tasks
 
@@ -9,6 +9,7 @@ Current task count: 2 of N
 |---|---|---|---|
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | IMPLEMENTED |
 | 6 | SIP profile model, persistence, GUI placeholders | feature/sip-profile-manager | IMPLEMENTED |
+| 7 | Secure credential storage (CredentialStore, Windows Credential Manager) | feature/secure-credential-storage | IMPLEMENTED |
 
 ## Module Status
 
@@ -28,7 +29,8 @@ Current task count: 2 of N
 | Logger (core) | IMPLEMENTED | Levels, categories, signals |
 | AppSettings | IMPLEMENTED | QSettings wrapper |
 | SipProfile model | IMPLEMENTED | All fields, URI derivation |
-| SipProfileManager | IMPLEMENTED | CRUD, validation, persistence, active selection |
+| SipProfileManager | IMPLEMENTED | CRUD, validation, persistence, active selection, credential helpers |
+| CredentialStore | IMPLEMENTED | Windows Credential Manager backend; MemoryCredentialBackend for tests |
 | SIP stack (PJSIP) | NOT STARTED | |
 | SIP registration | NOT STARTED | |
 | Audio calls | NOT STARTED | |
@@ -42,7 +44,7 @@ Current task count: 2 of N
 | Profile editor dialog | NOT STARTED | |
 | Media device selection | NOT STARTED | |
 | Call statistics | NOT STARTED | |
-| Credential / keychain storage | NOT STARTED | Deferred (ADR-009) |
+| Credential / keychain storage | IMPLEMENTED (Windows) | Linux/macOS deferred (ADR-011) |
 
 ## Known Limitations (Task 1)
 
@@ -59,14 +61,20 @@ Current task count: 2 of N
 
 - No profile editor dialog — Add/Edit buttons in SidebarPanel log "not implemented"
 - No SIP registration — SipProfileManager is persistence-only; PJSIP integration is deferred
-- No credential storage — SIP passwords deferred to a Secure Credential Storage task (ADR-009)
 - `emergencyServiceUri` is persisted but not used — ETSI emergency integration is future work
 - Contact list remains hardcoded; contacts are a separate future task
+
+## Known Limitations (Task 7)
+
+- `CredentialStore` is implemented for Windows only; Linux/macOS backends not yet written
+- `CRED_PERSIST_LOCAL_MACHINE` — credentials are bound to the current machine, no roaming
+- Profile editor dialog (which would call `setProfilePassword`) is not yet implemented
+- No credential migration or export path (by design — credentials are not application data)
 
 ## Next Recommended Task
 
 **Task 2 (revised):** Integrate PJSIP/pjsua2 — add CMake find module, `SipManager` skeleton,
 `SipAccount`/`SipCall` stubs. Wire `SipProfileManager` → `SipManager` for account config.
+Wire `CredentialStore` → `SipManager` to provide auth credentials at registration time.
 No real registration yet — just initialize the PJSUA endpoint and log startup/shutdown.
-Add `CredentialStore` stub reading from Windows Credential Manager (or mock on first run).
-Update `docs/architecture.md` and `docs/sip-profiles.md`.
+Update `docs/architecture.md`.
