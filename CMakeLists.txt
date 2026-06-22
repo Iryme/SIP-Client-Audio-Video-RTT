@@ -36,6 +36,7 @@ set(SOURCES
     src/gui/panels/DiagnosticsPanel.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/core/Logger.cpp
+    src/sip/SipProfileManager.cpp
 )
 
 set(HEADERS
@@ -50,6 +51,8 @@ set(HEADERS
     src/gui/widgets/AppStatusBar.h
     src/core/Logger.h
     src/core/AppSettings.h
+    src/sip/SipProfile.h
+    src/sip/SipProfileManager.h
 )
 
 set(RESOURCES

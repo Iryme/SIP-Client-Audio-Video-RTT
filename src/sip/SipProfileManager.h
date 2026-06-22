@@ -1,0 +1,60 @@
+#pragma once
+#include <QObject>
+#include <QList>
+#include <QString>
+#include <QStringList>
+#include <QSettings>
+#include "sip/SipProfile.h"
+
+struct ProfileValidationResult {
+    bool        valid{false};
+    QStringList errors;
+};
+
+class SipProfileManager : public QObject
+{
+    Q_OBJECT
+public:
+    static SipProfileManager &instance();
+
+    // Testable constructor: pass custom org/app to isolate test settings
+    explicit SipProfileManager(const QString &org, const QString &app,
+                                QSettings::Format format = QSettings::IniFormat,
+                                QObject *parent = nullptr);
+
+    ProfileValidationResult validate(const SipProfile &profile) const;
+
+    // Returns the assigned profileId on success, empty string on validation failure
+    QString add(SipProfile profile);
+    bool    update(const SipProfile &profile);
+    bool    remove(const QString &profileId);
+
+    QList<SipProfile> profiles() const;
+    SipProfile        profile(const QString &profileId) const;
+    bool              hasProfile(const QString &profileId) const;
+
+    void       setActiveProfileId(const QString &id);
+    QString    activeProfileId() const;
+    bool       hasActiveProfile() const;
+    SipProfile activeProfile() const;
+
+    void sync();
+
+    static QString      transportToString(SipTransport t);
+    static SipTransport transportFromString(const QString &s, bool *ok = nullptr);
+
+signals:
+    void profileAdded(const QString &profileId);
+    void profileUpdated(const QString &profileId);
+    void profileRemoved(const QString &profileId);
+    void activeProfileChanged(const QString &profileId);
+
+private:
+    void loadAll();
+    void saveProfile(const SipProfile &profile);
+    void removeFromStorage(const QString &profileId);
+
+    QSettings         m_settings;
+    QList<SipProfile> m_profiles;
+    QString           m_activeProfileId;
+};

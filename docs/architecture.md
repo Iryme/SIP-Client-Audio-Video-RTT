@@ -31,7 +31,9 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 | GUI panels | `src/gui/` | IMPLEMENTED (skeleton) |
 | Logger | `src/core/Logger` | IMPLEMENTED |
 | AppSettings | `src/core/AppSettings` | IMPLEMENTED |
-| SIP stack | `src/sip/` | NOT STARTED |
+| SipProfile model | `src/sip/SipProfile.h` | IMPLEMENTED |
+| SipProfileManager | `src/sip/SipProfileManager` | IMPLEMENTED |
+| SIP stack (PJSIP) | `src/sip/` | NOT STARTED |
 | Media engine | `src/media/` | NOT STARTED |
 | RTT engine | `src/rtt/` | NOT STARTED |
 | ETSI modules | `src/etsi/` | NOT STARTED |
@@ -51,19 +53,29 @@ main.cpp
   └── Application
         └── MainWindow
               ├── NavRail
-              ├── SidebarPanel
+              ├── SidebarPanel ──► SipProfileManager (singleton)
               ├── CallPanel
               ├── VideoPanel
               │     └── (future: Qt Multimedia video surface)
               ├── RttPanel
               ├── DiagnosticsPanel ──► Logger (signal)
               └── AppStatusBar
+
+SipProfileManager ──► Logger (Sip category)
+SipProfileManager ──► QSettings (SIPClientProfiles.ini, UserScope)
 ```
+
+## SIP Profile Layer (Task 6)
+
+- `src/sip/SipProfile` — struct: all profile fields except credentials
+- `src/sip/SipProfileManager` — CRUD, validation, persistence, active selection
+- Profile data persisted to `SIPClientProfiles.ini` (separate from app prefs)
+- Passwords deferred to OS keychain — never in QSettings (ADR-009)
 
 ## Planned SIP Integration (PJSIP / pjsua2)
 
 - `src/sip/SipManager` — owns PJSUA endpoint, account list, call list
-- `src/sip/SipAccount` — wraps `pj::Account`
+- `src/sip/SipAccount` — wraps `pj::Account`, reads from `SipProfileManager`
 - `src/sip/SipCall` — wraps `pj::Call`
 - All callbacks post events to the Qt main thread via `QMetaObject::invokeMethod`
 

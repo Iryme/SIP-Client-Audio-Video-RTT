@@ -65,3 +65,38 @@
 **Decision:** All SIP operations, media I/O, and file I/O run on background threads. Results are posted to the main thread via `QMetaObject::invokeMethod` or queued signals.
 
 **Rationale:** Keeps the GUI responsive at all times. PJSIP callbacks run on PJSIP threads — they must never touch Qt widgets directly.
+
+---
+
+## ADR-008 — QSettings INI for application preferences
+
+**Decision:** Use `QSettings` with `QSettings::IniFormat` and `QSettings::UserScope` (org: `SIPClient`, app: `SIPClient`) for all non-secret application preferences.
+
+**Rationale:** QSettings is part of Qt Core — no extra dependency. INI format is human-readable and debuggable. User scope ensures settings are per-user without requiring admin rights.
+
+**Consequences:** All future modules add typed accessors to `ApplicationSettings`. Tests use a separate org/app name to avoid polluting real user settings.
+
+---
+
+## ADR-009 — Credential storage separated from QSettings
+
+**Decision:** SIP account passwords and authentication secrets are never stored in `ApplicationSettings` or any INI file. They are deferred to the OS credential store: Windows Credential Manager on Windows, libsecret/KWallet on Linux.
+
+**Rationale:** INI files are plain text readable by any process with filesystem access to the user profile. OS keystores provide encryption tied to the user session.
+
+**Status:** Deferred — credential storage implementation is part of the SIP profile task.
+
+**Consequences:** `ApplicationSettings` has no `setPassword()` or `setAuthSecret()` methods — by design. `SipProfileManager` has no password fields — by design.
+
+---
+
+## ADR-010 — SIP profiles stored in a separate QSettings file
+
+**Decision:** SIP profile data (non-secret) is persisted in a dedicated INI file (`SIPClientProfiles.ini`) via `QSettings(IniFormat, UserScope, "SIPClient", "SIPClientProfiles")`, separate from general application preferences (`SIPClient.ini`).
+
+**Rationale:** Profile data has a different lifecycle than UI preferences. Keeping them in separate files means: (1) UI preferences can be reset without losing account configuration; (2) profiles can eventually be exported/imported independently; (3) the main settings file stays small and readable.
+
+**Consequences:**
+- `SipProfileManager` owns its own `QSettings` instance — it does not depend on `ApplicationSettings`.
+- Tests use `IrymeTest/SIPClientTest_Profiles` as the isolated org/app pair.
+- Key layout documented in `docs/sip-profiles.md`.
