@@ -65,3 +65,48 @@
 **Decision:** All SIP operations, media I/O, and file I/O run on background threads. Results are posted to the main thread via `QMetaObject::invokeMethod` or queued signals.
 
 **Rationale:** Keeps the GUI responsive at all times. PJSIP callbacks run on PJSIP threads — they must never touch Qt widgets directly.
+
+---
+
+## ADR-008 — Fixed docked layout with 1024×768 minimum support
+
+**Decision:** The application window uses a fixed docked layout defined in `docs/gui-layout.md`. All panels are permanently docked. No core panel may become a floating window. The layout must be fully usable at 1024×768.
+
+**Rationale:**
+- A softphone UI must be stable and predictable. Users in audio/video calls cannot afford layout surprises.
+- Floating docks introduce edge cases: off-screen positions, Z-order conflicts, window manager interactions, and restore problems across monitor configurations and multi-machine setups.
+- 1024×768 is the minimum deployed resolution in enterprise and accessibility contexts.
+- Fixed docking simplifies layout persistence (only splitter states need saving, not panel positions).
+
+**Constraints enforced:**
+
+| Rule | Mechanism |
+|---|---|
+| No floating windows | No `QDockWidget` in floating mode; all panels docked or tabbed |
+| Panel minimum sizes | `setMinimumWidth()` / `setMinimumHeight()` on every panel |
+| No accidental collapse | `QSplitter::setChildrenCollapsible(false)` on all splitters |
+| Nav rail always visible | `setFixedWidth(64)` — outside splitter, never hidden |
+| Call controls always visible | `CallPanel` fixed height inside center widget, above video |
+| Diagnostics always docked | Bottom section of vertical splitter, minimum 160 px |
+| Status bar fixed | `setFixedHeight(30)`, `setSizeGripEnabled(false)` |
+| Layout persistence | `QSplitter::saveState()` / `restoreState()` via `AppSettings` |
+
+**Specific dimension contract (see `docs/gui-layout.md` for full table):**
+
+| Panel | Default | Minimum |
+|---|---|---|
+| Menu bar height | 40 px | 40 px (fixed) |
+| Nav rail width | 64 px | 64 px (fixed) |
+| Sidebar width | 260 px | 220 px |
+| Center area width | ~700 px | 420 px |
+| Right RTT/LMPE width | 380 px | 320 px (or collapse to tab) |
+| Diagnostics height | 250 px | 160 px |
+| Status bar height | 30 px | 30 px (fixed) |
+
+**Consequences:**
+- Users cannot detach or freely rearrange panels.
+- Panel visibility toggling (View menu) hides panels by setting minimum/maximum size to zero — panels do not float.
+- The RTT/LMPE panel at minimum window width collapses into a tab adjacent to Call Info tabs; this is the only permitted layout adaptation at minimum resolution.
+- Future feature panels (e.g. ETSI status, keypad overlay) must also be docked, not floating.
+
+**Reference:** `docs/gui-layout.md` is the authoritative specification for all dimensions and region contents.

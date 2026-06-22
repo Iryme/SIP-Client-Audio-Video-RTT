@@ -1,13 +1,14 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 1 of N
+Current task count: 2 of N
 
 ## Completed Tasks
 
 | # | Task | Branch | Status |
 |---|---|---|---|
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | IMPLEMENTED |
+| 2 | Permanent GUI layout specification document | feature/gui-layout-spec | IMPLEMENTED |
 
 ## Module Status
 
@@ -53,4 +54,4 @@ Current task count: 1 of N
 
 ## Next Recommended Task
 
-**Task 2:** Integrate PJSIP/pjsua2 — add CMake find module, SipManager skeleton, SipAccount, SipCall stubs. No real calls yet — just initialize the PJSUA endpoint and log startup/shutdown. Update `docs/architecture.md` and `docs/sip-profiles.md`.
+**Task 3:** Integrate PJSIP/pjsua2 — add CMake find module, SipManager skeleton, SipAccount, SipCall stubs. No real calls yet — just initialize the PJSUA endpoint and log startup/shutdown. Update `docs/architecture.md` and `docs/sip-profiles.md`.

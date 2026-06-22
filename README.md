@@ -70,16 +70,20 @@ tests/          Qt Test suite (placeholder)
 
 ## Documentation
 
-- [Product Scope](docs/product-scope.md)
-- [Architecture](docs/architecture.md)
-- [GUI Layout](docs/gui-layout.md)
-- [Debug Logging](docs/debug-logging.md)
-- [Development Workflow](docs/development-workflow.md)
-- [Project Status](docs/project-status.md)
-- [Architecture Decisions](docs/architecture-decisions.md)
-- [Build — Linux](docs/build-linux.md)
-- [Build — Windows](docs/build-windows.md)
-- [ETSI Compatibility Overview](docs/etsi-compatibility/overview.md)
+> **GUI source of truth:** [docs/gui-layout.md](docs/gui-layout.md) defines all panel dimensions, layout rules, and stability requirements. All GUI implementation must conform to this specification.
+
+| Document | Purpose |
+|---|---|
+| [docs/gui-layout.md](docs/gui-layout.md) | **GUI layout specification — source of truth** |
+| [docs/product-scope.md](docs/product-scope.md) | Feature scope and priorities |
+| [docs/architecture.md](docs/architecture.md) | Module architecture and dependency graph |
+| [docs/architecture-decisions.md](docs/architecture-decisions.md) | Architecture decision records (ADRs) |
+| [docs/debug-logging.md](docs/debug-logging.md) | Log levels, categories, security rules |
+| [docs/development-workflow.md](docs/development-workflow.md) | Git workflow, branch strategy |
+| [docs/project-status.md](docs/project-status.md) | Completed tasks and module status |
+| [docs/build-linux.md](docs/build-linux.md) | Linux build instructions |
+| [docs/build-windows.md](docs/build-windows.md) | Windows build instructions |
+| [docs/etsi-compatibility/overview.md](docs/etsi-compatibility/overview.md) | ETSI optional modules overview |
 
 ---
 
