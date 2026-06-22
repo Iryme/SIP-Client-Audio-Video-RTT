@@ -1,49 +1,68 @@
 #pragma once
+
 #include <QObject>
 #include <QString>
 
-// SipManager owns the SIP endpoint lifecycle.
-// When HAVE_PJSIP is defined (ENABLE_PJSIP=ON and PJSIP found):
-//   initialize() creates and starts the pjsua2 Endpoint.
-//   shutdown() cleanly destroys it.
-// Without HAVE_PJSIP:
-//   All methods succeed without side effects (stub mode).
-//   backendName() returns "Stub SIP backend".
-//
-// Accounts and calls are managed by SipAccount / SipCall (future tasks).
-// This class does NOT register any account.
+#include "sip/SipAccount.h"
+
+// Owns the SIP endpoint lifecycle and the account for the active profile.
+// Credentials are fetched from CredentialStore only for a registration attempt
+// and are never retained by SipManager, logged, or persisted.
 class SipManager : public QObject
 {
     Q_OBJECT
 public:
     static SipManager &instance();
 
-    // Lifecycle — safe to call from the Qt main thread.
     bool initialize();
     void shutdown();
 
-    // State queries
-    bool    isInitialized()     const;
-    bool    isPjsipAvailable()  const;
-    QString backendName()       const;
-    QString lastError()         const;
+    bool registerActiveProfile();
+    bool unregisterActiveProfile();
+
+    bool              isInitialized() const;
+    bool              isPjsipAvailable() const;
+    QString           backendName() const;
+    QString           lastError() const;
+    RegistrationState registrationState() const;
+    QString           registrationStatusText() const;
+    int               registrationStatusCode() const;
+    QString           registeredProfileId() const;
 
 signals:
     void initialized();
     void shutdownComplete();
     void initializationFailed(const QString &reason);
+    void registrationStateChanged(RegistrationState state,
+                                  const QString &statusText,
+                                  int statusCode);
+
+private slots:
+    void onAccountRegistrationStateChanged(RegistrationState state,
+                                           const QString &statusText,
+                                           int statusCode);
 
 private:
     SipManager();
     ~SipManager() override;
 
-    bool    m_initialized{false};
-    QString m_lastError;
+    void setRegistrationState(RegistrationState state,
+                              const QString &statusText,
+                              int statusCode = 0);
+    void destroyAccount();
 
 #ifdef HAVE_PJSIP
-    // pjsua2 Endpoint is owned here when PJSIP is compiled in.
-    // Forward-declared to keep pjsua2.hpp out of every translation unit.
+    bool ensureTransport(SipTransport transport, int &transportId, QString &error);
+
     struct PjEndpoint;
     PjEndpoint *m_ep{nullptr};
 #endif
+
+    bool              m_initialized{false};
+    QString           m_lastError;
+    SipAccount       *m_account{nullptr};
+    RegistrationState m_registrationState{RegistrationState::Unregistered};
+    QString           m_registrationStatusText{QStringLiteral("Unregistered")};
+    int               m_registrationStatusCode{0};
+    QString           m_registeredProfileId;
 };

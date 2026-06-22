@@ -111,7 +111,11 @@ add_test(NAME test_media_device COMMAND test_media_device)
 qt_add_executable(test_sip_manager
     test_sip_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
 )
 
 target_include_directories(test_sip_manager PRIVATE
@@ -122,5 +126,8 @@ target_link_libraries(test_sip_manager PRIVATE
     Qt6::Core
     Qt6::Test
 )
+if(WIN32)
+    target_link_libraries(test_sip_manager PRIVATE Advapi32)
+endif()
 
 add_test(NAME test_sip_manager COMMAND test_sip_manager)

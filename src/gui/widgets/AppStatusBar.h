@@ -1,5 +1,6 @@
 #pragma once
 #include <QStatusBar>
+#include "sip/SipAccount.h"
 
 class QLabel;
 
@@ -17,6 +18,9 @@ public:
     void setPacketLoss(const QString &loss);
     void setRttLatency(const QString &rtt);
     void setSipBackend(const QString &name, bool initialized);
+    void setRegistrationStatus(RegistrationState state,
+                               const QString &statusText,
+                               int statusCode);
 
 private:
     QLabel *m_connState{nullptr};

@@ -1,4 +1,5 @@
 #include "AppStatusBar.h"
+#include "sip/SipAccount.h"
 #include <QLabel>
 #include <QFrame>
 
@@ -65,4 +66,36 @@ void AppStatusBar::setSipBackend(const QString &name, bool initialized)
 {
     const QString state = initialized ? QStringLiteral("ready") : QStringLiteral("inactive");
     m_sipBackend->setText(QStringLiteral("SIP: %1 (%2)").arg(name, state));
+}
+
+void AppStatusBar::setRegistrationStatus(RegistrationState state,
+                                         const QString &statusText,
+                                         int statusCode)
+{
+    QString text;
+    QString color = QStringLiteral("#e05050");
+    switch (state) {
+    case RegistrationState::Unregistered:
+        text = QStringLiteral("Unregistered");
+        break;
+    case RegistrationState::Registering:
+        text = statusText == QStringLiteral("Unregistering")
+            ? QStringLiteral("Unregistering") : QStringLiteral("Registering");
+        color = QStringLiteral("#e0b850");
+        break;
+    case RegistrationState::Registered:
+        text = QStringLiteral("Registered");
+        color = QStringLiteral("#50c878");
+        break;
+    case RegistrationState::RegistrationFailed:
+        text = QStringLiteral("Registration failed");
+        break;
+    }
+
+    m_connState->setText(text);
+    m_connState->setStyleSheet(
+        QStringLiteral("color: %1; font-size: 11px; padding: 0 6px;").arg(color));
+    m_connState->setToolTip(statusCode == 0
+        ? statusText
+        : QStringLiteral("%1 (status %2)").arg(statusText).arg(statusCode));
 }

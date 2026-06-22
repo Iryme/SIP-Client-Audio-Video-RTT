@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include "sip/SipAccount.h"
 
 class QLabel;
 class QLineEdit;
@@ -19,6 +20,10 @@ private slots:
     void onEditProfile();
     void onDeleteProfile();
     void onActiveProfileChanged(const QString &profileId);
+    void onRegistrationClicked();
+    void onRegistrationStateChanged(RegistrationState state,
+                                    const QString &statusText,
+                                    int statusCode);
 
 private:
     void refreshProfileSelector();
@@ -33,4 +38,5 @@ private:
     QPushButton  *m_addProfile{nullptr};
     QPushButton  *m_editProfile{nullptr};
     QPushButton  *m_deleteProfile{nullptr};
+    QPushButton  *m_registrationButton{nullptr};
 };

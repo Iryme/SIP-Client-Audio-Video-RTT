@@ -30,6 +30,8 @@ MainWindow::MainWindow(QWidget *parent)
     buildMenuBar();
     buildCentralWidget();
     buildStatusBar();
+    connect(&SipManager::instance(), &SipManager::registrationStateChanged,
+            m_statusBar, &AppStatusBar::setRegistrationStatus);
     restoreLayout();
 
     Logger::instance().info(LogCategory::App, "Main window initialized");
@@ -203,4 +205,7 @@ void MainWindow::updateSipBackendStatus()
 {
     const auto &sip = SipManager::instance();
     m_statusBar->setSipBackend(sip.backendName(), sip.isInitialized());
+    m_statusBar->setRegistrationStatus(sip.registrationState(),
+                                       sip.registrationStatusText(),
+                                       sip.registrationStatusCode());
 }

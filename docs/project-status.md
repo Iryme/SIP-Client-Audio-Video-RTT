@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 11 of N
+Current task count: 12 of N
 
 ## Completed Tasks
 
@@ -18,6 +18,7 @@ Current task count: 11 of N
 | 9 | Media device enumeration — MediaDeviceManager, MediaPanel, persistence, fallback | feature/media-device-enumeration | IMPLEMENTED |
 | 10 | PJSIP build integration — FindPJSIP.cmake, ENABLE_PJSIP option, SipManager lifecycle skeleton | feature/pjsip-build-integration | IMPLEMENTED |
 | 11 | Project Handoff 001 — formal project snapshot and continuation prompt | feature/project-handoff-001 | IMPLEMENTED |
+| 12 | SIP Register / Unregister — active profile, secure credential lookup, pjsua2 callbacks, GUI status | feature/sip-registration | IMPLEMENTED |
 
 > **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
 > are not ancestors of the active Tasks 6-10 lineage. The active code uses the
@@ -38,7 +39,7 @@ Current task count: 11 of N
 | RTT panel | IMPLEMENTED | Placeholder UI |
 | LMPE panel | IMPLEMENTED | Placeholder UI |
 | Diagnostics/log panel | IMPLEMENTED | Fully functional |
-| Status bar | IMPLEMENTED | Placeholder labels |
+| Status bar | IMPLEMENTED | Live SIP registration state; call/media statistics remain placeholders |
 | Logger (core) | IMPLEMENTED | Levels, categories, signals |
 | AppSettings | IMPLEMENTED | QSettings wrapper |
 | SipProfile model | IMPLEMENTED | All fields, URI derivation |
@@ -48,11 +49,11 @@ Current task count: 11 of N
 | MediaDeviceManager | IMPLEMENTED | Qt Multimedia backed; pluggable IMediaDeviceBackend |
 | MediaDeviceSelectionModel | IMPLEMENTED | Persistence + fallback to default |
 | MediaPanel | IMPLEMENTED | Microphone/Speaker/Camera combos + Refresh button in Media tab |
-| SipManager (lifecycle) | IMPLEMENTED | Stub + PJSIP branch; ENABLE_PJSIP=OFF default |
-| SipAccount | STUB | Header + minimal .cpp; no registration yet |
+| SipManager | IMPLEMENTED | Lifecycle + active-profile register/unregister + typed state; stub + PJSIP branches |
+| SipAccount | IMPLEMENTED | pjsua2 account creation, REGISTER/UNREGISTER, queued callbacks |
 | SipCall | STUB | Header + minimal .cpp; no calls yet |
 | cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
-| SIP registration | NOT STARTED | |
+| SIP registration | IMPLEMENTED | Manual active-profile registration; retry/refresh state machine deferred |
 | Audio calls | NOT STARTED | |
 | Video calls | NOT STARTED | |
 | RFC 4103 RTT | NOT STARTED | |
@@ -112,6 +113,14 @@ Current task count: 11 of N
 - Speakers may not enumerate on headless/virtual-machine systems
 - Video preview in `VideoPanel` remains a placeholder paintEvent — no real camera stream
 
+## Known Limitations (Task 12)
+
+- Real PJSIP registration was not integration-tested on this machine because PJSIP is not installed; stub mode and guarded APIs were verified.
+- Registration is manual; there is no startup/profile-change auto-register behavior.
+- No expiry refresh, retry/backoff, timeout, network-change recovery, or multi-account support yet.
+- Profile switching does not wait for an old account's unregister response before account replacement.
+- TLS certificate policy, NAT behavior, and registrar interoperability remain environment-dependent and untested.
+
 ## Next Recommended Task
 
-**Task 11:** SIP Account Registration — Wire `SipProfileManager` → `SipAccount`; wire `CredentialStore` → `SipAccount` for auth credentials; implement `register()` / `unregister()` / `onRegState()` callback; dispatch state changes to Qt main thread via `QMetaObject::invokeMethod`; update sidebar registration status label and status bar connection state. Requires `ENABLE_PJSIP=ON`; stub mode must continue to compile cleanly.
+**Task 13:** Registration State Machine — add automatic refresh before expiry, timeout handling, retry/backoff, network-change recovery, explicit unregistering semantics, and deterministic profile-switch sequencing while preserving the four public registration states.

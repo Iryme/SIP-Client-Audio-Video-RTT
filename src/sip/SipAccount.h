@@ -1,14 +1,24 @@
 #pragma once
+
 #include <QObject>
 #include <QString>
+#include <QMetaType>
 
-// SipAccount wraps a pjsua2 Account (future task).
-// Reads configuration from SipProfileManager.
-// Reads authentication credentials from CredentialStore at registration time.
-//
-// This header is a forward-declaration stub — implementation deferred to
-// the SIP registration task. No PJSIP types appear here intentionally;
-// pjsua2.hpp is included only in SipAccount.cpp when HAVE_PJSIP is defined.
+#include "sip/SipProfile.h"
+
+enum class RegistrationState {
+    Unregistered,
+    Registering,
+    Registered,
+    RegistrationFailed
+};
+
+Q_DECLARE_METATYPE(RegistrationState)
+
+QString registrationStateName(RegistrationState state);
+
+// Wraps one pjsua2 Account when PJSIP is available. PJSIP details are hidden
+// behind Impl so stub builds never include pjsua2 headers.
 class SipAccount : public QObject
 {
     Q_OBJECT
@@ -18,10 +28,22 @@ public:
 
     QString profileId() const;
 
-    // Future: register(), unregister(), onRegState() callback
+    bool startRegistration(const SipProfile &profile, const QString &password,
+                           int transportId = -1);
+    bool startUnregistration();
+
 signals:
-    void registrationStateChanged(const QString &profileId, const QString &state);
+    void registrationStateChanged(RegistrationState state,
+                                  const QString &statusText,
+                                  int statusCode);
 
 private:
+    struct Impl;
+
+    void postRegistrationResult(RegistrationState state,
+                                const QString &statusText,
+                                int statusCode);
+
     QString m_profileId;
+    Impl   *m_impl{nullptr};
 };
