@@ -28,4 +28,12 @@ public:
     // Logging
     static void setLogLevelEnabled(const QString &level, bool on) { settings().setValue("log/level/" + level, on); }
     static bool isLogLevelEnabled(const QString &level, bool def) { return settings().value("log/level/" + level, def).toBool(); }
+
+    // Media device selection
+    static void    saveSelectedMicrophone(const QString &id) { settings().setValue("media/device/microphone", id); }
+    static QString loadSelectedMicrophone()                  { return settings().value("media/device/microphone").toString(); }
+    static void    saveSelectedSpeaker   (const QString &id) { settings().setValue("media/device/speaker", id); }
+    static QString loadSelectedSpeaker   ()                  { return settings().value("media/device/speaker").toString(); }
+    static void    saveSelectedCamera    (const QString &id) { settings().setValue("media/device/camera", id); }
+    static QString loadSelectedCamera    ()                  { return settings().value("media/device/camera").toString(); }
 };

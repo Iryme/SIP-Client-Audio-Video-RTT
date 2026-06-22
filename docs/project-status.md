@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 4 of N
+Current task count: 5 of N
 
 ## Completed Tasks
 
@@ -11,6 +11,7 @@ Current task count: 4 of N
 | 6 | SIP profile model, persistence, GUI placeholders | feature/sip-profile-manager | IMPLEMENTED |
 | 7 | Secure credential storage (CredentialStore, Windows Credential Manager) | feature/secure-credential-storage | IMPLEMENTED |
 | 8 | SIP Profile Editor Dialog — Add/Edit/Delete with CredentialStore integration | feature/sip-profile-editor | IMPLEMENTED |
+| 9 | Media device enumeration — MediaDeviceManager, MediaPanel, persistence, fallback | feature/media-device-enumeration | IMPLEMENTED |
 
 ## Module Status
 
@@ -32,6 +33,10 @@ Current task count: 4 of N
 | SipProfile model | IMPLEMENTED | All fields, URI derivation |
 | SipProfileManager | IMPLEMENTED | CRUD, validation, persistence, active selection, credential helpers |
 | CredentialStore | IMPLEMENTED | Windows Credential Manager backend; MemoryCredentialBackend for tests |
+| MediaDevice model | IMPLEMENTED | id, displayName, type, isDefault, isAvailable |
+| MediaDeviceManager | IMPLEMENTED | Qt Multimedia backed; pluggable IMediaDeviceBackend |
+| MediaDeviceSelectionModel | IMPLEMENTED | Persistence + fallback to default |
+| MediaPanel | IMPLEMENTED | Microphone/Speaker/Camera combos + Refresh button in Media tab |
 | SIP stack (PJSIP) | NOT STARTED | |
 | SIP registration | NOT STARTED | |
 | Audio calls | NOT STARTED | |
@@ -78,10 +83,19 @@ Current task count: 4 of N
 - No inline error highlighting — validation errors are shown in a `QMessageBox`, not inline
 - Contact list in `SidebarPanel` remains hardcoded placeholder entries (separate future task)
 
+## Known Limitations (Task 9)
+
+- Audio level meters are static/inactive — no real microphone capture yet
+- Hot-plug detection: `QMediaDevices::audioInputsChanged` / `videoInputsChanged` signals are not yet forwarded into `MediaDeviceManager`; user must press Refresh
+- Camera enumeration requires Qt Multimedia camera permissions on macOS
+- Speakers may not enumerate on headless/virtual-machine systems
+- Video preview in `VideoPanel` remains a placeholder paintEvent — no real camera stream
+
 ## Next Recommended Task
 
 **Task 2 (revised):** Integrate PJSIP/pjsua2 — add CMake find module, `SipManager` skeleton,
 `SipAccount`/`SipCall` stubs. Wire `SipProfileManager` → `SipManager` for account config.
 Wire `CredentialStore` → `SipManager` to provide auth credentials at registration time.
+Wire `MediaDeviceManager` → `SipManager` to pass selected device IDs.
 No real registration yet — just initialize the PJSUA endpoint and log startup/shutdown.
 Update `docs/architecture.md`.

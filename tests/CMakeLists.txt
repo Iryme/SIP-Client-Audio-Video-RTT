@@ -85,3 +85,24 @@ if(WIN32)
 endif()
 
 add_test(NAME test_sip_profile_editor COMMAND test_sip_profile_editor)
+
+# ---- test_media_device -------------------------------------------------
+qt_add_executable(test_media_device
+    test_media_device.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceSelectionModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/QtMediaDeviceBackend.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_media_device PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_media_device PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Multimedia
+)
+
+add_test(NAME test_media_device COMMAND test_media_device)

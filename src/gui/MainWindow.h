@@ -8,6 +8,7 @@ class CallPanel;
 class VideoPanel;
 class RttPanel;
 class DiagnosticsPanel;
+class MediaPanel;
 class AppStatusBar;
 class QSplitter;
 class QTabWidget;
@@ -37,6 +38,7 @@ private:
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};
     DiagnosticsPanel *m_diagnostics{nullptr};
+    MediaPanel       *m_mediaPanel{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
 
     // Splitters (saved for layout persistence)

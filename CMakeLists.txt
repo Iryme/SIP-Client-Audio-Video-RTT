@@ -34,12 +34,16 @@ set(SOURCES
     src/gui/panels/VideoPanel.cpp
     src/gui/panels/RttPanel.cpp
     src/gui/panels/DiagnosticsPanel.cpp
+    src/gui/panels/MediaPanel.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/core/Logger.cpp
     src/sip/SipProfileManager.cpp
     src/security/CredentialStore.cpp
     src/security/MemoryCredentialBackend.cpp
+    src/media/MediaDeviceManager.cpp
+    src/media/MediaDeviceSelectionModel.cpp
+    src/media/QtMediaDeviceBackend.cpp
 )
 
 set(HEADERS
@@ -51,6 +55,7 @@ set(HEADERS
     src/gui/panels/VideoPanel.h
     src/gui/panels/RttPanel.h
     src/gui/panels/DiagnosticsPanel.h
+    src/gui/panels/MediaPanel.h
     src/gui/widgets/AppStatusBar.h
     src/gui/dialogs/SipProfileEditorDialog.h
     src/core/Logger.h
@@ -60,6 +65,11 @@ set(HEADERS
     src/security/ICredentialBackend.h
     src/security/CredentialStore.h
     src/security/MemoryCredentialBackend.h
+    src/media/MediaDevice.h
+    src/media/IMediaDeviceBackend.h
+    src/media/QtMediaDeviceBackend.h
+    src/media/MediaDeviceManager.h
+    src/media/MediaDeviceSelectionModel.h
 )
 
 if(WIN32)

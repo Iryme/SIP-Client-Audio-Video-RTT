@@ -30,6 +30,7 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 |---|---|---|
 | GUI panels | `src/gui/` | IMPLEMENTED (skeleton) |
 | SipProfileEditorDialog | `src/gui/dialogs/` | IMPLEMENTED |
+| MediaPanel | `src/gui/panels/MediaPanel` | IMPLEMENTED |
 | Logger | `src/core/Logger` | IMPLEMENTED |
 | AppSettings | `src/core/AppSettings` | IMPLEMENTED |
 | SipProfile model | `src/sip/SipProfile.h` | IMPLEMENTED |
@@ -37,8 +38,12 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 | CredentialStore | `src/security/CredentialStore` | IMPLEMENTED |
 | WindowsCredentialBackend | `src/security/` | IMPLEMENTED |
 | MemoryCredentialBackend | `src/security/` | IMPLEMENTED (tests only) |
+| MediaDevice model | `src/media/MediaDevice.h` | IMPLEMENTED |
+| MediaDeviceManager | `src/media/MediaDeviceManager` | IMPLEMENTED |
+| MediaDeviceSelectionModel | `src/media/MediaDeviceSelectionModel` | IMPLEMENTED |
+| QtMediaDeviceBackend | `src/media/` | IMPLEMENTED |
 | SIP stack (PJSIP) | `src/sip/` | NOT STARTED |
-| Media engine | `src/media/` | NOT STARTED |
+| Media streaming | `src/media/` | NOT STARTED (device enum done) |
 | RTT engine | `src/rtt/` | NOT STARTED |
 | ETSI modules | `src/etsi/` | NOT STARTED |
 
@@ -71,6 +76,10 @@ SipProfileManager ──► CredentialStore (credential helpers)
 
 CredentialStore ──► Logger (Platform category)
 CredentialStore ──► WindowsCredentialBackend ──► Advapi32 (Windows Credential Manager)
+
+MediaPanel ──► MediaDeviceSelectionModel ──► MediaDeviceManager ──► QtMediaDeviceBackend
+MediaDeviceSelectionModel ──► AppSettings (media/device/*)
+MediaDeviceManager ──► Logger (Media category)
 ```
 
 ## Secure Credential Layer (Task 7)
@@ -88,6 +97,15 @@ CredentialStore ──► WindowsCredentialBackend ──► Advapi32 (Windows C
 - `src/sip/SipProfileManager` — CRUD, validation, persistence, active selection
 - Profile data persisted to `SIPClientProfiles.ini` (separate from app prefs)
 - Passwords deferred to OS keychain — never in QSettings (ADR-009)
+
+## Media Device Layer (Task 9)
+
+- `src/media/MediaDevice` — struct: id, displayName, type, isDefault, isAvailable
+- `src/media/IMediaDeviceBackend` — pure interface; `QtMediaDeviceBackend` wraps `QMediaDevices`
+- `src/media/MediaDeviceManager` — singleton, enumerates all device types, owns the backend
+- `src/media/MediaDeviceSelectionModel` — handles persistence (`AppSettings`) and fallback to default
+- `src/gui/panels/MediaPanel` — GUI widget mounted in the "Media" info tab
+- No real audio/video capture yet — device enumeration only
 
 ## Planned SIP Integration (PJSIP / pjsua2)
 

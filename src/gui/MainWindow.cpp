@@ -5,6 +5,7 @@
 #include "panels/VideoPanel.h"
 #include "panels/RttPanel.h"
 #include "panels/DiagnosticsPanel.h"
+#include "panels/MediaPanel.h"
 #include "widgets/AppStatusBar.h"
 #include "core/AppSettings.h"
 #include "core/Logger.h"
@@ -137,7 +138,8 @@ void MainWindow::buildCentralWidget()
     auto *infoTabs = new QTabWidget(centerWidget);
     infoTabs->setFixedHeight(200);
     infoTabs->addTab(new QWidget(), tr("Call Info"));
-    infoTabs->addTab(new QWidget(), tr("Media"));
+    m_mediaPanel = new MediaPanel(centerWidget);
+    infoTabs->addTab(m_mediaPanel, tr("Media"));
     infoTabs->addTab(new QWidget(), tr("Statistics"));
     centerLayout->addWidget(infoTabs);
 
