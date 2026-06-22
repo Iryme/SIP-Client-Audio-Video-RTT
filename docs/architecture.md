@@ -29,7 +29,8 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 | Module | Location | Status |
 |---|---|---|
 | GUI panels | `src/gui/` | IMPLEMENTED (skeleton) |
-| Logger | `src/core/Logger` | IMPLEMENTED |
+| DiagnosticsLogger | `src/diagnostics/` | IMPLEMENTED |
+| Logger (GUI adapter) | `src/core/Logger` | IMPLEMENTED |
 | AppSettings | `src/core/AppSettings` | IMPLEMENTED |
 | SIP stack | `src/sip/` | NOT STARTED |
 | Media engine | `src/media/` | NOT STARTED |
@@ -42,7 +43,24 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 - All SIP/media operations will run on background threads or Qt async patterns.
 - The UI thread must never block on network or media I/O.
 - ETSI modules are compiled conditionally via CMake options.
-- `Logger` is a singleton with thread-safe `emit` via Qt queued connections.
+- `DiagnosticsLogger` is the canonical logging foundation — all modules use it directly.
+- `Logger` (in `src/core/`) is a thin Qt-signal adapter on top of DiagnosticsLogger for GUI delivery.
+- DiagnosticsLogger is thread-safe via `QMutex`; safe to call from PJSIP threads without extra sync.
+
+## DiagnosticsLogger Design
+
+`src/diagnostics/DiagnosticsLogger` is the single in-memory log store for the application lifetime.
+
+Key properties:
+- **Not a QObject** — no Qt event loop dependency; callable from any thread.
+- **Automatic redaction** — sensitive key patterns (`password`, `token`, `authorization`, `private key`, etc.) are replaced with `***` before storage.
+- **Bounded buffer** — default 10 000 entries; oldest dropped when cap is reached.
+- **Export** — plain text (human-readable) and JSON-ready (`QList<QVariantMap>`) formats.
+- **Category filtering** — `entriesForCategory()` / `entriesForLevel()` return filtered views.
+- **Clear** — `clear()` wipes in-memory buffer; does not affect exported files.
+
+The GUI adapter (`src/core/Logger`) forwards calls to DiagnosticsLogger and also emits
+`entryAdded(LogEntry)` Qt signal so `DiagnosticsPanel` can update the table in real time.
 
 ## Dependency Graph (current)
 

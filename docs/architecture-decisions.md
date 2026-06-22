@@ -65,3 +65,36 @@
 **Decision:** All SIP operations, media I/O, and file I/O run on background threads. Results are posted to the main thread via `QMetaObject::invokeMethod` or queued signals.
 
 **Rationale:** Keeps the GUI responsive at all times. PJSIP callbacks run on PJSIP threads — they must never touch Qt widgets directly.
+
+---
+
+## ADR-009 — DiagnosticsLogger as canonical logging foundation
+
+**Decision:** All application modules (SIP, Media, RTT, LMPE, ETSI, App) log through
+`DiagnosticsLogger` in `src/diagnostics/`. The GUI signal adapter (`src/core/Logger`) remains
+as a thin wrapper that re-emits Qt signals for `DiagnosticsPanel`. `DiagnosticsLogger` is
+not a `QObject` and has no Qt event loop dependency.
+
+**Rationale:**
+- A non-QObject singleton can be called from PJSIP callbacks, media threads, and any
+  background thread without marshalling to the main thread first.
+- Thread safety is provided by an internal `QMutex`, so callers need no external synchronization.
+- Automatic redaction (passwords, tokens, keys) is enforced at the store boundary — no module
+  can accidentally persist sensitive data by forgetting to sanitize before logging.
+- In-memory buffer (10 000 entries, configurable) prevents unbounded memory growth during
+  long calls with DEBUG or RAW enabled.
+- Plain text and JSON-ready export formats enable both human-readable log files and
+  structured analysis pipelines.
+
+**Redacted key patterns:** `password`, `passwd`, `secret`, `token`, `authorization`,
+`private key`, `auth` — matched case-insensitively before `=` or `:`.
+
+**Consequences:**
+- `src/core/Logger` must eventually delegate to `DiagnosticsLogger` rather than maintaining
+  a separate enabled-level map. This unification is deferred to just before SIP integration.
+- RAW level requires explicit `setLevelEnabled(LogLevel::Raw, true)` — no code path enables
+  it automatically.
+- Unit tests in `tests/diagnostics/DiagnosticsLoggerTests.cpp` cover: default levels,
+  enable/disable logic, RAW off by default, category filtering, clear, redaction (7 patterns),
+  and export formats.
+- Build tests with: `cmake -DBUILD_TESTS=ON .. && cmake --build . && ctest --output-on-failure`

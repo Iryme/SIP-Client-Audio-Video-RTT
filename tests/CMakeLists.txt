@@ -1,8 +1,22 @@
-# Tests — placeholder
-# Will use Qt Test framework when features are implemented
-#
-# Example:
-#   find_package(Qt6 REQUIRED COMPONENTS Test)
-#   qt_add_executable(test_logger tests/test_logger.cpp)
-#   target_link_libraries(test_logger PRIVATE Qt6::Test SIPClientLib)
-#   add_test(NAME test_logger COMMAND test_logger)
+find_package(Qt6 REQUIRED COMPONENTS Core Test)
+
+# DiagnosticsLogger unit tests
+qt_add_executable(test_diagnostics
+    diagnostics/DiagnosticsLoggerTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/diagnostics/DiagnosticsLogger.cpp
+)
+
+target_include_directories(test_diagnostics PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_diagnostics PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+set_target_properties(test_diagnostics PROPERTIES
+    AUTOMOC ON
+)
+
+add_test(NAME test_diagnostics COMMAND test_diagnostics)

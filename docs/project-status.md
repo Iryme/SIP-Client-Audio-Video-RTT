@@ -1,13 +1,15 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 1 of N
+Current task count: 3 completed
 
 ## Completed Tasks
 
 | # | Task | Branch | Status |
 |---|---|---|---|
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | IMPLEMENTED |
+| 2 | Permanent GUI layout specification | feature/gui-layout-spec | IMPLEMENTED |
+| 3 | Diagnostics logging infrastructure | feature/diagnostics-logger | IMPLEMENTED |
 
 ## Module Status
 
@@ -24,7 +26,8 @@ Current task count: 1 of N
 | LMPE panel | IMPLEMENTED | Placeholder UI |
 | Diagnostics/log panel | IMPLEMENTED | Fully functional |
 | Status bar | IMPLEMENTED | Placeholder labels |
-| Logger (core) | IMPLEMENTED | Levels, categories, signals |
+| DiagnosticsLogger | IMPLEMENTED | Thread-safe, redaction, export, category filter, unit tested |
+| Logger (GUI adapter) | IMPLEMENTED | Qt signal emitter wrapping DiagnosticsLogger |
 | AppSettings | IMPLEMENTED | QSettings wrapper |
 | SIP stack (PJSIP) | NOT STARTED | |
 | SIP registration | NOT STARTED | |
@@ -40,8 +43,9 @@ Current task count: 1 of N
 | Media device selection | NOT STARTED | |
 | Call statistics | NOT STARTED | |
 
-## Known Limitations (Task 1)
+## Known Limitations
 
+### Task 1
 - No SIP networking — application is GUI-only
 - No PJSIP dependency — must be added in the next SIP task
 - Nav rail buttons have text labels only (no icons)
@@ -51,6 +55,13 @@ Current task count: 1 of N
 - Video area shows a placeholder paintEvent, no real video
 - Local preview is a labeled box, no camera input
 
+### Task 3
+- `src/core/Logger` (GUI signal layer) does not yet delegate to `DiagnosticsLogger`; the two loggers are independent. Unification is planned as a refactor step before SIP integration.
+- Build and test run not verified on this machine (CMake not installed). Tests compile cleanly per static review; run `cmake -DBUILD_TESTS=ON ..` and `ctest` to verify.
+
 ## Next Recommended Task
 
-**Task 2:** Integrate PJSIP/pjsua2 — add CMake find module, SipManager skeleton, SipAccount, SipCall stubs. No real calls yet — just initialize the PJSUA endpoint and log startup/shutdown. Update `docs/architecture.md` and `docs/sip-profiles.md`.
+**Task 4:** Integrate PJSIP/pjsua2 — add CMake find module (`cmake/FindPJSIP.cmake`),
+`src/sip/SipManager.h/.cpp` skeleton (initialize/shutdown PJSUA endpoint),
+`SipAccount.h` and `SipCall.h` stubs. Log startup/shutdown via `DiagnosticsLogger`.
+Update `docs/architecture.md` and `docs/sip-profiles.md`.
