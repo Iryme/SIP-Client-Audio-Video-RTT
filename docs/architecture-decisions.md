@@ -65,3 +65,31 @@
 **Decision:** All SIP operations, media I/O, and file I/O run on background threads. Results are posted to the main thread via `QMetaObject::invokeMethod` or queued signals.
 
 **Rationale:** Keeps the GUI responsive at all times. PJSIP callbacks run on PJSIP threads — they must never touch Qt widgets directly.
+
+---
+
+## ADR-008 — QSettings INI for application preferences
+
+**Decision:** Use `QSettings` with `QSettings::IniFormat` and `QSettings::UserScope` (org: `SIPClient`, app: `SIPClient`) for all non-secret application preferences. Typed accessors are provided by `ApplicationSettings` in `src/settings/`.
+
+**Rationale:** QSettings is part of Qt Core — no extra dependency. INI format is human-readable and debuggable. User scope ensures settings are per-user without requiring admin rights. Typed accessors in `ApplicationSettings` prevent direct key-string usage across the codebase and encode safe defaults in one place.
+
+**Consequences:**
+- All future modules (SIP profiles, media device IDs, theme, layout) add typed accessors to `ApplicationSettings`.
+- The `src/core/AppSettings.h` shim is kept for backward compatibility with Task 1 callers but new code targets `ApplicationSettings` directly.
+- Tests must use a separate org/app name to avoid polluting real user settings.
+
+---
+
+## ADR-009 — Credential storage separated from QSettings
+
+**Decision:** SIP account passwords and authentication secrets are never stored in `ApplicationSettings` or any INI file. They are deferred to the OS credential store: Windows Credential Manager on Windows, libsecret/KWallet on Linux.
+
+**Rationale:** INI files are plain text readable by any process with filesystem access to the user profile. Storing passwords there creates a trivial secret-extraction risk. OS keystores provide encryption tied to the user session without requiring a master password UX.
+
+**Status:** Deferred — credential storage implementation is part of the SIP profile task (Task 2).
+
+**Consequences:**
+- `ApplicationSettings` has no `setPassword()` or `setAuthSecret()` methods — by design.
+- A future `CredentialStore` class will wrap `QKeychain` or platform APIs.
+- Tests must verify that no credential keys appear in `ApplicationSettings`-written INI files (see `tests/test_application_settings.cpp`).

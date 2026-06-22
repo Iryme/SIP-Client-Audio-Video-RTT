@@ -30,7 +30,8 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 |---|---|---|
 | GUI panels | `src/gui/` | IMPLEMENTED (skeleton) |
 | Logger | `src/core/Logger` | IMPLEMENTED |
-| AppSettings | `src/core/AppSettings` | IMPLEMENTED |
+| ApplicationSettings | `src/settings/ApplicationSettings` | IMPLEMENTED |
+| AppSettings (shim) | `src/core/AppSettings` | IMPLEMENTED (delegates to ApplicationSettings) |
 | SIP stack | `src/sip/` | NOT STARTED |
 | Media engine | `src/media/` | NOT STARTED |
 | RTT engine | `src/rtt/` | NOT STARTED |
@@ -49,7 +50,7 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 ```
 main.cpp
   └── Application
-        └── MainWindow
+        └── MainWindow ──► ApplicationSettings (layout persistence)
               ├── NavRail
               ├── SidebarPanel
               ├── CallPanel
@@ -57,6 +58,7 @@ main.cpp
               │     └── (future: Qt Multimedia video surface)
               ├── RttPanel
               ├── DiagnosticsPanel ──► Logger (signal)
+              │                   └── ApplicationSettings (level persistence)
               └── AppStatusBar
 ```
 
@@ -69,6 +71,8 @@ main.cpp
 
 ## Settings Persistence
 
-- Uses `QSettings` in INI format under user scope.
-- `AppSettings` provides typed accessors.
-- Secrets (passwords) use platform keychain (planned), never INI.
+- `ApplicationSettings` (`src/settings/`) is the canonical typed settings service.
+- Wraps `QSettings` in INI format under user scope (org: `SIPClient`, app: `SIPClient`).
+- `AppSettings` (`src/core/`) is a backward-compatible shim; new code uses `ApplicationSettings` directly.
+- Secrets (passwords) will use the OS platform keychain (Windows Credential Manager / libsecret) — never INI.
+- See [docs/application-settings.md](application-settings.md) for the full key reference.

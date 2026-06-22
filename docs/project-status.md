@@ -1,13 +1,14 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 1 of N
+Current task count: 2 of N
 
 ## Completed Tasks
 
 | # | Task | Branch | Status |
 |---|---|---|---|
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | IMPLEMENTED |
+| 5 | Persistent application settings (ApplicationSettings, DiagnosticsPanel integration, tests) | feature/persistent-settings | IMPLEMENTED |
 
 ## Module Status
 
@@ -22,10 +23,11 @@ Current task count: 1 of N
 | Video panel | IMPLEMENTED | Placeholder paintEvent |
 | RTT panel | IMPLEMENTED | Placeholder UI |
 | LMPE panel | IMPLEMENTED | Placeholder UI |
-| Diagnostics/log panel | IMPLEMENTED | Fully functional |
+| Diagnostics/log panel | IMPLEMENTED | Level states persisted via ApplicationSettings |
 | Status bar | IMPLEMENTED | Placeholder labels |
 | Logger (core) | IMPLEMENTED | Levels, categories, signals |
-| AppSettings | IMPLEMENTED | QSettings wrapper |
+| ApplicationSettings | IMPLEMENTED | QSettings INI, typed accessors, defaults, reset |
+| AppSettings (shim) | IMPLEMENTED | Delegates to ApplicationSettings |
 | SIP stack (PJSIP) | NOT STARTED | |
 | SIP registration | NOT STARTED | |
 | Audio calls | NOT STARTED | |
@@ -40,6 +42,15 @@ Current task count: 1 of N
 | Media device selection | NOT STARTED | |
 | Call statistics | NOT STARTED | |
 
+## Known Limitations (Task 5)
+
+- Category filter and search in DiagnosticsPanel are persisted keys but the UI filter-on-type is not yet wired to the table
+- Window state (`ui/state` — QMainWindow dock/toolbar state) is stored in ApplicationSettings but not yet called from MainWindow (geometry and splitters are persisted; full QMainWindow::restoreState not yet used)
+- Theme selection persists the string but there is no theme-switch UI — always loads `dark_theme.qss` at startup regardless of stored value
+- Device IDs (microphone, speaker, camera) are persisted but no device selection UI exists yet
+- SIP profile ID is persisted but no SIP profile UI exists yet
+- No credential storage implementation — passwords remain deferred to the SIP profile task (ADR-009)
+
 ## Known Limitations (Task 1)
 
 - No SIP networking — application is GUI-only
@@ -47,7 +58,6 @@ Current task count: 1 of N
 - Nav rail buttons have text labels only (no icons)
 - Contact list uses hardcoded placeholder entries
 - Info tabs (Call Info, Media, Statistics) are empty panels
-- Category filter and search in Diagnostics are UI-only, not wired
 - Video area shows a placeholder paintEvent, no real video
 - Local preview is a labeled box, no camera input
 

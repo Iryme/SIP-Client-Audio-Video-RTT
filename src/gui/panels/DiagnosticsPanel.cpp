@@ -1,6 +1,6 @@
 #include "DiagnosticsPanel.h"
 #include "core/Logger.h"
-#include "core/AppSettings.h"
+#include "settings/ApplicationSettings.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -78,29 +78,33 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget *parent)
 
 void DiagnosticsPanel::buildToolbar(QHBoxLayout *row)
 {
-    auto makeLevel = [&](const QString &label, LogLevel level, bool defaultOn) -> QToolButton* {
+    auto &settings = ApplicationSettings::instance();
+
+    auto makeLevel = [&](const QString &label, LogLevel level) -> QToolButton* {
         auto *btn = new QToolButton(this);
         btn->setText(label);
         btn->setCheckable(true);
-        btn->setChecked(defaultOn);
         btn->setObjectName("LogLevelBtn");
         btn->setFixedHeight(24);
 
-        // Sync with Logger
-        Logger::instance().setLevelEnabled(level, defaultOn);
+        // Load persisted state; ApplicationSettings returns the safe default if missing.
+        const bool persisted = settings.diagLevelEnabled(level);
+        btn->setChecked(persisted);
+        Logger::instance().setLevelEnabled(level, persisted);
 
-        connect(btn, &QToolButton::toggled, this, [this, level](bool on) {
+        connect(btn, &QToolButton::toggled, this, [level](bool on) {
             Logger::instance().setLevelEnabled(level, on);
+            ApplicationSettings::instance().setDiagLevelEnabled(level, on);
         });
         row->addWidget(btn);
         return btn;
     };
 
-    m_btnInfo  = makeLevel("INFO",  LogLevel::Info,  true);
-    m_btnWarn  = makeLevel("WARN",  LogLevel::Warn,  true);
-    m_btnError = makeLevel("ERROR", LogLevel::Error, true);
-    m_btnDebug = makeLevel("DEBUG", LogLevel::Debug, false);
-    m_btnRaw   = makeLevel("RAW",   LogLevel::Raw,   false);
+    m_btnInfo  = makeLevel("INFO",  LogLevel::Info);
+    m_btnWarn  = makeLevel("WARN",  LogLevel::Warn);
+    m_btnError = makeLevel("ERROR", LogLevel::Error);
+    m_btnDebug = makeLevel("DEBUG", LogLevel::Debug);
+    m_btnRaw   = makeLevel("RAW",   LogLevel::Raw);
 }
 
 void DiagnosticsPanel::onEntryAdded(const LogEntry &entry)

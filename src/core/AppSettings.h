@@ -1,31 +1,40 @@
 #pragma once
-#include <QSettings>
-#include <QString>
+// Thin backward-compatibility shim. New code should use ApplicationSettings directly.
+#include "settings/ApplicationSettings.h"
 
-// Thin wrapper for consistent settings keys across the application.
-// Use QSettings directly for simple cases; extend this class for
-// typed accessors as features are implemented.
 class AppSettings
 {
 public:
-    static QSettings &settings()
+    static void saveWindowGeometry(const QByteArray &geom)
+        { ApplicationSettings::instance().setWindowGeometry(geom); }
+    static QByteArray loadWindowGeometry()
+        { return ApplicationSettings::instance().windowGeometry(); }
+
+    static void saveWindowState(const QByteArray &state)
+        { ApplicationSettings::instance().setWindowState(state); }
+    static QByteArray loadWindowState()
+        { return ApplicationSettings::instance().windowState(); }
+
+    static void saveSplitterState(const QString &key, const QByteArray &s)
+        { ApplicationSettings::instance().setSplitterState(key, s); }
+    static QByteArray loadSplitterState(const QString &key)
+        { return ApplicationSettings::instance().splitterState(key); }
+
+    static void setLogLevelEnabled(const QString &level, bool on)
+        { ApplicationSettings::instance().setDiagLevelEnabled(levelFromString(level), on); }
+    static bool isLogLevelEnabled(const QString &level, bool def)
     {
-        static QSettings s_settings(
-            QSettings::IniFormat,
-            QSettings::UserScope,
-            "SIPClient", "SIPClient");
-        return s_settings;
+        Q_UNUSED(def) // ApplicationSettings returns the canonical default internally
+        return ApplicationSettings::instance().diagLevelEnabled(levelFromString(level));
     }
 
-    // Layout
-    static void saveWindowGeometry(const QByteArray &geom)  { settings().setValue("ui/geometry", geom); }
-    static QByteArray loadWindowGeometry()                   { return settings().value("ui/geometry").toByteArray(); }
-    static void saveWindowState(const QByteArray &state)     { settings().setValue("ui/state", state); }
-    static QByteArray loadWindowState()                      { return settings().value("ui/state").toByteArray(); }
-    static void saveSplitterState(const QString &key, const QByteArray &s) { settings().setValue("ui/splitter/" + key, s); }
-    static QByteArray loadSplitterState(const QString &key)  { return settings().value("ui/splitter/" + key).toByteArray(); }
-
-    // Logging
-    static void setLogLevelEnabled(const QString &level, bool on) { settings().setValue("log/level/" + level, on); }
-    static bool isLogLevelEnabled(const QString &level, bool def) { return settings().value("log/level/" + level, def).toBool(); }
+private:
+    static LogLevel levelFromString(const QString &s)
+    {
+        if (s.compare("WARN",  Qt::CaseInsensitive) == 0) return LogLevel::Warn;
+        if (s.compare("ERROR", Qt::CaseInsensitive) == 0) return LogLevel::Error;
+        if (s.compare("DEBUG", Qt::CaseInsensitive) == 0) return LogLevel::Debug;
+        if (s.compare("RAW",   Qt::CaseInsensitive) == 0) return LogLevel::Raw;
+        return LogLevel::Info;
+    }
 };

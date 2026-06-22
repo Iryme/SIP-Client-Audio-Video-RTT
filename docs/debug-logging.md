@@ -67,4 +67,20 @@ log.setLevelEnabled(LogLevel::Debug, true);
 
 ## Persistence
 
-Log level on/off states are saved via `AppSettings::setLogLevelEnabled()` using `QSettings`.
+Log level on/off states are persisted via `ApplicationSettings` (`src/settings/ApplicationSettings`).
+
+- On `DiagnosticsPanel` construction, each level toggle reads its last-saved state via `ApplicationSettings::instance().diagLevelEnabled(level)`. If no value is stored, the canonical default is returned (INFO/WARN/ERROR on, DEBUG/RAW off).
+- When the user toggles a level button, the new state is saved immediately via `ApplicationSettings::instance().setDiagLevelEnabled(level, on)`.
+- **RAW** is never enabled by default or after a reset. A corrupt/unrecognised stored value for RAW falls back safely to `false`.
+- Log contents (the entries shown in the table) are never persisted — only the level enable/disable state is saved.
+
+Keys stored:
+```
+diagnostics/level/info   = true/false
+diagnostics/level/warn   = true/false
+diagnostics/level/error  = true/false
+diagnostics/level/debug  = true/false
+diagnostics/level/raw    = true/false
+```
+
+See [docs/application-settings.md](application-settings.md) for the full settings reference.

@@ -36,6 +36,7 @@ set(SOURCES
     src/gui/panels/DiagnosticsPanel.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/core/Logger.cpp
+    src/settings/ApplicationSettings.cpp
 )
 
 set(HEADERS
@@ -50,6 +51,7 @@ set(HEADERS
     src/gui/widgets/AppStatusBar.h
     src/core/Logger.h
     src/core/AppSettings.h
+    src/settings/ApplicationSettings.h
 )
 
 set(RESOURCES
