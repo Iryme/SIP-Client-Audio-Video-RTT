@@ -1,6 +1,6 @@
 # SIP Profiles
 
-**Status:** IMPLEMENTED (model + persistence + GUI placeholders) — Task 6
+**Status:** IMPLEMENTED (model + persistence + editor dialog + GUI integration) — Task 6 / Task 8
 
 ## Overview
 
@@ -200,9 +200,68 @@ The `init()` and `cleanup()` hooks purge the test settings before and after each
 
 ---
 
+## Profile Editor Dialog
+
+`SipProfileEditorDialog` (`src/gui/dialogs/SipProfileEditorDialog.h`) is a modal `QDialog` for creating and editing profiles from the GUI.
+
+### Modes
+
+| Mode | Constructor | Behaviour |
+|---|---|---|
+| Add | `SipProfileEditorDialog(parent)` | All fields empty, OK creates a new profile |
+| Edit | `SipProfileEditorDialog(profile, parent)` | Fields pre-populated; password field always empty |
+
+### Sections
+
+| Section | Fields |
+|---|---|
+| General | Display Name |
+| SIP | SIP Username, SIP Domain, SIP URI (auto-generated), Auth Username |
+| Network | Registrar, Proxy, Outbound Proxy |
+| Transport | UDP / TCP / TLS radio buttons |
+| Extensions | Enable RTT, Enable LMPE, Enable ETSI Compatibility |
+| Security | Password, Confirm Password, Show/Hide toggle, strength indicator |
+| Advanced (collapsed) | Emergency URI, future custom SIP headers placeholder |
+
+### SIP URI Auto-generation
+
+The SIP URI field auto-populates as `sip:<username>@<domain>` when the SIP Username or SIP Domain fields change. Once the user manually edits the SIP URI field, auto-population stops.
+
+### Password Handling
+
+- The password field is always shown empty, even in edit mode — the current password is **never** retrieved or displayed.
+- If the password field is left blank in edit mode, the existing credential is preserved.
+- If a new password is entered, it is written via `SipProfileManager::setProfilePassword()` after the profile is saved.
+- Passwords do **not** pass through `SipProfile` and are **not** stored in QSettings.
+
+### Caller API
+
+```cpp
+// Add mode
+SipProfileEditorDialog dlg(parentWidget);
+if (dlg.exec() == QDialog::Accepted) {
+    SipProfile p = dlg.profile();
+    const QString id = SipProfileManager::instance().add(p);
+    if (!id.isEmpty() && dlg.passwordChanged() && !dlg.password().isEmpty())
+        SipProfileManager::instance().setProfilePassword(id, dlg.password());
+}
+
+// Edit mode
+SipProfileEditorDialog dlg(existingProfile, parentWidget);
+if (dlg.exec() == QDialog::Accepted) {
+    SipProfile updated  = dlg.profile();
+    updated.createdAt   = existingProfile.createdAt; // preserve timestamp
+    SipProfileManager::instance().update(updated);
+    if (dlg.passwordChanged() && !dlg.password().isEmpty())
+        SipProfileManager::instance().setProfilePassword(updated.profileId, dlg.password());
+}
+```
+
+---
+
 ## Known Limitations
 
-- No profile editor dialog — the Add/Edit buttons in `SidebarPanel` log "not implemented".
 - No SIP registration — `SipProfileManager` is persistence-only; PJSIP integration is deferred.
 - Credential storage is implemented for Windows only; Linux/macOS deferred (ADR-011).
 - `emergencyServiceUri` is persisted but not used — ETSI emergency integration is future work.
+- "Custom SIP Headers" in Advanced section is a placeholder — not yet implemented.

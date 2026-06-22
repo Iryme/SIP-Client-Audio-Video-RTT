@@ -52,6 +52,19 @@
 7. RTT/LMPE panel remains docked; at minimum width it becomes a tab.
 8. Splitter states are saved to QSettings and restored on launch.
 
+## Profile Editor Dialog
+
+`SipProfileEditorDialog` (`src/gui/dialogs/SipProfileEditorDialog.h`) is a modal dialog opened from `SidebarPanel`.
+
+- Opens at 500×640 px with a scrollable body.
+- Sections: General, SIP, Network, Transport, Extensions, Security, Advanced (collapsed by default).
+- Advanced section is shown/hidden by a flat toggle button with arrow indicator.
+- Password fields use `QLineEdit::Password` echo mode; a Show/Hide button toggles both fields at once.
+- Password strength is shown as a colour-coded label: Weak (<8), Fair (8–11), Strong (12+).
+- OK button triggers internal validation; a `QMessageBox::warning` is shown on error.
+- Cancel closes without saving — no partial writes occur.
+- Delete confirmation uses `QMessageBox::question` before calling `SipProfileManager::remove()`.
+
 ## Implementation Notes
 
 - `QSplitter::setChildrenCollapsible(false)` prevents accidental collapse.

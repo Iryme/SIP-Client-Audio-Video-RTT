@@ -51,6 +51,12 @@ ProfileValidationResult SipProfileManager::validate(const SipProfile &profile) c
     return result;
 }
 
+// Returns authUsername if set, otherwise sipUsername (used as CredentialStore key).
+static QString effectiveAuthUsername(const SipProfile &p)
+{
+    return p.authUsername.isEmpty() ? p.sipUsername : p.authUsername;
+}
+
 // -----------------------------------------------------------------------
 // CRUD
 // -----------------------------------------------------------------------
@@ -135,8 +141,12 @@ bool SipProfileManager::remove(const QString &profileId)
     }
 
     const QString displayName = m_profiles[idx].displayName;
+    const SipProfile removedProfile = m_profiles[idx];
     m_profiles.removeAt(idx);
     removeFromStorage(profileId);
+
+    // Delete any stored credential; graceful if none exists
+    CredentialStore::instance().deletePassword(profileId, effectiveAuthUsername(removedProfile));
 
     if (m_activeProfileId == profileId) {
         m_activeProfileId.clear();
@@ -227,11 +237,6 @@ void SipProfileManager::sync()
 // -----------------------------------------------------------------------
 // Credential helpers
 // -----------------------------------------------------------------------
-// Returns authUsername if set, otherwise sipUsername (used as CredentialStore key).
-static QString effectiveAuthUsername(const SipProfile &p)
-{
-    return p.authUsername.isEmpty() ? p.sipUsername : p.authUsername;
-}
 
 bool SipProfileManager::setProfilePassword(const QString &profileId, const QString &password)
 {

@@ -168,9 +168,30 @@ Test QSettings org/app: `IrymeTest` / `SIPClientTest_Credentials`
 
 ---
 
+## Profile Editor Integration (Task 8)
+
+`SipProfileEditorDialog` integrates with `CredentialStore` through `SipProfileManager` helper methods. The dialog itself never touches `CredentialStore` directly.
+
+### Add flow
+
+1. User fills in fields and enters password.
+2. Dialog returns `passwordChanged() == true`, `password()` holds the new value.
+3. Caller (SidebarPanel): `SipProfileManager::instance().add(p)` → then `setProfilePassword(id, password)`.
+
+### Edit flow
+
+1. Password field is always empty — current password is never fetched or displayed.
+2. If user leaves password blank: `passwordChanged() == false` → caller skips credential update → existing credential preserved.
+3. If user enters a new password: `passwordChanged() == true` → caller calls `setProfilePassword()` → credential overwritten.
+
+### Delete flow
+
+`SipProfileManager::remove()` now calls `CredentialStore::instance().deletePassword()` before emitting `profileRemoved`. The credential is removed atomically with the profile record. If no credential was stored, the delete is graceful (logged at Debug level, not an error).
+
+---
+
 ## Known Limitations
 
 - Linux/macOS backends are not yet implemented; only Windows is supported. On unsupported platforms `CredentialStore` logs a warning and all operations fail.
 - `CRED_PERSIST_LOCAL_MACHINE` means credentials are tied to the current machine — no roaming to other devices.
 - There is no bulk export or migration path for credentials (by design — credentials are not application data).
-- Profile editor dialog (which calls `setProfilePassword`) is not yet implemented; that is a separate task.

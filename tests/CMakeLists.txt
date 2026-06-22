@@ -62,3 +62,26 @@ if(WIN32)
 endif()
 
 add_test(NAME test_credential_store COMMAND test_credential_store)
+
+# ---- test_sip_profile_editor -------------------------------------------
+qt_add_executable(test_sip_profile_editor
+    test_sip_profile_editor.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
+)
+
+target_include_directories(test_sip_profile_editor PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sip_profile_editor PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+if(WIN32)
+    target_link_libraries(test_sip_profile_editor PRIVATE Advapi32)
+endif()
+
+add_test(NAME test_sip_profile_editor COMMAND test_sip_profile_editor)

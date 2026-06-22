@@ -29,6 +29,7 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 | Module | Location | Status |
 |---|---|---|
 | GUI panels | `src/gui/` | IMPLEMENTED (skeleton) |
+| SipProfileEditorDialog | `src/gui/dialogs/` | IMPLEMENTED |
 | Logger | `src/core/Logger` | IMPLEMENTED |
 | AppSettings | `src/core/AppSettings` | IMPLEMENTED |
 | SipProfile model | `src/sip/SipProfile.h` | IMPLEMENTED |

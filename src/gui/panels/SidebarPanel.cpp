@@ -1,4 +1,5 @@
 #include "SidebarPanel.h"
+#include "gui/dialogs/SipProfileEditorDialog.h"
 #include "sip/SipProfileManager.h"
 #include "core/Logger.h"
 #include <QVBoxLayout>
@@ -6,6 +7,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QComboBox>
 #include <QFrame>
@@ -182,21 +184,64 @@ void SidebarPanel::onActiveProfileChanged(const QString &profileId)
 
 void SidebarPanel::onAddProfile()
 {
-    // Profile editor dialog is deferred to a future task
-    Logger::instance().info(LogCategory::App,
-        QStringLiteral("Add profile requested — profile editor dialog not yet implemented"));
+    SipProfileEditorDialog dlg(this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    SipProfile p = dlg.profile();
+    const QString id = SipProfileManager::instance().add(p);
+    if (id.isEmpty()) {
+        Logger::instance().warn(LogCategory::App,
+            QStringLiteral("Add profile: validation failed"));
+        return;
+    }
+
+    if (dlg.passwordChanged() && !dlg.password().isEmpty())
+        SipProfileManager::instance().setProfilePassword(id, dlg.password());
+
+    SipProfileManager::instance().setActiveProfileId(id);
 }
 
 void SidebarPanel::onEditProfile()
 {
-    // Profile editor dialog is deferred to a future task
-    Logger::instance().info(LogCategory::App,
-        QStringLiteral("Edit profile requested — profile editor dialog not yet implemented"));
+    const QString id = SipProfileManager::instance().activeProfileId();
+    if (id.isEmpty()) return;
+
+    const SipProfile current = SipProfileManager::instance().profile(id);
+    if (current.isNull()) return;
+
+    SipProfileEditorDialog dlg(current, this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    SipProfile updated  = dlg.profile();
+    updated.createdAt   = current.createdAt; // preserve original creation timestamp
+    if (!SipProfileManager::instance().update(updated)) {
+        Logger::instance().warn(LogCategory::App,
+            QStringLiteral("Edit profile: update failed for %1").arg(id));
+        return;
+    }
+
+    if (dlg.passwordChanged() && !dlg.password().isEmpty())
+        SipProfileManager::instance().setProfilePassword(id, dlg.password());
 }
 
 void SidebarPanel::onDeleteProfile()
 {
     const QString id = SipProfileManager::instance().activeProfileId();
     if (id.isEmpty()) return;
+
+    const SipProfile p  = SipProfileManager::instance().profile(id);
+    const QString name  = p.isNull() ? id : p.displayName;
+
+    const auto btn = QMessageBox::question(
+        this, tr("Delete Profile"),
+        tr("Delete profile \"%1\"?\n\nThe stored password will also be removed. "
+           "This cannot be undone.").arg(name),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+
+    if (btn != QMessageBox::Yes)
+        return;
+
     SipProfileManager::instance().remove(id);
 }

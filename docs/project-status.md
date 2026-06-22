@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 3 of N
+Current task count: 4 of N
 
 ## Completed Tasks
 
@@ -10,6 +10,7 @@ Current task count: 3 of N
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | IMPLEMENTED |
 | 6 | SIP profile model, persistence, GUI placeholders | feature/sip-profile-manager | IMPLEMENTED |
 | 7 | Secure credential storage (CredentialStore, Windows Credential Manager) | feature/secure-credential-storage | IMPLEMENTED |
+| 8 | SIP Profile Editor Dialog — Add/Edit/Delete with CredentialStore integration | feature/sip-profile-editor | IMPLEMENTED |
 
 ## Module Status
 
@@ -41,7 +42,7 @@ Current task count: 3 of N
 | ETSI TS 103 480 | NOT STARTED | |
 | ETSI TS 103 698 | NOT STARTED | |
 | Debug bundle export | NOT STARTED | |
-| Profile editor dialog | NOT STARTED | |
+| Profile editor dialog | IMPLEMENTED | SipProfileEditorDialog — Add/Edit/Delete with password via CredentialStore |
 | Media device selection | NOT STARTED | |
 | Call statistics | NOT STARTED | |
 | Credential / keychain storage | IMPLEMENTED (Windows) | Linux/macOS deferred (ADR-011) |
@@ -68,8 +69,14 @@ Current task count: 3 of N
 
 - `CredentialStore` is implemented for Windows only; Linux/macOS backends not yet written
 - `CRED_PERSIST_LOCAL_MACHINE` — credentials are bound to the current machine, no roaming
-- Profile editor dialog (which would call `setProfilePassword`) is not yet implemented
 - No credential migration or export path (by design — credentials are not application data)
+
+## Known Limitations (Task 8)
+
+- Profile editor dialog is a plain modal — no in-dialog confirmation for destructive changes
+- "Custom SIP Headers" in the Advanced section is a UI placeholder, not yet wired
+- No inline error highlighting — validation errors are shown in a `QMessageBox`, not inline
+- Contact list in `SidebarPanel` remains hardcoded placeholder entries (separate future task)
 
 ## Next Recommended Task
 
