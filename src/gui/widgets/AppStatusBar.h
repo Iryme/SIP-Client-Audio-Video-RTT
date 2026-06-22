@@ -16,6 +16,7 @@ public:
     void setJitter(const QString &jitter);
     void setPacketLoss(const QString &loss);
     void setRttLatency(const QString &rtt);
+    void setSipBackend(const QString &name, bool initialized);
 
 private:
     QLabel *m_connState{nullptr};
@@ -25,4 +26,5 @@ private:
     QLabel *m_jitter{nullptr};
     QLabel *m_loss{nullptr};
     QLabel *m_rttLatency{nullptr};
+    QLabel *m_sipBackend{nullptr};
 };

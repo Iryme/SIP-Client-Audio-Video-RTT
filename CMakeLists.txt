@@ -14,6 +14,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# --- CMake modules ---
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+
 # --- Find Qt6 ---
 find_package(Qt6 REQUIRED COMPONENTS
     Core
@@ -22,6 +25,23 @@ find_package(Qt6 REQUIRED COMPONENTS
     Multimedia
     MultimediaWidgets
 )
+
+# --- Optional: PJSIP/pjsua2 SIP stack ---
+# Pass -DENABLE_PJSIP=ON and optionally -DPJSIP_DIR=<path> to enable.
+# When disabled (default), a stub SIP backend is compiled in its place.
+option(ENABLE_PJSIP "Enable PJSIP/pjsua2 SIP stack integration" OFF)
+
+if(ENABLE_PJSIP)
+    find_package(PJSIP)
+    if(PJSIP_FOUND)
+        message(STATUS "PJSIP found — building with real SIP backend")
+        add_compile_definitions(HAVE_PJSIP)
+    else()
+        message(WARNING "ENABLE_PJSIP=ON but PJSIP was not found. Building with stub SIP backend.")
+    endif()
+else()
+    message(STATUS "ENABLE_PJSIP=OFF — building with stub SIP backend")
+endif()
 
 # --- Sources ---
 set(SOURCES
@@ -38,6 +58,9 @@ set(SOURCES
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/core/Logger.cpp
+    src/sip/SipManager.cpp
+    src/sip/SipAccount.cpp
+    src/sip/SipCall.cpp
     src/sip/SipProfileManager.cpp
     src/security/CredentialStore.cpp
     src/security/MemoryCredentialBackend.cpp
@@ -60,6 +83,9 @@ set(HEADERS
     src/gui/dialogs/SipProfileEditorDialog.h
     src/core/Logger.h
     src/core/AppSettings.h
+    src/sip/SipManager.h
+    src/sip/SipAccount.h
+    src/sip/SipCall.h
     src/sip/SipProfile.h
     src/sip/SipProfileManager.h
     src/security/ICredentialBackend.h
@@ -97,6 +123,10 @@ target_link_libraries(SIPClient PRIVATE
 
 if(WIN32)
     target_link_libraries(SIPClient PRIVATE Advapi32)
+endif()
+
+if(ENABLE_PJSIP AND PJSIP_FOUND)
+    target_link_libraries(SIPClient PRIVATE PJSIP::pjsua2)
 endif()
 
 target_include_directories(SIPClient PRIVATE src)

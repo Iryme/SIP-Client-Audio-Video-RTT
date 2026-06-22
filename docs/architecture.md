@@ -42,7 +42,10 @@ Layered Qt 6 C++ application. The GUI layer is strictly separated from the SIP s
 | MediaDeviceManager | `src/media/MediaDeviceManager` | IMPLEMENTED |
 | MediaDeviceSelectionModel | `src/media/MediaDeviceSelectionModel` | IMPLEMENTED |
 | QtMediaDeviceBackend | `src/media/` | IMPLEMENTED |
-| SIP stack (PJSIP) | `src/sip/` | NOT STARTED |
+| SipManager | `src/sip/SipManager` | IMPLEMENTED (lifecycle; stub + PJSIP branches) |
+| SipAccount | `src/sip/SipAccount` | STUB (header + minimal .cpp; no registration yet) |
+| SipCall | `src/sip/SipCall` | STUB (header + minimal .cpp; no calls yet) |
+| SIP registration | `src/sip/` | NOT STARTED |
 | Media streaming | `src/media/` | NOT STARTED (device enum done) |
 | RTT engine | `src/rtt/` | NOT STARTED |
 | ETSI modules | `src/etsi/` | NOT STARTED |
@@ -80,6 +83,10 @@ CredentialStore ──► WindowsCredentialBackend ──► Advapi32 (Windows C
 MediaPanel ──► MediaDeviceSelectionModel ──► MediaDeviceManager ──► QtMediaDeviceBackend
 MediaDeviceSelectionModel ──► AppSettings (media/device/*)
 MediaDeviceManager ──► Logger (Media category)
+
+Application ──► SipManager::initialize() / shutdown()
+SipManager ──► Logger (Sip category)
+MainWindow ──► AppStatusBar::setSipBackend()  [shows backend name + init state]
 ```
 
 ## Secure Credential Layer (Task 7)
@@ -97,6 +104,15 @@ MediaDeviceManager ──► Logger (Media category)
 - `src/sip/SipProfileManager` — CRUD, validation, persistence, active selection
 - Profile data persisted to `SIPClientProfiles.ini` (separate from app prefs)
 - Passwords deferred to OS keychain — never in QSettings (ADR-009)
+
+## SIP Engine Layer (Task 10)
+
+- `src/sip/SipManager` — singleton; owns pjsua2 Endpoint lifecycle; compile-time `HAVE_PJSIP` guard
+- `src/sip/SipAccount` — stub header; will wrap `pj::Account` in a future task
+- `src/sip/SipCall` — stub header; will wrap `pj::Call` in a future task
+- `cmake/FindPJSIP.cmake` — finds PJSIP headers + libraries; sets `PJSIP::pjsua2` imported target
+- `ENABLE_PJSIP=OFF` (default): stub backend, no PJSIP headers needed
+- `ENABLE_PJSIP=ON`: real backend compiled; requires PJSIP installed at `$PJSIP_DIR`
 
 ## Media Device Layer (Task 9)
 

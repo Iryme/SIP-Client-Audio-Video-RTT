@@ -21,6 +21,9 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+public:
+    void updateSipBackendStatus();
+
 protected:
     void closeEvent(QCloseEvent *event) override;
 

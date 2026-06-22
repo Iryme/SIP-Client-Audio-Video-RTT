@@ -106,3 +106,21 @@ target_link_libraries(test_media_device PRIVATE
 )
 
 add_test(NAME test_media_device COMMAND test_media_device)
+
+# ---- test_sip_manager --------------------------------------------------
+qt_add_executable(test_sip_manager
+    test_sip_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_sip_manager PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sip_manager PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sip_manager COMMAND test_sip_manager)

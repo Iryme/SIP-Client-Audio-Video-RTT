@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-22
-Current task count: 5 of N
+Current task count: 6 of N
 
 ## Completed Tasks
 
@@ -12,6 +12,7 @@ Current task count: 5 of N
 | 7 | Secure credential storage (CredentialStore, Windows Credential Manager) | feature/secure-credential-storage | IMPLEMENTED |
 | 8 | SIP Profile Editor Dialog — Add/Edit/Delete with CredentialStore integration | feature/sip-profile-editor | IMPLEMENTED |
 | 9 | Media device enumeration — MediaDeviceManager, MediaPanel, persistence, fallback | feature/media-device-enumeration | IMPLEMENTED |
+| 10 | PJSIP build integration — FindPJSIP.cmake, ENABLE_PJSIP option, SipManager lifecycle skeleton | feature/pjsip-build-integration | IMPLEMENTED |
 
 ## Module Status
 
@@ -37,7 +38,10 @@ Current task count: 5 of N
 | MediaDeviceManager | IMPLEMENTED | Qt Multimedia backed; pluggable IMediaDeviceBackend |
 | MediaDeviceSelectionModel | IMPLEMENTED | Persistence + fallback to default |
 | MediaPanel | IMPLEMENTED | Microphone/Speaker/Camera combos + Refresh button in Media tab |
-| SIP stack (PJSIP) | NOT STARTED | |
+| SipManager (lifecycle) | IMPLEMENTED | Stub + PJSIP branch; ENABLE_PJSIP=OFF default |
+| SipAccount | STUB | Header + minimal .cpp; no registration yet |
+| SipCall | STUB | Header + minimal .cpp; no calls yet |
+| cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
 | SIP registration | NOT STARTED | |
 | Audio calls | NOT STARTED | |
 | Video calls | NOT STARTED | |
@@ -83,6 +87,13 @@ Current task count: 5 of N
 - No inline error highlighting — validation errors are shown in a `QMessageBox`, not inline
 - Contact list in `SidebarPanel` remains hardcoded placeholder entries (separate future task)
 
+## Known Limitations (Task 10)
+
+- `ENABLE_PJSIP` defaults to `OFF`; no real SIP calls or registration until enabled + PJSIP installed
+- `SipAccount` and `SipCall` are header-only stubs — no account creation or call management yet
+- PJSIP thread safety: when PJSIP is compiled in, PJSIP callbacks must be dispatched to the Qt main thread via `QMetaObject::invokeMethod` (not yet implemented — deferred to registration task)
+- The status bar label `SIP: Stub SIP backend (ready)` is informational only; it does not reflect real registration state
+
 ## Known Limitations (Task 9)
 
 - Audio level meters are static/inactive — no real microphone capture yet
@@ -93,9 +104,4 @@ Current task count: 5 of N
 
 ## Next Recommended Task
 
-**Task 2 (revised):** Integrate PJSIP/pjsua2 — add CMake find module, `SipManager` skeleton,
-`SipAccount`/`SipCall` stubs. Wire `SipProfileManager` → `SipManager` for account config.
-Wire `CredentialStore` → `SipManager` to provide auth credentials at registration time.
-Wire `MediaDeviceManager` → `SipManager` to pass selected device IDs.
-No real registration yet — just initialize the PJSUA endpoint and log startup/shutdown.
-Update `docs/architecture.md`.
+**Task 11:** SIP Account Registration — Wire `SipProfileManager` → `SipAccount`; wire `CredentialStore` → `SipAccount` for auth credentials; implement `register()` / `unregister()` / `onRegState()` callback; dispatch state changes to Qt main thread via `QMetaObject::invokeMethod`; update sidebar registration status label and status bar connection state. Requires `ENABLE_PJSIP=ON`; stub mode must continue to compile cleanly.

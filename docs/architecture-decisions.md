@@ -103,6 +103,23 @@
 
 ---
 
+## ADR-012 — PJSIP is an optional build-time dependency with a stub fallback
+
+**Decision:** PJSIP/pjsua2 is compiled in only when `-DENABLE_PJSIP=ON` is passed to CMake and a PJSIP installation is found by `cmake/FindPJSIP.cmake`. Without it, a stub `SipManager` is compiled that satisfies the same API without any real SIP operations.
+
+**Rationale:**
+- PJSIP has a complex build process; requiring it as an unconditional dependency would block development of the GUI, credential, and media device layers — all of which are independent of SIP.
+- A stub backend allows the application to launch, display accounts, select devices, and run all unit tests without a PJSIP installation.
+- The `HAVE_PJSIP` compile-time define keeps the conditional blocks localized to `SipManager.cpp` — no other translation unit changes behavior.
+
+**Consequences:**
+- `ENABLE_PJSIP` defaults to `OFF`. CI and contributors can build without installing PJSIP.
+- When `ENABLE_PJSIP=ON` but `PJSIP_DIR` is not set, CMake emits a warning and falls back to the stub.
+- All unit tests run against the stub only — they do not require PJSIP installed.
+- The status bar shows `SIP: Stub SIP backend (ready)` vs `SIP: PJSIP/pjsua2 (ready)` to make the mode visible in the running application.
+
+---
+
 ## ADR-011 — CredentialStore abstracts the OS keychain behind a pluggable backend
 
 **Decision:** Credential storage is encapsulated in `CredentialStore` (`src/security/`), which owns an `ICredentialBackend` implementation. The production backend is `WindowsCredentialBackend` (Windows Credential Manager). Tests inject `MemoryCredentialBackend` via `setBackend()`. No production code directly calls WinCred APIs outside `WindowsCredentialBackend`.

@@ -9,6 +9,7 @@
 #include "widgets/AppStatusBar.h"
 #include "core/AppSettings.h"
 #include "core/Logger.h"
+#include "sip/SipManager.h"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -196,4 +197,10 @@ void MainWindow::saveLayout()
     AppSettings::saveWindowGeometry(saveGeometry());
     AppSettings::saveSplitterState("horizontal", m_horzSplitter->saveState());
     AppSettings::saveSplitterState("vertical",   m_vertSplitter->saveState());
+}
+
+void MainWindow::updateSipBackendStatus()
+{
+    const auto &sip = SipManager::instance();
+    m_statusBar->setSipBackend(sip.backendName(), sip.isInitialized());
 }

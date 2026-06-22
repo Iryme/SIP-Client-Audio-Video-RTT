@@ -1,6 +1,6 @@
 # SIP Registration
 
-**Status:** NOT STARTED
+**Status:** NOT STARTED (PJSIP endpoint lifecycle implemented in Task 10 — accounts/registration deferred)
 
 ## Overview
 
@@ -27,7 +27,21 @@ SIP registration announces the client's location to the SIP registrar so that in
 
 The bottom status bar shows the global connection state and active account URI when registered.
 
-## Implementation Notes
+## Current State (Task 10)
+
+`SipManager` owns the PJSIP endpoint lifecycle:
+
+```
+Application::Application() → SipManager::initialize()
+Application::~Application() → SipManager::shutdown()
+```
+
+When `ENABLE_PJSIP=OFF` (default): stub mode — endpoint is not created, manager reports "Stub SIP backend".
+When `ENABLE_PJSIP=ON` and PJSIP found: `pj::Endpoint::libCreate()` / `libInit()` / `libStart()` are called at startup; `libDestroy()` at shutdown.
+
+No `SipAccount` or `SipCall` objects are created yet — that is the next step.
+
+## Implementation Notes (future)
 
 - PJSIP `Account::onRegState()` callback → post update to Qt main thread → update sidebar + status bar.
 - Registration events are logged at `INFO` level.

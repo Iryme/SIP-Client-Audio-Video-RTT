@@ -1,5 +1,6 @@
 #include "Application.h"
 #include "gui/MainWindow.h"
+#include "sip/SipManager.h"
 #include "core/Logger.h"
 
 #include <QFile>
@@ -20,11 +21,15 @@ Application::Application(int &argc, char **argv)
 
     m_mainWindow = new MainWindow();
     m_mainWindow->show();
+
+    SipManager::instance().initialize();
+    m_mainWindow->updateSipBackendStatus();
 }
 
 Application::~Application()
 {
     Logger::instance().info(LogCategory::App, "Application shutting down");
+    SipManager::instance().shutdown();
     delete m_mainWindow;
 }
 
