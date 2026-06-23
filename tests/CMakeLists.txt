@@ -405,4 +405,35 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
     if(WIN32)
         target_link_libraries(live_registration_probe PRIVATE Advapi32)
     endif()
+
+    qt_add_executable(live_audio_call_probe
+        live_audio_call_probe.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+        ${AUDIO_MEDIA_SOURCES}
+        ${SECURITY_SOURCES}
+        ${SECURITY_HEADERS}
+    )
+
+    target_include_directories(live_audio_call_probe PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(live_audio_call_probe PRIVATE
+        Qt6::Core
+        Qt6::Multimedia
+        PJSIP::pjsua2
+    )
+
+    if(WIN32)
+        target_link_libraries(live_audio_call_probe PRIVATE Advapi32)
+    endif()
 endif()

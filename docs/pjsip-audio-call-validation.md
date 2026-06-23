@@ -45,6 +45,46 @@ The probe reads `SIP_LIVE_SERVER`, `SIP_LIVE_PORT`, `SIP_LIVE_DOMAIN`, `SIP_LIVE
 
 The application currently proves digest auth by reaching `Registered`, but it does not yet emit an explicit app-level log entry for the intermediate `401 Unauthorized`/`407 Proxy Authentication Required` challenge. The PJSIP backend handles the challenge correctly, but the log evidence is still indirect until a dedicated signaling trace is added.
 
+### Live Audio Call Tool
+
+Use `live_audio_call_probe` for a live outbound audio call through Kamailio to a peer that is already registered and ready to answer.
+
+The probe reads these environment variables:
+
+- `SIP_LIVE_SERVER`
+- `SIP_LIVE_PORT`
+- `SIP_LIVE_DOMAIN`
+- `SIP_LIVE_USERNAME`
+- `SIP_LIVE_PASSWORD`
+- `SIP_LIVE_TARGET`
+
+`SIP_LIVE_TARGET` may be a full SIP URI such as `sip:1002@sensor-x.local` or a bare username such as `1002`; the probe normalizes bare usernames to the configured domain.
+
+Build both live tools with:
+
+```cmd
+cmake -S . -B build-pjsip-real ^
+  -DENABLE_PJSIP=ON ^
+  -DPJSIP_DIR=F:\Project\Iryme\SIP-Client-Audio-Video-RTT\.deps\pjsip-msvc-install ^
+  -DBUILD_TESTS=ON ^
+  -DBUILD_LIVE_VALIDATION_TOOLS=ON ^
+  -DCMAKE_PREFIX_PATH=F:\Programs\Qt\6.11.1\msvc2022_64
+
+cmake --build build-pjsip-real --config Debug --target live_audio_call_probe
+```
+
+Validation flow:
+
+1. Register the probe account.
+2. Place an INVITE to `SIP_LIVE_TARGET`.
+3. Confirm the call reaches `Active`.
+4. Confirm audio media becomes active from the PJSIP callback.
+5. Speak for a short window while the call remains connected.
+6. Hang up.
+7. Unregister.
+
+Known limitation: the app logs still do not explicitly capture the intermediate `401 Unauthorized` challenge as a named app event. Digest authentication is validated by the successful REGISTER and call setup path.
+
 ## Test Matrix
 
 Use three SIP accounts on the same Kamailio realm:
