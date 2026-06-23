@@ -45,8 +45,9 @@ struct SipCall::Impl
             case PJSIP_INV_STATE_CONNECTING:   newState = CallState::Connecting;   break;
             case PJSIP_INV_STATE_CONFIRMED:    newState = CallState::Active;       break;
             case PJSIP_INV_STATE_DISCONNECTED:
-                // Stop audio bridge before the call object is torn down.
+                // Stop both bridges before the call object is torn down.
                 stopAudioBridge();
+                stopVideoBridge();
                 newState = (code >= 400) ? CallState::Failed : CallState::Idle;
                 break;
             default: return;
@@ -66,11 +67,13 @@ struct SipCall::Impl
                 return;
 
             pj::CallInfo ci = getInfo();
-            bool bridgeWired = false;
+            bool audioBridgeWired = false;
+            bool videoActive      = false;
 
             for (const auto &mi : ci.media) {
                 if (mi.type == PJMEDIA_TYPE_AUDIO
-                        && mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
+                        && mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                        && !audioBridgeWired) {
                     try {
                         auto *aud = static_cast<pj::AudioMedia *>(getMedia(mi.index));
                         pj::AudDevManager &adm =
@@ -78,21 +81,43 @@ struct SipCall::Impl
                         adm.getCaptureDevMedia().startTransmit(*aud);
                         aud->startTransmit(adm.getPlaybackDevMedia());
                         m_impl->callAudioMedia = aud;
-                        bridgeWired = true;
+                        audioBridgeWired = true;
                     } catch (...) {
                         m_impl->callAudioMedia = nullptr;
                     }
-                    break;
+                } else if (mi.type == PJMEDIA_TYPE_VIDEO
+                           && mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                           && !videoActive) {
+                    try {
+                        auto *vid = static_cast<pj::VideoMedia *>(getMedia(mi.index));
+                        m_impl->callVideoMedia = vid;
+                        videoActive = true;
+                    } catch (...) {
+                        m_impl->callVideoMedia = nullptr;
+                    }
                 }
             }
 
             QPointer<SipCall> self = m_impl->q;
-            QMetaObject::invokeMethod(self, [self, bridgeWired]() {
+            QMetaObject::invokeMethod(self, [self, audioBridgeWired, videoActive]() {
                 if (!self) return;
-                if (bridgeWired)
+                if (audioBridgeWired)
                     emit self->audioMediaConnected();
                 else
                     emit self->audioMediaDisconnected();
+                if (videoActive) {
+                    self->m_localVideoAvailable  = true;
+                    self->m_remoteVideoAvailable = true;
+                    emit self->videoMediaConnected();
+                    emit self->localVideoStarted();
+                    emit self->remoteVideoStarted();
+                } else if (self->m_localVideoAvailable || self->m_remoteVideoAvailable) {
+                    self->m_localVideoAvailable  = false;
+                    self->m_remoteVideoAvailable = false;
+                    emit self->localVideoStopped();
+                    emit self->remoteVideoStopped();
+                    emit self->videoMediaDisconnected();
+                }
             }, Qt::QueuedConnection);
         }
 
@@ -114,13 +139,33 @@ struct SipCall::Impl
             }, Qt::QueuedConnection);
         }
 
+        void stopVideoBridge()
+        {
+            if (!m_impl->callVideoMedia)
+                return;
+            m_impl->callVideoMedia = nullptr;
+
+            QPointer<SipCall> self = m_impl->q;
+            QMetaObject::invokeMethod(self, [self]() {
+                if (!self) return;
+                if (self->m_localVideoAvailable || self->m_remoteVideoAvailable) {
+                    self->m_localVideoAvailable  = false;
+                    self->m_remoteVideoAvailable = false;
+                    emit self->localVideoStopped();
+                    emit self->remoteVideoStopped();
+                    emit self->videoMediaDisconnected();
+                }
+            }, Qt::QueuedConnection);
+        }
+
     private:
         Impl *m_impl;
     };
 
-    PjCall       *pjCall{nullptr};
-    void         *pjAccountHandle{nullptr}; // pj::Account* cast to void*
-    pj::AudioMedia *callAudioMedia{nullptr}; // valid only while media is active
+    PjCall         *pjCall{nullptr};
+    void           *pjAccountHandle{nullptr}; // pj::Account* cast to void*
+    pj::AudioMedia *callAudioMedia{nullptr};  // valid only while audio media is active
+    pj::VideoMedia *callVideoMedia{nullptr};  // valid only while video media is active
 #endif
 };
 
@@ -397,11 +442,44 @@ bool SipCall::isMuted() const
     return m_muted;
 }
 
+bool SipCall::setVideoMuted(bool muted)
+{
+    if (m_videoMuted == muted)
+        return true;
+
+    m_videoMuted = muted;
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Video mute %1: call id=%2")
+            .arg(muted ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
+
+#ifdef HAVE_PJSIP
+    if (m_impl->pjCall) {
+        try {
+            pj::CallVidSetStreamParam prm;
+            prm.medIdx = -1; // default video stream
+            if (muted)
+                m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_STOP_TRANSMIT, prm);
+            else
+                m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_START_TRANSMIT, prm);
+        } catch (...) {}
+    }
+#endif
+
+    emit videoMuteChanged(muted);
+    return true;
+}
+
+bool SipCall::isVideoMuted()           const { return m_videoMuted; }
+bool SipCall::isLocalVideoAvailable()  const { return m_localVideoAvailable; }
+bool SipCall::isRemoteVideoAvailable() const { return m_remoteVideoAvailable; }
+
 void SipCall::reset(const QString &reason)
 {
     Logger::instance().info(LogCategory::Sip,
         QStringLiteral("Call id=%1 reset: %2").arg(m_callId, reason));
     m_levelTimer.stop();
+    m_localVideoAvailable  = false;
+    m_remoteVideoAvailable = false;
     m_stateMachine.reset(reason);
 }
 
@@ -422,16 +500,28 @@ void SipCall::onStateMachineStateChanged(CallState state,
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Call connected: id=%1 remote=%2").arg(m_callId, m_remoteUri));
         emit callConnected(m_remoteUri);
-        // In stub mode, emit audioMediaConnected when call goes Active
-        // (PJSIP emits it from onCallMediaState instead).
+        // In stub mode, emit audio/video media connected when call goes Active
+        // (PJSIP emits these from onCallMediaState instead).
 #ifndef HAVE_PJSIP
         emit audioMediaConnected();
+        m_localVideoAvailable  = true;
+        m_remoteVideoAvailable = true;
+        emit videoMediaConnected();
+        emit localVideoStarted();
+        emit remoteVideoStarted();
 #endif
     } else if (state == CallState::Held || state == CallState::Disconnecting) {
 #ifndef HAVE_PJSIP
-        // Stub: tear down audio when call leaves Active.
+        // Stub: tear down audio/video when call leaves Active.
         if (m_levelTimer.isActive())
             emit audioMediaDisconnected();
+        if (m_localVideoAvailable || m_remoteVideoAvailable) {
+            m_localVideoAvailable  = false;
+            m_remoteVideoAvailable = false;
+            emit localVideoStopped();
+            emit remoteVideoStopped();
+            emit videoMediaDisconnected();
+        }
 #endif
     } else if (state == CallState::Idle) {
         Logger::instance().info(LogCategory::Sip,

@@ -69,6 +69,7 @@ set(SOURCES
     src/security/CredentialStore.cpp
     src/security/MemoryCredentialBackend.cpp
     src/media/AudioMediaManager.cpp
+    src/media/VideoMediaManager.cpp
     src/media/MediaDeviceManager.cpp
     src/media/MediaDeviceSelectionModel.cpp
     src/media/QtMediaDeviceBackend.cpp
@@ -101,6 +102,7 @@ set(HEADERS
     src/security/CredentialStore.h
     src/security/MemoryCredentialBackend.h
     src/media/AudioMediaManager.h
+    src/media/VideoMediaManager.h
     src/media/MediaDevice.h
     src/media/IMediaDeviceBackend.h
     src/media/QtMediaDeviceBackend.h

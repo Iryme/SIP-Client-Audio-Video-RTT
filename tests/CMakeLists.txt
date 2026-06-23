@@ -23,9 +23,10 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
 )
 
-# Audio media sources — required by any test that uses AudioMediaManager
+# Audio + video media sources — required by any test that uses AudioMediaManager or VideoMediaManager
 set(AUDIO_MEDIA_SOURCES
     ${CMAKE_SOURCE_DIR}/src/media/AudioMediaManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/VideoMediaManager.cpp
     ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceManager.cpp
     ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceSelectionModel.cpp
     ${CMAKE_SOURCE_DIR}/src/media/QtMediaDeviceBackend.cpp
@@ -302,3 +303,24 @@ target_link_libraries(test_audio_media PRIVATE
 )
 
 add_test(NAME test_audio_media COMMAND test_audio_media)
+
+# ---- test_video_media --------------------------------------------------
+qt_add_executable(test_video_media
+    test_video_media.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
+)
+
+target_include_directories(test_video_media PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_video_media PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Multimedia
+)
+
+add_test(NAME test_video_media COMMAND test_video_media)

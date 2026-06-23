@@ -4,6 +4,7 @@
 
 #include "core/Logger.h"
 #include "media/AudioMediaManager.h"
+#include "media/VideoMediaManager.h"
 #include "security/CredentialStore.h"
 #include "sip/SipProfileManager.h"
 #include "sip/RegistrationRetryPolicy.h"
@@ -639,11 +640,27 @@ bool SipManager::isCallMuted() const
     return m_activeCall ? m_activeCall->isMuted() : false;
 }
 
+bool SipManager::setCallVideoMuted(bool muted)
+{
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("setCallVideoMuted: no active call"));
+        return false;
+    }
+    return m_activeCall->setVideoMuted(muted);
+}
+
+bool SipManager::isCallVideoMuted() const
+{
+    return m_activeCall ? m_activeCall->isVideoMuted() : false;
+}
+
 void SipManager::destroyActiveCall()
 {
     if (!m_activeCall)
         return;
     AudioMediaManager::instance().detachCall();
+    VideoMediaManager::instance().detachCall();
     disconnect(m_activeCall, nullptr, this, nullptr);
     delete m_activeCall;
     m_activeCall = nullptr;
@@ -685,7 +702,22 @@ bool SipManager::makeCall(const QString &remoteUri)
             this, &SipManager::callInputLevelChanged);
     connect(m_activeCall, &SipCall::outputLevelChanged,
             this, &SipManager::callOutputLevelChanged);
+    connect(m_activeCall, &SipCall::videoMediaConnected,
+            this, &SipManager::videoMediaConnected);
+    connect(m_activeCall, &SipCall::videoMediaDisconnected,
+            this, &SipManager::videoMediaDisconnected);
+    connect(m_activeCall, &SipCall::videoMuteChanged,
+            this, &SipManager::callVideoMuteChanged);
+    connect(m_activeCall, &SipCall::localVideoStarted,
+            this, &SipManager::localVideoStarted);
+    connect(m_activeCall, &SipCall::localVideoStopped,
+            this, &SipManager::localVideoStopped);
+    connect(m_activeCall, &SipCall::remoteVideoStarted,
+            this, &SipManager::remoteVideoStarted);
+    connect(m_activeCall, &SipCall::remoteVideoStopped,
+            this, &SipManager::remoteVideoStopped);
     AudioMediaManager::instance().attachCall(m_activeCall);
+    VideoMediaManager::instance().attachCall(m_activeCall);
 
     return m_activeCall->makeCall(remoteUri);
 }
@@ -789,7 +821,22 @@ void SipManager::onAccountIncomingCall(const QString &remoteUri)
             this, &SipManager::callInputLevelChanged);
     connect(m_activeCall, &SipCall::outputLevelChanged,
             this, &SipManager::callOutputLevelChanged);
+    connect(m_activeCall, &SipCall::videoMediaConnected,
+            this, &SipManager::videoMediaConnected);
+    connect(m_activeCall, &SipCall::videoMediaDisconnected,
+            this, &SipManager::videoMediaDisconnected);
+    connect(m_activeCall, &SipCall::videoMuteChanged,
+            this, &SipManager::callVideoMuteChanged);
+    connect(m_activeCall, &SipCall::localVideoStarted,
+            this, &SipManager::localVideoStarted);
+    connect(m_activeCall, &SipCall::localVideoStopped,
+            this, &SipManager::localVideoStopped);
+    connect(m_activeCall, &SipCall::remoteVideoStarted,
+            this, &SipManager::remoteVideoStarted);
+    connect(m_activeCall, &SipCall::remoteVideoStopped,
+            this, &SipManager::remoteVideoStopped);
     AudioMediaManager::instance().attachCall(m_activeCall);
+    VideoMediaManager::instance().attachCall(m_activeCall);
     m_activeCall->stateMachine().tryTransition(CallState::IncomingRinging,
                                                QStringLiteral("Incoming call from %1")
                                                    .arg(remoteUri));
@@ -808,6 +855,7 @@ void SipManager::onActiveCallStateChanged(CallState state,
             QStringLiteral("Call ended in state %1; releasing call object")
                 .arg(callStateName(state)));
         AudioMediaManager::instance().detachCall();
+        VideoMediaManager::instance().detachCall();
         // Defer destruction so signal handlers in the call finish first.
         SipCall *call = m_activeCall;
         m_activeCall = nullptr;

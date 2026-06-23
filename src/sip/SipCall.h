@@ -43,6 +43,16 @@ public:
     bool setMuted(bool muted);
     bool isMuted() const;
 
+    // Stop / resume sending video. Does not affect incoming video.
+    // In PJSIP mode mutes the video capture stream immediately.
+    bool setVideoMuted(bool muted);
+    bool isVideoMuted() const;
+
+    // True when a video stream is currently active (set/cleared alongside
+    // videoMediaConnected / videoMediaDisconnected).
+    bool isLocalVideoAvailable()  const;
+    bool isRemoteVideoAvailable() const;
+
     // Force to Idle regardless of current state (shutdown / cleanup path).
     void reset(const QString &reason = QStringLiteral("Reset"));
 
@@ -71,6 +81,22 @@ signals:
     void inputLevelChanged(int level);
     void outputLevelChanged(int level);
 
+    // Emitted when a video stream is activated / deactivated.
+    // In stub mode emitted alongside audioMediaConnected/Disconnected.
+    // In PJSIP mode emitted from onCallMediaState when PJMEDIA_TYPE_VIDEO
+    // becomes PJSUA_CALL_MEDIA_ACTIVE or is removed.
+    void videoMediaConnected();
+    void videoMediaDisconnected();
+
+    // Granular local/remote video availability signals.
+    void localVideoStarted();
+    void localVideoStopped();
+    void remoteVideoStarted();
+    void remoteVideoStopped();
+
+    // Video mute state change (true = muted / not sending).
+    void videoMuteChanged(bool muted);
+
 private slots:
     void onStateMachineStateChanged(CallState state, const QString &statusText, int statusCode);
     void onStateMachineTimedOut(CallState stuckState);
@@ -83,6 +109,9 @@ private:
     QString          m_remoteUri;
     QString          m_callId;
     bool             m_muted{false};
+    bool             m_videoMuted{false};
+    bool             m_localVideoAvailable{false};
+    bool             m_remoteVideoAvailable{false};
     QTimer           m_levelTimer;
 
     struct Impl;

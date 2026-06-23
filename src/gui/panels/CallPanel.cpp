@@ -12,6 +12,7 @@
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
+#include "media/VideoMediaManager.h"
 #include "sip/SipManager.h"
 
 CallPanel::CallPanel(QWidget *parent)
@@ -189,6 +190,14 @@ CallPanel::CallPanel(QWidget *parent)
             this, &CallPanel::onInputLevelChanged);
     connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
             this, &CallPanel::onOutputLevelChanged);
+
+    // Video button → VideoMediaManager (mute / unmute video stream)
+    connect(m_btnVideo, &QPushButton::toggled,
+            [](bool checked){ VideoMediaManager::instance().setVideoMuted(checked); });
+
+    // VideoMediaManager → video button sync
+    connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMutedChanged,
+            this, &CallPanel::onVideoMuteChanged);
 
     // Hold button → SipManager
     connect(this, &CallPanel::holdToggled, [](bool held) {
@@ -384,8 +393,14 @@ void CallPanel::onOutputLevelChanged(int level)
 
 void CallPanel::onMuteChanged(bool muted)
 {
-    // Sync button checked state without re-triggering the toggled signal.
     QSignalBlocker blocker(m_btnMute);
     m_btnMute->setChecked(muted);
     m_btnMute->setText(muted ? tr("Unmute") : tr("Mute"));
+}
+
+void CallPanel::onVideoMuteChanged(bool muted)
+{
+    QSignalBlocker blocker(m_btnVideo);
+    m_btnVideo->setChecked(muted);
+    m_btnVideo->setText(muted ? tr("Show Video") : tr("Video"));
 }

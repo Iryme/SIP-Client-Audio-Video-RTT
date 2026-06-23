@@ -58,6 +58,10 @@ public:
     bool setCallMuted(bool muted);
     bool isCallMuted() const;
 
+    // Stop / resume sending video on the active call.
+    bool setCallVideoMuted(bool muted);
+    bool isCallVideoMuted() const;
+
     CallState callState()          const;
     QString   callStatusText()     const;
     QString   activeCallRemoteUri() const;
@@ -117,6 +121,15 @@ signals:
     void callMuteChanged(bool muted);
     void callInputLevelChanged(int level);
     void callOutputLevelChanged(int level);
+
+    // Video media signals (forwarded from the active SipCall)
+    void videoMediaConnected();
+    void videoMediaDisconnected();
+    void callVideoMuteChanged(bool muted);
+    void localVideoStarted();
+    void localVideoStopped();
+    void remoteVideoStarted();
+    void remoteVideoStopped();
 
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,

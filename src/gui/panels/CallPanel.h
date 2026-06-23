@@ -37,6 +37,7 @@ private slots:
     void onInputLevelChanged(int level);
     void onOutputLevelChanged(int level);
     void onMuteChanged(bool muted);
+    void onVideoMuteChanged(bool muted);
 
 private:
     void applyCallState(CallState state);

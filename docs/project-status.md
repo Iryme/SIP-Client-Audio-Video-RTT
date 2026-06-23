@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-23
-Current task count: 18 of N
+Current task count: 19 of N
 
 ## Completed Tasks
 
@@ -25,6 +25,7 @@ Current task count: 18 of N
 | 16 | Profile Switch Sequencing — switchActiveProfile(), pending-switch guard, UNREGISTER old before registering new | feature/profile-switch-sequencing | IMPLEMENTED |
 | 17 | SIP Call State Machine — CallStateMachine (9 states), SipCall API, SipManager call control, CallPanel wiring | feature/call-state-machine | IMPLEMENTED |
 | 18 | Audio Media Integration — AudioMediaManager, mute/unmute, level meters, device selection, PJSIP bridge wiring | feature/audio-media | IMPLEMENTED |
+| 19 | Video Media Integration — VideoMediaManager, video mute, camera selection, VideoPanel overlays, PJSIP bridge wiring | feature/video-media | IMPLEMENTED |
 
 > **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
 > are not ancestors of the active Tasks 6-10 lineage. The active code uses the
@@ -63,11 +64,12 @@ Current task count: 18 of N
 | SipCall | IMPLEMENTED | makeCall/answer/reject/hangup/hold/resume; owns CallStateMachine; setMuted/isMuted; audioMediaConnected/Disconnected signals; level timer (PJSIP); stub + PJSIP paths |
 | CallStateMachine | IMPLEMENTED | 9-state explicit SM; transition table; watchdog timeout (OutgoingInit/Disconnecting); diagnostics |
 | AudioMediaManager | IMPLEMENTED | attachCall/detachCall lifecycle; setMuted; setMicrophone/Speaker (persisted); inputLevel/outputLevel forwarding; Qt-only (no pjsua2.hpp) |
+| VideoMediaManager | IMPLEMENTED | attachCall/detachCall lifecycle; setVideoMuted; setCamera (persisted); local/remote availability signals; Qt-only (no pjsua2.hpp) |
 | cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
 | SIP registration | IMPLEMENTED | Manual register/unregister; exponential retry on transient failures; auto-refresh before expiry; deterministic profile-switch sequencing |
 | SIP call control | IMPLEMENTED | makeCall/answer/reject/hangup/hold/resume; 9-state SM; stub (test-only) + PJSIP scaffolding |
 | Audio calls | SCAFFOLDED | AudioMediaManager + PJSIP bridge wiring complete; untested without live PJSIP installation |
-| Video calls | NOT STARTED | |
+| Video calls | SCAFFOLDED | VideoMediaManager + PJSIP bridge wiring complete; VideoPanel overlays + swap/mute controls; rendering to widget deferred |
 | RFC 4103 RTT | NOT STARTED | |
 | LMPE messaging | NOT STARTED | |
 | ETSI TS 103 479 | NOT STARTED | |
@@ -176,6 +178,14 @@ Current task count: 18 of N
 - Video and RTT media are still NOT STARTED.
 - `tests/CMakeLists.txt`: any test target that compiles `SipManager.cpp` must include `AUDIO_MEDIA_SOURCES` (AudioMediaManager.cpp + MediaDeviceManager.cpp + MediaDeviceSelectionModel.cpp + QtMediaDeviceBackend.cpp) and link `Qt6::Multimedia`.
 
+## Known Limitations (Task 19)
+
+- PJSIP video bridge tested through compilation only; live end-to-end video requires `ENABLE_PJSIP=ON` with a real PJSIP installation.
+- Real video rendering requires attaching a native window handle via `pj::VideoWindow` — not yet wired. `VideoPanel` shows a colour-tinted placeholder.
+- Camera hot-swap during a call: selection is persisted (takes effect on next call). PJSIP integer device-index mapping not yet implemented.
+- Local camera preview before a call (without SIP session) not yet started — `VideoPanel` PiP shows "Camera Off" until the call goes active.
+- Video level monitoring not implemented (no PJSIP equivalent of `pjsua_conf_get_signal_level` for video).
+
 ## Next Recommended Task
 
-**Task 19:** Startup auto-register — register the active profile automatically on `initialize()` when a profile with a credential is configured.
+**Task 20:** Startup auto-register — register the active profile automatically on `initialize()` when a profile with a credential is configured.
