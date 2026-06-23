@@ -33,10 +33,10 @@ struct SipAccount::Impl
 {
     explicit Impl(SipAccount *accountOwner) : owner(accountOwner) {}
 
-    void notify(RegistrationState state, const QString &text, int code)
+    void notify(RegistrationState state, const QString &text, int code, int expiry = 0)
     {
         if (owner)
-            owner->postRegistrationResult(state, text, code);
+            owner->postRegistrationResult(state, text, code, expiry);
     }
 
     QPointer<SipAccount> owner;
@@ -52,6 +52,7 @@ struct SipAccount::Impl
             RegistrationState state = RegistrationState::RegistrationFailed;
             QString text = QString::fromStdString(prm.reason);
             int code = prm.code;
+            int expiry = 0;
 
             if (prm.status != PJ_SUCCESS) {
                 code = static_cast<int>(prm.status);
@@ -63,10 +64,14 @@ struct SipAccount::Impl
                     state = info.regIsActive
                         ? RegistrationState::Registered
                         : RegistrationState::Unregistered;
-                    if (text.isEmpty())
-                        text = info.regIsActive
-                            ? QStringLiteral("Registration succeeded")
-                            : QStringLiteral("Unregistration succeeded");
+                    if (info.regIsActive) {
+                        expiry = static_cast<int>(info.regExpiresSec);
+                        if (text.isEmpty())
+                            text = QStringLiteral("Registration succeeded");
+                    } else {
+                        if (text.isEmpty())
+                            text = QStringLiteral("Unregistration succeeded");
+                    }
                 } catch (const pj::Error &e) {
                     state = RegistrationState::RegistrationFailed;
                     code = static_cast<int>(e.status);
@@ -78,7 +83,7 @@ struct SipAccount::Impl
             }
 
             if (m_impl)
-                m_impl->notify(state, text, code);
+                m_impl->notify(state, text, code, expiry);
         }
 
     private:
@@ -187,13 +192,42 @@ bool SipAccount::startUnregistration()
 #endif
 }
 
+bool SipAccount::refreshRegistration()
+{
+#ifdef HAVE_PJSIP
+    if (!m_impl->account) {
+        postRegistrationResult(RegistrationState::RegistrationFailed,
+                               QStringLiteral("No active account to refresh"), 0);
+        return false;
+    }
+    try {
+        m_impl->account->setRegistration(true);
+        return true;
+    } catch (const pj::Error &e) {
+        postRegistrationResult(RegistrationState::RegistrationFailed,
+                               QString::fromStdString(e.reason),
+                               static_cast<int>(e.status));
+        return false;
+    }
+#else
+    postRegistrationResult(RegistrationState::RegistrationFailed,
+                           QStringLiteral("PJSIP unavailable; registration refresh not attempted"),
+                           0);
+    return false;
+#endif
+}
+
 void SipAccount::postRegistrationResult(RegistrationState state,
                                         const QString &statusText,
-                                        int statusCode)
+                                        int statusCode,
+                                        int expirySeconds)
 {
     QPointer<SipAccount> self(this);
-    QMetaObject::invokeMethod(this, [self, state, statusText, statusCode]() {
-        if (self)
+    QMetaObject::invokeMethod(this, [self, state, statusText, statusCode, expirySeconds]() {
+        if (self) {
+            if (expirySeconds > 0)
+                emit self->registrationExpiryReceived(expirySeconds);
             emit self->registrationStateChanged(state, statusText, statusCode);
+        }
     }, Qt::QueuedConnection);
 }

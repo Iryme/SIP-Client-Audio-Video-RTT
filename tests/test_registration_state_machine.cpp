@@ -24,6 +24,7 @@ private slots:
     void registeringToRegistrationFailed();
     void registeringToUnregistering_cancel();
     void registeredToUnregistering();
+    void registeredToRegistrationFailed_refreshFailure();
     void unregisteringToUnregistered();
     void unregisteringToRegistrationFailed();
     void registrationFailedToRegistering_retry();
@@ -125,6 +126,16 @@ void TestRegistrationStateMachine::registeredToUnregistering()
     QVERIFY(sm.tryTransition(RegistrationState::Unregistering, "user request"));
     QCOMPARE(sm.state(), RegistrationState::Unregistering);
     sm.reset();
+}
+
+void TestRegistrationStateMachine::registeredToRegistrationFailed_refreshFailure()
+{
+    RegistrationStateMachine sm;
+    QVERIFY(sm.tryTransition(RegistrationState::Registering, "start"));
+    QVERIFY(sm.tryTransition(RegistrationState::Registered, "200 OK"));
+    QVERIFY(sm.tryTransition(RegistrationState::RegistrationFailed, "refresh 503", 503));
+    QCOMPARE(sm.state(), RegistrationState::RegistrationFailed);
+    QCOMPARE(sm.statusCode(), 503);
 }
 
 void TestRegistrationStateMachine::unregisteringToUnregistered()

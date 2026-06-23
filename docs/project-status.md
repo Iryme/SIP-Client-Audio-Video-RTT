@@ -1,7 +1,7 @@
 # Project Status
 
-Last updated: 2026-06-22
-Current task count: 12 of N
+Last updated: 2026-06-23
+Current task count: 15 of N
 
 ## Completed Tasks
 
@@ -20,6 +20,8 @@ Current task count: 12 of N
 | 11 | Project Handoff 001 — formal project snapshot and continuation prompt | feature/project-handoff-001 | IMPLEMENTED |
 | 12 | SIP Register / Unregister — active profile, secure credential lookup, pjsua2 callbacks, GUI status | feature/sip-registration | IMPLEMENTED |
 | 13 | Registration State Machine — explicit 5-state SM, transition guards, watchdog timeout, button disable | feature/registration-state-machine | IMPLEMENTED |
+| 14 | Registration Retry/Backoff — RegistrationRetryPolicy, exponential backoff, retryScheduled signal | feature/registration-retry-backoff | IMPLEMENTED |
+| 15 | Registration Expiry & Auto Re-REGISTER — RegistrationRefreshConfig, refresh timer, refresh failure → retry | feature/registration-expiry-refresh | IMPLEMENTED |
 
 > **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
 > are not ancestors of the active Tasks 6-10 lineage. The active code uses the
@@ -51,11 +53,13 @@ Current task count: 12 of N
 | MediaDeviceSelectionModel | IMPLEMENTED | Persistence + fallback to default |
 | MediaPanel | IMPLEMENTED | Microphone/Speaker/Camera combos + Refresh button in Media tab |
 | SipManager | IMPLEMENTED | Lifecycle + active-profile register/unregister + state machine; stub + PJSIP branches |
-| RegistrationStateMachine | IMPLEMENTED | 5-state explicit SM; transition table; watchdog timeout; diagnostics |
-| SipAccount | IMPLEMENTED | pjsua2 account creation, REGISTER/UNREGISTER, queued callbacks |
+| RegistrationStateMachine | IMPLEMENTED | 5-state explicit SM; transition table; watchdog timeout; diagnostics; Registered→RegistrationFailed for refresh failure |
+| RegistrationRetryPolicy | IMPLEMENTED | isRetryable(code), delayForAttempt(n) exponential backoff |
+| RegistrationRefreshConfig | IMPLEMENTED | delayMsForExpiry(expiry): 80% ratio / 30s margin; overrideDelayMs for tests |
+| SipAccount | IMPLEMENTED | pjsua2 account creation, REGISTER/UNREGISTER, queued callbacks; refreshRegistration(); registrationExpiryReceived signal |
 | SipCall | STUB | Header + minimal .cpp; no calls yet |
 | cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
-| SIP registration | IMPLEMENTED | Manual active-profile registration; retry/refresh state machine deferred |
+| SIP registration | IMPLEMENTED | Manual register/unregister; exponential retry on transient failures; auto-refresh before expiry |
 | Audio calls | NOT STARTED | |
 | Video calls | NOT STARTED | |
 | RFC 4103 RTT | NOT STARTED | |
@@ -124,11 +128,23 @@ Current task count: 12 of N
 ## Known Limitations (Task 13)
 
 - No automatic registration on startup or profile selection.
-- No refresh scheduling before registration expiry.
-- No retry/backoff on transient failures; state stays `RegistrationFailed` until the user retries.
+- ~~No refresh scheduling before registration expiry.~~ (Task 15 done)
+- ~~No retry/backoff on transient failures.~~ (Task 14 done)
 - Network-change recovery not implemented.
 - One account supported at a time; multi-account deferred.
 
+## Known Limitations (Task 14)
+
+- Retry counter resets on exhaustion; no persistent backoff across app restarts.
+
+## Known Limitations (Task 15)
+
+- Expiry is only extracted from PJSIP AccountInfo; if the server omits it, the configured default (300 s) is used.
+- No automatic registration on startup or profile selection.
+- Profile switch does not wait for old account UNREGISTER response before replacing.
+- Network-change recovery not implemented.
+- CredentialStore Linux/macOS backends not yet implemented.
+
 ## Next Recommended Task
 
-**Task 14:** Registration State Machine Extensions — automatic re-register before expiry, retry/backoff on transient failures, network-change recovery, and deterministic profile-switch sequencing (wait for old-account UNREGISTER response before replacing with new account).
+**Task 16:** Startup auto-register and profile-switch sequencing — register active profile on `initialize()` when a profile is configured; wait for old account UNREGISTER response before replacing with a new account on profile switch.

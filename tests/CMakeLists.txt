@@ -133,6 +133,7 @@ qt_add_executable(test_sip_manager
     ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${SECURITY_SOURCES}
@@ -160,6 +161,7 @@ qt_add_executable(test_registration_retry
     ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${SECURITY_SOURCES}
@@ -179,3 +181,31 @@ if(WIN32)
 endif()
 
 add_test(NAME test_registration_retry COMMAND test_registration_retry)
+
+# ---- test_registration_expiry ------------------------------------------
+qt_add_executable(test_registration_expiry
+    test_registration_expiry.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
+)
+
+target_include_directories(test_registration_expiry PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_registration_expiry PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+if(WIN32)
+    target_link_libraries(test_registration_expiry PRIVATE Advapi32)
+endif()
+
+add_test(NAME test_registration_expiry COMMAND test_registration_expiry)

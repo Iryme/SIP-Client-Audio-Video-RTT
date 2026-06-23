@@ -1,6 +1,6 @@
 # SIP Registration
 
-**Status:** IMPLEMENTED (Task 12; state machine added Task 13; real registration requires PJSIP)
+**Status:** IMPLEMENTED (Task 12; state machine Task 13; retry/backoff Task 14; expiry refresh Task 15; real registration requires PJSIP)
 
 ## Overview
 
@@ -30,6 +30,7 @@ Profile editing (Edit/Delete buttons) is disabled while the state is `Registerin
 | Registering        | RegistrationFailed    | `onRegState` error, or watchdog timeout (30 s default) |
 | Registering        | Unregistering         | `unregisterActiveProfile()` called while Registering (cancel) |
 | Registered         | Unregistering         | `unregisterActiveProfile()` |
+| Registered         | RegistrationFailed    | `onRegState` — re-REGISTER refresh rejected by server |
 | Unregistering      | Unregistered          | `onRegState` — inactive registration confirmed |
 | Unregistering      | RegistrationFailed    | `onRegState` error, or watchdog timeout (30 s default) |
 | RegistrationFailed | Registering           | `registerActiveProfile()` retry — preflight passed |
@@ -38,6 +39,39 @@ Profile editing (Edit/Delete buttons) is disabled while the state is `Registerin
 
 All other transitions (e.g. `Registered → Registering`, `Unregistered → Unregistered`) are rejected.
 `reset()` unconditionally transitions to `Unregistered` from any state (used during shutdown).
+
+## Retry / Backoff (Task 14)
+
+On `RegistrationFailed`, `SipManager` checks `RegistrationRetryPolicy::isRetryable(statusCode)`:
+- **Retryable:** `0` (timeout/no response), `408`, `5xx`
+- **Not retryable:** `401`, `403`, `404`, `423`, and other 4xx
+
+When retryable and `m_retryAttempt < maxAttempts`, a `QTimer` is started with:
+```
+delay = initialDelayMs × multiplier^(attempt−1), capped at maxDelayMs
+```
+Default: 5 attempts, 2 s initial, ×2, 60 s cap.
+
+`unregisterActiveProfile()` and `shutdown()` cancel the retry timer.
+
+## Registration Expiry & Auto Re-REGISTER (Task 15)
+
+On a successful `Registered` callback, `SipManager::scheduleRefresh(expirySeconds)` is called. The refresh timer fires at:
+```
+min(expiry × 0.80,  expiry − 30 s)
+```
+with a floor of `expiry / 2` when expiry is very short, and a fallback default of 300 s when the server provides no expiry.
+
+When the timer fires (`onRefreshTimerFired`):
+- If a live `SipAccount` exists: `refreshRegistration()` is called which sends a new REGISTER on the same account object (`setRegistration(true)` in pjsua2). The state machine stays `Registered` during the refresh.
+- If no account: fall through to `scheduleRetryIfEligible(0)`.
+
+**Refresh success** (server returns 200 OK): retry counter resets, new refresh timer scheduled.  
+**Refresh failure**: state transitions to `RegistrationFailed` (`Registered → RegistrationFailed` is now a valid SM transition); existing retry/backoff logic takes over.
+
+`unregisterActiveProfile()` and `shutdown()` cancel the refresh timer.
+
+`registrationStatusText()` returns `"Registered (refreshing...)"` while a refresh is in flight.
 
 ## Rejected Operations
 

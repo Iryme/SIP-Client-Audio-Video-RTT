@@ -32,18 +32,21 @@ public:
     bool startRegistration(const SipProfile &profile, const QString &password,
                            int transportId = -1);
     bool startUnregistration();
+    bool refreshRegistration();
 
 signals:
     void registrationStateChanged(RegistrationState state,
                                   const QString &statusText,
                                   int statusCode);
+    void registrationExpiryReceived(int seconds);
 
 private:
     struct Impl;
 
     void postRegistrationResult(RegistrationState state,
                                 const QString &statusText,
-                                int statusCode);
+                                int statusCode,
+                                int expirySeconds = 0);
 
     QString m_profileId;
     Impl   *m_impl{nullptr};

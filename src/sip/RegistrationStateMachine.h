@@ -10,7 +10,7 @@
 // Valid transitions (see isValidTransition()):
 //   Unregistered      -> Registering, RegistrationFailed
 //   Registering       -> Registered, RegistrationFailed, Unregistering
-//   Registered        -> Unregistering
+//   Registered        -> Unregistering, RegistrationFailed (refresh failure)
 //   Unregistering     -> Unregistered, RegistrationFailed
 //   RegistrationFailed-> Registering, RegistrationFailed, Unregistered
 //

@@ -4,6 +4,7 @@
 #include "security/CredentialStore.h"
 #include "sip/SipProfileManager.h"
 #include "sip/RegistrationRetryPolicy.h"
+#include "sip/RegistrationRefreshConfig.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -69,6 +70,10 @@ SipManager::SipManager() : QObject(nullptr)
     m_retryTimer.setSingleShot(true);
     connect(&m_retryTimer, &QTimer::timeout,
             this, &SipManager::onRetryTimerFired);
+
+    m_refreshTimer.setSingleShot(true);
+    connect(&m_refreshTimer, &QTimer::timeout,
+            this, &SipManager::onRefreshTimerFired);
 }
 
 SipManager::~SipManager()
@@ -113,6 +118,8 @@ void SipManager::shutdown()
 
     m_retryTimer.stop();
     m_retryAttempt = 0;
+    m_refreshTimer.stop();
+    m_refreshing = false;
 
     if (m_account) {
         m_account->startUnregistration();
@@ -214,6 +221,8 @@ bool SipManager::registerActiveProfile()
     m_account = new SipAccount(profile.profileId, this);
     connect(m_account, &SipAccount::registrationStateChanged,
             this, &SipManager::onAccountRegistrationStateChanged);
+    connect(m_account, &SipAccount::registrationExpiryReceived,
+            this, &SipManager::onAccountRegistrationExpiryReceived);
 
     m_stateMachine.tryTransition(RegistrationState::Registering,
                                  QStringLiteral("Registration started"));
@@ -231,6 +240,8 @@ bool SipManager::unregisterActiveProfile()
 {
     m_retryTimer.stop();
     m_retryAttempt = 0;
+    m_refreshTimer.stop();
+    m_refreshing = false;
 
     const RegistrationState current = m_stateMachine.state();
 
@@ -306,6 +317,8 @@ RegistrationState SipManager::registrationState() const
 
 QString SipManager::registrationStatusText() const
 {
+    if (m_refreshing && m_stateMachine.state() == RegistrationState::Registered)
+        return QStringLiteral("Registered (refreshing...)");
     return m_stateMachine.statusText();
 }
 
@@ -324,10 +337,44 @@ RegistrationStateMachine &SipManager::stateMachine()
     return m_stateMachine;
 }
 
+void SipManager::onAccountRegistrationExpiryReceived(int seconds)
+{
+    m_registrationExpirySeconds = seconds;
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Registration expiry received: %1 s for profile %2")
+            .arg(seconds).arg(m_registeredProfileId));
+    emit registrationExpiryChanged(seconds);
+}
+
 void SipManager::onAccountRegistrationStateChanged(RegistrationState state,
                                                    const QString &statusText,
                                                    int statusCode)
 {
+    if (m_refreshing) {
+        m_refreshing = false;
+
+        if (state == RegistrationState::Registered) {
+            // Refresh success — state stays Registered, just restart the timer.
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Registration refresh succeeded for profile %1 (status %2)")
+                    .arg(m_registeredProfileId).arg(statusCode));
+            m_retryAttempt = 0;
+            scheduleRefresh(m_registrationExpirySeconds);
+            return;
+        }
+
+        if (state == RegistrationState::RegistrationFailed) {
+            Logger::instance().error(LogCategory::Sip,
+                QStringLiteral("Registration refresh failed for profile %1: %2 (status %3)")
+                    .arg(m_registeredProfileId, statusText).arg(statusCode));
+            // Registered → RegistrationFailed is now a valid SM transition (refresh failure).
+            m_stateMachine.tryTransition(RegistrationState::RegistrationFailed,
+                                         statusText, statusCode);
+            scheduleRetryIfEligible(statusCode);
+            return;
+        }
+    }
+
     m_stateMachine.tryTransition(state, statusText, statusCode);
 
     if (state == RegistrationState::Registered) {
@@ -335,6 +382,7 @@ void SipManager::onAccountRegistrationStateChanged(RegistrationState state,
             QStringLiteral("Register success for profile %1 (status %2)")
                 .arg(m_registeredProfileId).arg(statusCode));
         m_retryAttempt = 0;
+        scheduleRefresh(m_registrationExpirySeconds);
     } else if (state == RegistrationState::RegistrationFailed) {
         Logger::instance().error(LogCategory::Sip,
             QStringLiteral("Register failed for profile %1: %2 (status %3)")
@@ -424,6 +472,55 @@ void SipManager::onRetryTimerFired()
             .arg(m_retryPolicy.maxAttempts)
             .arg(SipProfileManager::instance().activeProfileId()));
     registerActiveProfile();
+}
+
+void SipManager::scheduleRefresh(int expirySeconds)
+{
+    m_refreshTimer.stop();
+    m_registrationExpirySeconds = (expirySeconds > 0)
+        ? expirySeconds
+        : m_refreshConfig.defaultExpirySeconds;
+    const int delayMs = m_refreshConfig.delayMsForExpiry(m_registrationExpirySeconds);
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Registration refresh scheduled in %1 ms (expiry %2 s) for profile %3")
+            .arg(delayMs)
+            .arg(m_registrationExpirySeconds)
+            .arg(SipProfileManager::instance().activeProfileId()));
+    m_refreshTimer.start(delayMs);
+    emit refreshScheduled(delayMs);
+}
+
+void SipManager::onRefreshTimerFired()
+{
+    emit refreshStarted();
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Triggering registration refresh for profile %1")
+            .arg(SipProfileManager::instance().activeProfileId()));
+
+    if (!m_account) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Refresh fired but no active account; falling back to retry"));
+        scheduleRetryIfEligible(0);
+        return;
+    }
+
+    m_refreshing = true;
+    m_account->refreshRegistration();
+}
+
+void SipManager::setRefreshConfig(const RegistrationRefreshConfig &config)
+{
+    m_refreshConfig = config;
+}
+
+const RegistrationRefreshConfig &SipManager::refreshConfig() const
+{
+    return m_refreshConfig;
+}
+
+int SipManager::registrationExpirySeconds() const
+{
+    return m_registrationExpirySeconds;
 }
 
 #ifdef HAVE_PJSIP

@@ -112,7 +112,8 @@ bool RegistrationStateMachine::isValidTransition(RegistrationState from,
             || to == RS::RegistrationFailed
             || to == RS::Unregistering;               // cancel in-flight
     case RS::Registered:
-        return to == RS::Unregistering;
+        return to == RS::Unregistering
+            || to == RS::RegistrationFailed;          // registration refresh failure
     case RS::Unregistering:
         return to == RS::Unregistered
             || to == RS::RegistrationFailed;
