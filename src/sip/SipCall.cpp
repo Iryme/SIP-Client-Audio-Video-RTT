@@ -533,10 +533,12 @@ bool SipCall::setMuted(bool muted)
             .arg(muted ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
 
 #ifdef HAVE_PJSIP
-    try {
-        pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
-        adm.getCaptureDevMedia().adjustTxLevel(muted ? 0.0f : 1.0f);
-    } catch (...) {}
+    if (m_impl->pjCall && m_impl->callAudioMedia) {
+        try {
+            pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
+            adm.getCaptureDevMedia().adjustTxLevel(muted ? 0.0f : 1.0f);
+        } catch (...) {}
+    }
 #endif
 
     emit muteChanged(muted);

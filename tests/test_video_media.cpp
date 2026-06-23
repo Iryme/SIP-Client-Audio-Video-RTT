@@ -53,6 +53,9 @@ static void driveToActive(SipCall &call)
 
 void TestVideoMedia::init()
 {
+#ifdef HAVE_PJSIP
+    QSKIP("Test is for stub mode only (HAVE_PJSIP is defined)");
+#endif
     // Detach any stale call left from a previous test.
     VideoMediaManager::instance().detachCall();
 }

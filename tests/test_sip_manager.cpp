@@ -14,7 +14,7 @@ private slots:
     void init();
     void cleanup();
 
-    void stubBackendNameIsCorrect();
+    void backendNameReflectsSelectedBackend();
     void initializeSucceedsInStubMode();
     void initializeIsIdempotent();
     void shutdownIsIdempotent();
@@ -71,14 +71,17 @@ QString TestSipManager::addActiveProfileWithPassword(const QString &password)
     return m_createdProfileId;
 }
 
-void TestSipManager::stubBackendNameIsCorrect()
+void TestSipManager::backendNameReflectsSelectedBackend()
 {
 #ifdef HAVE_PJSIP
-    QSKIP("Test is for stub mode only (HAVE_PJSIP is defined)");
-#endif
+    QCOMPARE(SipManager::instance().backendName(),
+             QStringLiteral("PJSIP/pjsua2"));
+    QVERIFY(SipManager::instance().isPjsipAvailable());
+#else
     QCOMPARE(SipManager::instance().backendName(),
              QStringLiteral("Stub SIP backend"));
     QVERIFY(!SipManager::instance().isPjsipAvailable());
+#endif
 }
 
 void TestSipManager::initializeSucceedsInStubMode()

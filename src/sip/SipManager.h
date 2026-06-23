@@ -152,9 +152,12 @@ private:
     void destroyActiveCall();
 
 #ifdef HAVE_PJSIP
+public:
+    struct PjEndpoint;
+
+private:
     bool ensureTransport(SipTransport transport, int &transportId, QString &error);
 
-    struct PjEndpoint;
     PjEndpoint *m_ep{nullptr};
 #endif
 

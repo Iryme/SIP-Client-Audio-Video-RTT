@@ -1,29 +1,28 @@
 # PJSIP Audio Call Validation
 
-Task 22A validates the real PJSIP path with `ENABLE_PJSIP=ON`. This is a validation and bug-fix pass only: video, RTT, ETSI behavior, call history, and SIP ladder improvements are out of scope.
+Task 22 validates the real PJSIP path with `ENABLE_PJSIP=ON`. This is a validation and bug-fix pass only: video, RTT, ETSI behavior, call history, and SIP ladder improvements are out of scope.
 
 ## Local Status
 
-On this workstation, `ENABLE_PJSIP=ON` configuration was attempted on 2026-06-23:
+Task 22B installed and validated a real local PJSIP backend on 2026-06-23. The local install prefix is:
+
+```text
+F:\Project\Iryme\SIP-Client-Audio-Video-RTT\.deps\pjsip-msvc-install
+```
+
+The local PJSIP build used pjproject commit `469aa47`, Debug configuration, WMME/null audio, and WASAPI disabled because the installed Windows SDK does not provide `phoneaudioclient.h`.
+
+The real-backend project build was configured with:
 
 ```powershell
-cmake -S . -B build-pjsip-validation `
+cmake -S . -B build-pjsip-real `
   -DENABLE_PJSIP=ON `
+  -DPJSIP_DIR=F:\Project\Iryme\SIP-Client-Audio-Video-RTT\.deps\pjsip-msvc-install `
   -DBUILD_TESTS=ON `
   -DCMAKE_PREFIX_PATH=F:\Programs\Qt\6.11.1\msvc2022_64
 ```
 
-CMake completed but reported `PJSIP not found` and generated the stub backend. Real PJSIP registration, INVITE, RTP, and BYE validation still require a PJSIP install prefix:
-
-```powershell
-cmake -S . -B build-pjsip `
-  -DENABLE_PJSIP=ON `
-  -DPJSIP_DIR=C:\path\to\pjsip\install `
-  -DBUILD_TESTS=ON `
-  -DCMAKE_PREFIX_PATH=F:\Programs\Qt\6.11.1\msvc2022_64
-```
-
-The application must show backend `PJSIP/pjsua2`. If it shows `Stub SIP backend`, stop: the real path is not under test.
+The app and tests compile with `HAVE_PJSIP`; `test_sip_manager` asserts `SipManager::backendName() == "PJSIP/pjsua2"`. Live Kamailio registration, INVITE, RTP, and BYE validation are still the next step.
 
 ## Test Matrix
 

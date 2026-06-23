@@ -82,31 +82,110 @@ nmake
 
 ---
 
-## PJSIP Integration (optional)
+## PJSIP Integration
 
-PJSIP is an optional dependency. The project builds and runs without it using a **stub SIP backend**. To enable PJSIP, pass `-DENABLE_PJSIP=ON`.
+PJSIP is optional only when `ENABLE_PJSIP=OFF`, which is the default. When `ENABLE_PJSIP=ON` is requested, configuration must find a real PJSIP/pjsua2 install prefix or CMake fails. This prevents accidental stub-backend validation.
 
-### Building PJSIP on Windows
+### Build And Install PJSIP With MSVC 2022
 
-1. Download PJSIP source from https://github.com/pjsip/pjproject
-2. Open `pjproject-vs14-vs2015.sln` (or generate with CMake) in Visual Studio
-3. Build the `pjsua2-lib` target in Release/x64
-4. Note the output directory (typically `pjproject\lib\`)
+The PJSIP project supports Visual Studio project builds on Windows. Its CMake build/install support is available in current pjproject sources and is useful for producing a clean install prefix with `include`, `bin`, `lib/cmake/Pj`, and `lib/pkgconfig`. The PJSIP documentation still marks CMake support experimental on Windows, so keep the exact source revision and options in your validation notes.
 
-### Configuring with PJSIP
+Open an x64 Native Tools Command Prompt for VS 2022:
 
-```powershell
-cmake -S . -B build -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release `
-  -DQt6_DIR=F:/Programs/Qt/6.11.1/msvc2022_64/lib/cmake/Qt6 `
-  -DENABLE_PJSIP=ON `
-  -DPJSIP_DIR=C:/pjproject
+```cmd
+cd /d C:\src
+git clone --depth 1 https://github.com/pjsip/pjproject.git
+cd pjproject
+
+cmake -S . -B build-msvc2022 -G "Visual Studio 17 2022" -A x64 ^
+  -DCMAKE_INSTALL_PREFIX=C:\SDKs\pjsip-msvc2022 ^
+  -DPJ_SKIP_EXPERIMENTAL_NOTICE=ON ^
+  -DBUILD_TESTING=OFF ^
+  -DPJMEDIA_WITH_AUDIODEV_WMME=ON ^
+  -DPJMEDIA_WITH_AUDIODEV_NULL=ON
+
+cmake --build build-msvc2022 --config Debug --parallel
+cmake --install build-msvc2022 --config Debug
 ```
 
-The `cmake/FindPJSIP.cmake` module searches for:
-- Headers under `$PJSIP_DIR/include/` (looks for `pjsua2.hpp`)
-- Libraries under `$PJSIP_DIR/lib/`
+If your Windows SDK does not provide `phoneaudioclient.h`, disable WASAPI and use WMME/null audio:
 
-When PJSIP is found, `HAVE_PJSIP` is defined and the real PJSIP backend is compiled. The status bar will show `SIP: PJSIP/pjsua2 (ready)` instead of `SIP: Stub SIP backend (ready)`.
+```cmd
+cmake -S . -B build-msvc2022 -G "Visual Studio 17 2022" -A x64 ^
+  -DCMAKE_INSTALL_PREFIX=C:\SDKs\pjsip-msvc2022 ^
+  -DPJ_SKIP_EXPERIMENTAL_NOTICE=ON ^
+  -DBUILD_TESTING=OFF ^
+  -DPJMEDIA_WITH_AUDIODEV_WASAPI=OFF ^
+  -DPJMEDIA_WITH_AUDIODEV_WMME=ON ^
+  -DPJMEDIA_WITH_AUDIODEV_NULL=ON
+```
+
+Expected install-prefix checks:
+
+```cmd
+dir C:\SDKs\pjsip-msvc2022\include\pjsua2.hpp
+dir C:\SDKs\pjsip-msvc2022\bin\pjsua2.lib
+dir C:\SDKs\pjsip-msvc2022\lib\cmake\Pj\PjConfig.cmake
+```
+
+### Local Task 22B Prefix
+
+This workspace validated PJSIP with the installed Visual Studio 2026/MSVC environment because VS 2022 is not installed on this machine. The PJSIP source and install prefix were kept out of git under `.deps`:
+
+```text
+Source:  .deps\pjproject
+Commit:  469aa47
+Prefix:  .deps\pjsip-msvc-install
+Options: PJMEDIA_WITH_AUDIODEV_WASAPI=OFF, PJMEDIA_WITH_AUDIODEV_WMME=ON, PJMEDIA_WITH_AUDIODEV_NULL=ON, BUILD_TESTING=OFF
+```
+
+### Configure The App With PJSIP
+
+```cmd
+cmake -S . -B build-pjsip-real ^
+  -DENABLE_PJSIP=ON ^
+  -DPJSIP_DIR=C:\SDKs\pjsip-msvc2022 ^
+  -DBUILD_TESTS=ON ^
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.x.x\msvc2022_64
+
+cmake --build build-pjsip-real --config Debug --parallel
+ctest --test-dir build-pjsip-real -C Debug --output-on-failure
+```
+
+For the Task 22B local prefix, the configure command was:
+
+```cmd
+cmake -S . -B build-pjsip-real ^
+  -DENABLE_PJSIP=ON ^
+  -DPJSIP_DIR=F:\Project\Iryme\SIP-Client-Audio-Video-RTT\.deps\pjsip-msvc-install ^
+  -DBUILD_TESTS=ON ^
+  -DCMAKE_PREFIX_PATH=F:\Programs\Qt\6.11.1\msvc2022_64
+```
+
+Successful configure output must include:
+
+```text
+PJSIP found - building with real SIP backend
+```
+
+When PJSIP is found, `HAVE_PJSIP` is defined and the real PJSIP backend is compiled. `SipManager::backendName()` returns `PJSIP/pjsua2`, and the status bar shows `SIP: PJSIP/pjsua2 (ready)`.
+
+### Missing PJSIP Is Fatal With ENABLE_PJSIP=ON
+
+This command must fail if the prefix is missing or invalid:
+
+```cmd
+cmake -S . -B build-pjsip-missing-check ^
+  -DENABLE_PJSIP=ON ^
+  -DBUILD_TESTS=ON ^
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.x.x\msvc2022_64
+```
+
+Expected error:
+
+```text
+PJSIP not found. Pass -DPJSIP_DIR=<path> or set the PJSIP_DIR environment variable to your PJSIP installation root.
+```
 
 ### Stub mode (default — ENABLE_PJSIP=OFF)
 

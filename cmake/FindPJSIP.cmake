@@ -33,6 +33,35 @@ elseif(DEFINED ENV{PJSIP_DIR})
     set(_PJSIP_SEARCH_HINT "$ENV{PJSIP_DIR}")
 endif()
 
+# --- Prefer pjproject's installed CMake package when available ---
+find_package(Pj CONFIG QUIET
+    HINTS
+        ${_PJSIP_SEARCH_HINT}
+        ${_PJSIP_SEARCH_HINT}/lib/cmake/Pj
+)
+
+if(Pj_FOUND AND TARGET Pj::pjsua2)
+    if(_PJSIP_SEARCH_HINT)
+        set(_PJSIP_CONFIG_PREFIX "${_PJSIP_SEARCH_HINT}")
+    else()
+        get_filename_component(_PJSIP_CONFIG_PREFIX "${Pj_DIR}/../../.." ABSOLUTE)
+    endif()
+
+    set(PJSIP_FOUND TRUE)
+    set(PJSIP_INCLUDE_DIRS "${_PJSIP_CONFIG_PREFIX}/include")
+    set(PJSIP_LIBRARIES Pj::pjsua2)
+
+    if(NOT TARGET PJSIP::pjsua2)
+        add_library(PJSIP::pjsua2 INTERFACE IMPORTED)
+        set_target_properties(PJSIP::pjsua2 PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${PJSIP_INCLUDE_DIRS}"
+            INTERFACE_LINK_LIBRARIES Pj::pjsua2
+        )
+    endif()
+
+    return()
+endif()
+
 # --- pkg-config (Linux / MSYS2) ---
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -54,8 +83,8 @@ find_path(PJSIP_INCLUDE_DIR
 )
 
 # --- Library search ---
-# pjsua2 is the primary C++ wrapper; pjsip-ua / pjsip / pjmedia / pjnath / pj are the rest
-set(_PJSIP_REQUIRED_LIBS pjsua2 pjsua pjsip-ua pjsip-simple pjsip
+# pjsua2 is the primary C++ wrapper; pjsua-lib / pjsip-ua / pjsip / pjmedia / pjnath / pj are the rest
+set(_PJSIP_REQUIRED_LIBS pjsua2 pjsua-lib pjsip-ua pjsip-simple pjsip
                          pjmedia-audiodev pjmedia-codec pjmedia-videodev pjmedia
                          pjnath pjlib-util pj)
 
@@ -67,6 +96,7 @@ foreach(_lib IN LISTS _PJSIP_REQUIRED_LIBS)
         NAMES ${_lib} lib${_lib}
         HINTS
             ${_PJSIP_SEARCH_HINT}/lib
+            ${_PJSIP_SEARCH_HINT}/bin
             ${_PJSIP_PC_LIBRARY_DIRS}
         PATHS
             /usr/local/lib
@@ -78,8 +108,8 @@ foreach(_lib IN LISTS _PJSIP_REQUIRED_LIBS)
     if(_PJSIP_LIB_${_lib})
         list(APPEND PJSIP_LIBRARIES "${_PJSIP_LIB_${_lib}}")
     else()
-        # Only pjsua2 and pjsua are strictly required to detect the installation
-        if(_lib STREQUAL "pjsua2" OR _lib STREQUAL "pjsua")
+        # Only pjsua2 and pjsua-lib are strictly required to detect the installation
+        if(_lib STREQUAL "pjsua2" OR _lib STREQUAL "pjsua-lib")
             set(_PJSIP_ALL_FOUND FALSE)
         endif()
     endif()

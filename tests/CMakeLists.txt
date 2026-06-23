@@ -351,3 +351,19 @@ target_link_libraries(test_sip_trace PRIVATE
 )
 
 add_test(NAME test_sip_trace COMMAND test_sip_trace)
+
+if(ENABLE_PJSIP AND PJSIP_FOUND)
+    foreach(_pjsip_test_target IN ITEMS
+        test_registration_state_machine
+        test_sip_manager
+        test_registration_retry
+        test_registration_expiry
+        test_profile_switch
+        test_audio_media
+        test_video_media
+    )
+        if(TARGET ${_pjsip_test_target})
+            target_link_libraries(${_pjsip_test_target} PRIVATE PJSIP::pjsua2)
+        endif()
+    endforeach()
+endif()
