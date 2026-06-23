@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-23
-Current task count: 20 of N
+Current task count: 21 of N
 
 ## Completed Tasks
 
@@ -27,6 +27,7 @@ Current task count: 20 of N
 | 18 | Audio Media Integration — AudioMediaManager, mute/unmute, level meters, device selection, PJSIP bridge wiring | feature/audio-media | IMPLEMENTED |
 | 19 | Video Media Integration — VideoMediaManager, video mute, camera selection, VideoPanel overlays, PJSIP bridge wiring | feature/video-media | IMPLEMENTED |
 | 20 | SIP Diagnostics & SIP Ladder — SipMessageTrace model, SipTraceLogger, SipLadderWidget, DiagnosticsPanel SIP tab, export Text/JSON | feature/sip-diagnostics-ladder | IMPLEMENTED |
+| 21 | Project Handoff 002 — formal project snapshot after Tasks 12-20 | feature/project-handoff-002 | IMPLEMENTED |
 
 > **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
 > are not ancestors of the active Tasks 6-10 lineage. The active code uses the
@@ -199,4 +200,4 @@ Current task count: 20 of N
 
 ## Next Recommended Task
 
-**Task 21:** Startup auto-register — register the active profile automatically on `initialize()` when a profile with a credential is configured.
+**Task 22:** Real PJSIP Integration Validation — install PJSIP, build with `-DENABLE_PJSIP=ON`, smoke-test registration against a real SIP registrar, fix compile/runtime issues, expose `pj::Account&` accessor in `SipAccount`, verify 401 credential challenge flow, confirm audio path connects. Validation and bug fixes only; no new features.
