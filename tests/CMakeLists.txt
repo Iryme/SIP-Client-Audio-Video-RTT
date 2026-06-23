@@ -23,6 +23,11 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
 )
 
+# SIP trace sources — required by any test that compiles SipManager.cpp
+set(SIP_TRACE_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+)
+
 # Audio + video media sources — required by any test that uses AudioMediaManager or VideoMediaManager
 set(AUDIO_MEDIA_SOURCES
     ${CMAKE_SOURCE_DIR}/src/media/AudioMediaManager.cpp
@@ -153,6 +158,7 @@ qt_add_executable(test_sip_manager
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
+    ${SIP_TRACE_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -184,6 +190,7 @@ qt_add_executable(test_registration_retry
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
+    ${SIP_TRACE_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -215,6 +222,7 @@ qt_add_executable(test_registration_expiry
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
+    ${SIP_TRACE_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -246,6 +254,7 @@ qt_add_executable(test_profile_switch
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
+    ${SIP_TRACE_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -324,3 +333,21 @@ target_link_libraries(test_video_media PRIVATE
 )
 
 add_test(NAME test_video_media COMMAND test_video_media)
+
+# ---- test_sip_trace ----------------------------------------------------
+qt_add_executable(test_sip_trace
+    test_sip_trace.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SIP_TRACE_SOURCES}
+)
+
+target_include_directories(test_sip_trace PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sip_trace PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sip_trace COMMAND test_sip_trace)

@@ -55,6 +55,8 @@ set(SOURCES
     src/gui/panels/RttPanel.cpp
     src/gui/panels/DiagnosticsPanel.cpp
     src/gui/panels/MediaPanel.cpp
+    src/gui/SipLadderWidget.cpp
+    src/sip/SipTraceLogger.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/core/Logger.cpp
@@ -85,6 +87,9 @@ set(HEADERS
     src/gui/panels/RttPanel.h
     src/gui/panels/DiagnosticsPanel.h
     src/gui/panels/MediaPanel.h
+    src/gui/SipLadderWidget.h
+    src/sip/SipMessageTrace.h
+    src/sip/SipTraceLogger.h
     src/gui/widgets/AppStatusBar.h
     src/gui/dialogs/SipProfileEditorDialog.h
     src/core/Logger.h

@@ -1,6 +1,8 @@
 #include "DiagnosticsPanel.h"
 #include "core/Logger.h"
 #include "core/AppSettings.h"
+#include "gui/SipLadderWidget.h"
+#include "sip/SipTraceLogger.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -11,6 +13,9 @@
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QTabWidget>
 #include <QFileDialog>
 #include <QClipboard>
 #include <QApplication>
@@ -23,38 +28,49 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget *parent)
 {
     setObjectName("DiagnosticsPanel");
 
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(4);
+    auto *rootLayout = new QVBoxLayout(this);
+    rootLayout->setContentsMargins(4, 4, 4, 4);
+    rootLayout->setSpacing(4);
 
-    // Title + toolbar row
+    auto *tabs = new QTabWidget(this);
+    tabs->setDocumentMode(true);
+
+    // -----------------------------------------------------------------------
+    // Tab 0: Log
+    // -----------------------------------------------------------------------
+    auto *logTab = new QWidget(tabs);
+    auto *logLayout = new QVBoxLayout(logTab);
+    logLayout->setContentsMargins(0, 4, 0, 0);
+    logLayout->setSpacing(4);
+
+    // Toolbar row
     auto *toolbarRow = new QHBoxLayout();
-    auto *title = new QLabel(tr("Diagnostics / Logs"), this);
+    auto *title = new QLabel(tr("Diagnostics / Logs"), logTab);
     title->setStyleSheet("font-weight: bold; font-size: 12px;");
     toolbarRow->addWidget(title);
     toolbarRow->addSpacing(12);
     buildToolbar(toolbarRow);
     toolbarRow->addStretch();
 
-    m_search = new QLineEdit(this);
+    m_search = new QLineEdit(logTab);
     m_search->setPlaceholderText(tr("Filter..."));
     m_search->setFixedWidth(160);
     toolbarRow->addWidget(m_search);
 
-    auto *btnClear  = new QPushButton(tr("Clear"),    this);
-    auto *btnCopy   = new QPushButton(tr("Copy Sel"), this);
-    auto *btnExport = new QPushButton(tr("Export"),   this);
-    auto *btnBundle = new QPushButton(tr("Bundle"),   this);
+    auto *btnClear  = new QPushButton(tr("Clear"),    logTab);
+    auto *btnCopy   = new QPushButton(tr("Copy Sel"), logTab);
+    auto *btnExport = new QPushButton(tr("Export"),   logTab);
+    auto *btnBundle = new QPushButton(tr("Bundle"),   logTab);
     toolbarRow->addWidget(btnClear);
     toolbarRow->addWidget(btnCopy);
     toolbarRow->addWidget(btnExport);
     toolbarRow->addWidget(btnBundle);
-
-    layout->addLayout(toolbarRow);
+    logLayout->addLayout(toolbarRow);
 
     // Log table
-    m_table = new QTableWidget(0, 5, this);
-    m_table->setHorizontalHeaderLabels({tr("Time"), tr("Level"), tr("Category"), tr("Message"), tr("Payload")});
+    m_table = new QTableWidget(0, 5, logTab);
+    m_table->setHorizontalHeaderLabels(
+        {tr("Time"), tr("Level"), tr("Category"), tr("Message"), tr("Payload")});
     m_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
     m_table->horizontalHeader()->setStretchLastSection(false);
     m_table->setColumnWidth(0, 100);
@@ -66,15 +82,93 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget *parent)
     m_table->setEditTriggers(QTableWidget::NoEditTriggers);
     m_table->setAlternatingRowColors(true);
     m_table->setWordWrap(false);
-    layout->addWidget(m_table, 1);
+    logLayout->addWidget(m_table, 1);
 
-    // Wire up signals
     connect(&Logger::instance(), &Logger::entryAdded, this, &DiagnosticsPanel::onEntryAdded);
     connect(btnClear,  &QPushButton::clicked, this, &DiagnosticsPanel::onClear);
     connect(btnCopy,   &QPushButton::clicked, this, &DiagnosticsPanel::onCopySelected);
     connect(btnExport, &QPushButton::clicked, this, &DiagnosticsPanel::onExportVisible);
     connect(btnBundle, &QPushButton::clicked, this, &DiagnosticsPanel::onExportBundle);
+
+    tabs->addTab(logTab, tr("Log"));
+
+    // -----------------------------------------------------------------------
+    // Tab 1: SIP Ladder
+    // -----------------------------------------------------------------------
+    auto *ladderTab = new QWidget(tabs);
+    auto *ladderLayout = new QVBoxLayout(ladderTab);
+    ladderLayout->setContentsMargins(0, 4, 0, 0);
+    ladderLayout->setSpacing(4);
+
+    auto *ladderToolbar = new QHBoxLayout();
+    auto *ladderTitle = new QLabel(tr("SIP Message Ladder"), ladderTab);
+    ladderTitle->setStyleSheet("font-weight: bold; font-size: 12px;");
+    ladderToolbar->addWidget(ladderTitle);
+    ladderToolbar->addStretch();
+    auto *btnLadderClear    = new QPushButton(tr("Clear"),       ladderTab);
+    auto *btnLadderExportTx = new QPushButton(tr("Export Text"), ladderTab);
+    auto *btnLadderExportJs = new QPushButton(tr("Export JSON"), ladderTab);
+    ladderToolbar->addWidget(btnLadderClear);
+    ladderToolbar->addWidget(btnLadderExportTx);
+    ladderToolbar->addWidget(btnLadderExportJs);
+    ladderLayout->addLayout(ladderToolbar);
+
+    m_ladderScroll = new QScrollArea(ladderTab);
+    m_ladderScroll->setWidgetResizable(true);
+    m_ladderScroll->setFrameShape(QFrame::NoFrame);
+
+    m_ladder = new SipLadderWidget(m_ladderScroll);
+    m_ladderScroll->setWidget(m_ladder);
+    ladderLayout->addWidget(m_ladderScroll, 1);
+
+    connect(btnLadderClear, &QPushButton::clicked,
+            this, &DiagnosticsPanel::onClearLadder);
+
+    connect(btnLadderExportTx, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(
+            this, tr("Export SIP Trace"),
+            QStringLiteral("sip-trace.txt"),
+            tr("Text files (*.txt);;All (*.*)"));
+        if (path.isEmpty()) return;
+        QFile f(path);
+        if (!f.open(QFile::WriteOnly | QFile::Text)) return;
+        QTextStream(&f) << SipTraceLogger::instance().exportToText();
+    });
+
+    connect(btnLadderExportJs, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(
+            this, tr("Export SIP Trace"),
+            QStringLiteral("sip-trace.json"),
+            tr("JSON files (*.json);;All (*.*)"));
+        if (path.isEmpty()) return;
+        QFile f(path);
+        if (!f.open(QFile::WriteOnly | QFile::Text)) return;
+        QTextStream(&f) << SipTraceLogger::instance().exportToJson();
+    });
+
+    // Connect SipTraceLogger → ladder widget
+    connect(&SipTraceLogger::instance(), &SipTraceLogger::messageLogged,
+            m_ladder, &SipLadderWidget::onMessageLogged);
+    connect(&SipTraceLogger::instance(), &SipTraceLogger::cleared,
+            m_ladder, &SipLadderWidget::onCleared);
+
+    // Auto-scroll ladder to bottom when a new message arrives (queued so
+    // the widget geometry has updated before we query the scroll maximum).
+    connect(&SipTraceLogger::instance(), &SipTraceLogger::messageLogged,
+            this, [this]() {
+                QMetaObject::invokeMethod(m_ladderScroll->verticalScrollBar(),
+                    [this]() {
+                        m_ladderScroll->verticalScrollBar()->setValue(
+                            m_ladderScroll->verticalScrollBar()->maximum());
+                    }, Qt::QueuedConnection);
+            });
+
+    tabs->addTab(ladderTab, tr("SIP Ladder"));
+
+    rootLayout->addWidget(tabs, 1);
 }
+
+// ---------------------------------------------------------------------------
 
 void DiagnosticsPanel::buildToolbar(QHBoxLayout *row)
 {
@@ -85,10 +179,7 @@ void DiagnosticsPanel::buildToolbar(QHBoxLayout *row)
         btn->setChecked(defaultOn);
         btn->setObjectName("LogLevelBtn");
         btn->setFixedHeight(24);
-
-        // Sync with Logger
         Logger::instance().setLevelEnabled(level, defaultOn);
-
         connect(btn, &QToolButton::toggled, this, [this, level](bool on) {
             Logger::instance().setLevelEnabled(level, on);
         });
@@ -111,13 +202,12 @@ void DiagnosticsPanel::onEntryAdded(const LogEntry &entry)
     const int row = m_table->rowCount();
     m_table->insertRow(row);
 
-    auto *tTime = new QTableWidgetItem(entry.timestamp.toString("hh:mm:ss.zzz"));
+    auto *tTime  = new QTableWidgetItem(entry.timestamp.toString("hh:mm:ss.zzz"));
     auto *tLevel = new QTableWidgetItem(Logger::levelName(entry.level));
     auto *tCat   = new QTableWidgetItem(Logger::categoryName(entry.category));
     auto *tMsg   = new QTableWidgetItem(entry.message);
     auto *tPay   = new QTableWidgetItem(entry.payload);
 
-    // Color coding
     QColor levelColor;
     switch (entry.level) {
     case LogLevel::Info:  levelColor = QColor("#50b8e0"); break;
@@ -133,7 +223,6 @@ void DiagnosticsPanel::onEntryAdded(const LogEntry &entry)
     m_table->setItem(row, 2, tCat);
     m_table->setItem(row, 3, tMsg);
     m_table->setItem(row, 4, tPay);
-
     m_table->scrollToBottom();
 }
 
@@ -197,14 +286,20 @@ void DiagnosticsPanel::onExportVisible()
 
 void DiagnosticsPanel::onExportBundle()
 {
-    // Placeholder: future implementation will zip logs + SIP traces
     QMessageBox::information(this, tr("Debug Bundle"),
         tr("Debug bundle export is not yet implemented.\n"
            "It will package logs, SIP traces, and system info.\n\n"
+           "To export SIP traces now, switch to the SIP Ladder tab and use\n"
+           "Export Text or Export JSON.\n\n"
            "Passwords and secrets are never included."));
+}
+
+void DiagnosticsPanel::onClearLadder()
+{
+    SipTraceLogger::instance().clear();
 }
 
 void DiagnosticsPanel::onLevelToggled(bool)
 {
-    // Intentionally empty — individual level buttons handle their own logic
+    // Individual level buttons handle their own logic in buildToolbar lambdas.
 }

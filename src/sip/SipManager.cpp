@@ -9,6 +9,7 @@
 #include "sip/SipProfileManager.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
+#include "sip/SipTraceLogger.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -235,6 +236,17 @@ bool SipManager::registerActiveProfile()
     }
 #endif
 
+    // Emit REGISTER outbound trace before sending.
+    {
+        SipMessageTrace trace;
+        trace.direction = SipMessageTrace::Direction::Outbound;
+        trace.method    = QStringLiteral("REGISTER");
+        trace.fromUri   = profile.effectiveSipUri();
+        trace.toUri     = QStringLiteral("sip:") + profile.registrar;
+        trace.cSeq      = QStringLiteral("1 REGISTER");
+        SipTraceLogger::instance().logMessage(trace);
+    }
+
     m_registeredProfileId = profile.profileId;
     m_account = new SipAccount(profile.profileId, this);
     connect(m_account, &SipAccount::registrationStateChanged,
@@ -297,6 +309,20 @@ bool SipManager::unregisterActiveProfile()
     // Registered or RegistrationFailed with an account.
     Logger::instance().info(LogCategory::Sip,
         QStringLiteral("Unregister started for profile %1").arg(m_registeredProfileId));
+
+    {
+        SipMessageTrace trace;
+        trace.direction = SipMessageTrace::Direction::Outbound;
+        trace.method    = QStringLiteral("REGISTER"); // SIP uses REGISTER with Expires:0
+        trace.cSeq      = QStringLiteral("2 REGISTER");
+        const SipProfile up = SipProfileManager::instance().activeProfile();
+        if (!up.isNull()) {
+            trace.fromUri = up.effectiveSipUri();
+            trace.toUri   = QStringLiteral("sip:") + up.registrar;
+        }
+        SipTraceLogger::instance().logMessage(trace);
+    }
+
     m_stateMachine.tryTransition(RegistrationState::Unregistering,
                                  QStringLiteral("Unregistering"));
     return m_account->startUnregistration();
@@ -483,17 +509,60 @@ void SipManager::onAccountRegistrationStateChanged(RegistrationState state,
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Register success for profile %1 (status %2)")
                 .arg(m_registeredProfileId).arg(statusCode));
+        {
+            SipMessageTrace trace;
+            trace.direction  = SipMessageTrace::Direction::Inbound;
+            trace.statusCode = (statusCode > 0) ? statusCode : 200;
+            trace.statusText = QStringLiteral("OK");
+            trace.method     = QStringLiteral("REGISTER");
+            trace.cSeq       = QStringLiteral("1 REGISTER");
+            const SipProfile rp = SipProfileManager::instance().activeProfile();
+            if (!rp.isNull()) {
+                trace.fromUri = QStringLiteral("sip:") + rp.registrar;
+                trace.toUri   = rp.effectiveSipUri();
+            }
+            SipTraceLogger::instance().logMessage(trace);
+        }
         m_retryAttempt = 0;
         scheduleRefresh(m_registrationExpirySeconds);
     } else if (state == RegistrationState::RegistrationFailed) {
         Logger::instance().error(LogCategory::Sip,
             QStringLiteral("Register failed for profile %1: %2 (status %3)")
                 .arg(m_registeredProfileId, statusText).arg(statusCode));
+        {
+            SipMessageTrace trace;
+            trace.direction  = SipMessageTrace::Direction::Inbound;
+            trace.statusCode = (statusCode > 0) ? statusCode : 503;
+            trace.statusText = statusText.isEmpty()
+                ? QStringLiteral("Service Unavailable") : statusText;
+            trace.method     = QStringLiteral("REGISTER");
+            trace.cSeq       = QStringLiteral("1 REGISTER");
+            const SipProfile fp = SipProfileManager::instance().activeProfile();
+            if (!fp.isNull()) {
+                trace.fromUri = QStringLiteral("sip:") + fp.registrar;
+                trace.toUri   = fp.effectiveSipUri();
+            }
+            SipTraceLogger::instance().logMessage(trace);
+        }
         scheduleRetryIfEligible(statusCode);
     } else if (state == RegistrationState::Unregistered) {
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Unregister success for profile %1 (status %2)")
                 .arg(m_registeredProfileId).arg(statusCode));
+        {
+            SipMessageTrace trace;
+            trace.direction  = SipMessageTrace::Direction::Inbound;
+            trace.statusCode = (statusCode > 0) ? statusCode : 200;
+            trace.statusText = QStringLiteral("OK");
+            trace.method     = QStringLiteral("REGISTER");
+            trace.cSeq       = QStringLiteral("2 REGISTER");
+            const SipProfile up = SipProfileManager::instance().activeProfile();
+            if (!up.isNull()) {
+                trace.fromUri = QStringLiteral("sip:") + up.registrar;
+                trace.toUri   = up.effectiveSipUri();
+            }
+            SipTraceLogger::instance().logMessage(trace);
+        }
         destroyAccount();
         if (!m_pendingProfileId.isEmpty())
             completePendingSwitch();
@@ -719,6 +788,18 @@ bool SipManager::makeCall(const QString &remoteUri)
     AudioMediaManager::instance().attachCall(m_activeCall);
     VideoMediaManager::instance().attachCall(m_activeCall);
 
+    // Emit INVITE outbound trace.
+    {
+        SipMessageTrace trace;
+        trace.direction = SipMessageTrace::Direction::Outbound;
+        trace.method    = QStringLiteral("INVITE");
+        trace.toUri     = remoteUri.trimmed();
+        const SipProfile cp = SipProfileManager::instance().activeProfile();
+        if (!cp.isNull())
+            trace.fromUri = cp.effectiveSipUri();
+        SipTraceLogger::instance().logMessage(trace);
+    }
+
     return m_activeCall->makeCall(remoteUri);
 }
 
@@ -837,6 +918,19 @@ void SipManager::onAccountIncomingCall(const QString &remoteUri)
             this, &SipManager::remoteVideoStopped);
     AudioMediaManager::instance().attachCall(m_activeCall);
     VideoMediaManager::instance().attachCall(m_activeCall);
+
+    // Emit INVITE inbound trace.
+    {
+        SipMessageTrace trace;
+        trace.direction = SipMessageTrace::Direction::Inbound;
+        trace.method    = QStringLiteral("INVITE");
+        trace.fromUri   = remoteUri;
+        const SipProfile ip = SipProfileManager::instance().activeProfile();
+        if (!ip.isNull())
+            trace.toUri = ip.effectiveSipUri();
+        SipTraceLogger::instance().logMessage(trace);
+    }
+
     m_activeCall->stateMachine().tryTransition(CallState::IncomingRinging,
                                                QStringLiteral("Incoming call from %1")
                                                    .arg(remoteUri));
@@ -848,6 +942,69 @@ void SipManager::onActiveCallStateChanged(CallState state,
                                           int statusCode)
 {
     emit callStateChanged(state, statusText, statusCode);
+
+    // Emit SIP signaling traces for key call state transitions.
+    const QString remUri = m_activeCall ? m_activeCall->remoteUri() : QString{};
+    const QString cid    = m_activeCall ? m_activeCall->callId()    : QString{};
+    const SipProfile cp  = SipProfileManager::instance().activeProfile();
+    const QString localUri = cp.isNull() ? QString{} : cp.effectiveSipUri();
+
+    if (state == CallState::Ringing) {
+        // Outgoing: remote is ringing (180 Ringing inbound).
+        SipMessageTrace trace;
+        trace.direction  = SipMessageTrace::Direction::Inbound;
+        trace.statusCode = 180;
+        trace.statusText = QStringLiteral("Ringing");
+        trace.method     = QStringLiteral("INVITE");
+        trace.fromUri    = remUri;
+        trace.toUri      = localUri;
+        trace.callId     = cid;
+        SipTraceLogger::instance().logMessage(trace);
+    } else if (state == CallState::Active) {
+        // 200 OK — direction depends on whether we originated the call.
+        // In stub mode INVITE always originates from the makeCall() side,
+        // so 200 OK is inbound. For incoming calls it would be outbound,
+        // but the state machine doesn't expose call direction here; we use
+        // Inbound as a reasonable stub-mode default.
+        SipMessageTrace ok;
+        ok.direction  = SipMessageTrace::Direction::Inbound;
+        ok.statusCode = 200;
+        ok.statusText = QStringLiteral("OK");
+        ok.method     = QStringLiteral("INVITE");
+        ok.fromUri    = remUri;
+        ok.toUri      = localUri;
+        ok.callId     = cid;
+        SipTraceLogger::instance().logMessage(ok);
+
+        // ACK is always outbound (sent by the UAS-answerer or UAC-original).
+        SipMessageTrace ack;
+        ack.direction = SipMessageTrace::Direction::Outbound;
+        ack.method    = QStringLiteral("ACK");
+        ack.fromUri   = localUri;
+        ack.toUri     = remUri;
+        ack.callId    = cid;
+        SipTraceLogger::instance().logMessage(ack);
+    } else if (state == CallState::Disconnecting) {
+        // BYE outbound (we initiated the hang-up in stub mode).
+        SipMessageTrace bye;
+        bye.direction = SipMessageTrace::Direction::Outbound;
+        bye.method    = QStringLiteral("BYE");
+        bye.fromUri   = localUri;
+        bye.toUri     = remUri;
+        bye.callId    = cid;
+        SipTraceLogger::instance().logMessage(bye);
+    } else if (state == CallState::Failed && statusCode >= 400) {
+        // Error response inbound.
+        SipMessageTrace err;
+        err.direction  = SipMessageTrace::Direction::Inbound;
+        err.statusCode = statusCode;
+        err.statusText = statusText;
+        err.method     = QStringLiteral("INVITE");
+        err.fromUri    = remUri;
+        err.toUri      = localUri;
+        err.callId     = cid;
+        SipTraceLogger::instance().logMessage(err);
+    }
 
     // Clean up the call object once it has fully ended.
     if (state == CallState::Idle || state == CallState::Failed) {
