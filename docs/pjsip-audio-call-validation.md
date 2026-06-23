@@ -57,8 +57,11 @@ The probe reads these environment variables:
 - `SIP_LIVE_USERNAME`
 - `SIP_LIVE_PASSWORD`
 - `SIP_LIVE_TARGET`
+- `SIP_LIVE_OUTBOUND_PROXY` (optional)
 
-`SIP_LIVE_TARGET` may be a full SIP URI such as `sip:1002@sensor-x.local` or a bare username such as `1002`; the probe normalizes bare usernames to the configured domain.
+`SIP_LIVE_TARGET` may be a full SIP URI such as `sip:1002@sensor-x.local` or a bare username such as `1002`; the probe normalizes bare usernames to the configured domain when no outbound proxy is set.
+
+If `SIP_LIVE_OUTBOUND_PROXY` is set, the probe keeps `SIP_LIVE_TARGET` as the Request-URI and sends the INVITE through the proxy instead of rewriting the target to an IP address.
 
 Build both live tools with:
 
@@ -84,6 +87,25 @@ Validation flow:
 7. Unregister.
 
 Known limitation: the app logs still do not explicitly capture the intermediate `401 Unauthorized` challenge as a named app event. Digest authentication is validated by the successful REGISTER and call setup path.
+
+### Why INVITE Can Fail With `PJ_ERESOLVE`
+
+If you call `sip:paul@sensor-x.local` without an outbound proxy, PJSIP tries to resolve `sensor-x.local` directly for the INVITE next hop. In this setup that can fail with `PJ_ERESOLVE`, even though REGISTER succeeds against `10.2.0.180`.
+
+Quick workaround:
+
+```text
+SIP_LIVE_TARGET=sip:paul@10.2.0.180
+```
+
+Correct fix:
+
+```text
+SIP_LIVE_OUTBOUND_PROXY=sip:10.2.0.180;transport=udp
+SIP_LIVE_TARGET=sip:paul@sensor-x.local
+```
+
+With the proxy set, the Request-URI remains the peer AoR and the proxy decides the next hop.
 
 ## Test Matrix
 

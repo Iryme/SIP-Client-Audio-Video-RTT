@@ -34,6 +34,18 @@ static QString normalizeTarget(const QString &target, const QString &domain)
     return QStringLiteral("sip:%1").arg(trimmed);
 }
 
+static QString normalizeTargetWithoutHostRewrite(const QString &target)
+{
+    const QString trimmed = target.trimmed();
+    if (trimmed.isEmpty())
+        return {};
+    if (trimmed.startsWith(QStringLiteral("sip:"), Qt::CaseInsensitive)
+        || trimmed.startsWith(QStringLiteral("sips:"), Qt::CaseInsensitive)) {
+        return trimmed;
+    }
+    return QStringLiteral("sip:%1").arg(trimmed);
+}
+
 static bool waitFor(int timeoutMs, const std::function<bool()> &predicate)
 {
     if (predicate())
@@ -96,6 +108,7 @@ int main(int argc, char **argv)
     const QString username = envValue("SIP_LIVE_USERNAME");
     const QString password = envValue("SIP_LIVE_PASSWORD");
     const QString targetRaw = envValue("SIP_LIVE_TARGET");
+    const QString outboundProxy = envValue("SIP_LIVE_OUTBOUND_PROXY");
 
     if (server.isEmpty() || domain.isEmpty() || username.isEmpty()
         || password.isEmpty() || targetRaw.isEmpty()) {
@@ -115,7 +128,9 @@ int main(int argc, char **argv)
         }
     });
 
-    const QString target = normalizeTarget(targetRaw, domain);
+    const QString target = outboundProxy.isEmpty()
+        ? normalizeTarget(targetRaw, domain)
+        : normalizeTargetWithoutHostRewrite(targetRaw);
     if (target.isEmpty()) {
         std::cerr << "SIP_LIVE_TARGET could not be normalized.\n";
         return 3;
@@ -126,6 +141,8 @@ int main(int argc, char **argv)
     std::cout << "Domain/Realm: " << qPrintable(domain) << '\n';
     std::cout << "Username: " << qPrintable(username) << '\n';
     std::cout << "Target: " << qPrintable(target) << '\n';
+    if (!outboundProxy.isEmpty())
+        std::cout << "Outbound proxy: " << qPrintable(outboundProxy) << '\n';
     std::cout << "Transport: UDP\n";
 
     SipManager &sip = SipManager::instance();
@@ -187,9 +204,19 @@ int main(int argc, char **argv)
         cleanup();
         return 7;
     }
+
+    SipProfile live = profiles.profile(profile.profileId);
+    live.outboundProxy = outboundProxy;
+    live.proxy = outboundProxy;
+    if (!outboundProxy.isEmpty() && !profiles.update(live)) {
+        std::cerr << "Failed to store outbound proxy on live profile.\n";
+        cleanup();
+        return 8;
+    }
     profiles.setActiveProfileId(profile.profileId);
 
     bool audioMediaActive = false;
+    bool callFailedObserved = false;
 
     QObject::connect(&sip, &SipManager::registrationStateChanged,
                      [](RegistrationState state, const QString &statusText, int statusCode) {
@@ -219,7 +246,8 @@ int main(int argc, char **argv)
                   << " reason=\"" << qPrintable(reason) << "\"\n";
     });
     QObject::connect(&sip, &SipManager::callFailed,
-                     [](const QString &remoteUri, const QString &reason, int statusCode) {
+                     [&callFailedObserved](const QString &remoteUri, const QString &reason, int statusCode) {
+        callFailedObserved = true;
         std::cout << "CALL failed: " << qPrintable(remoteUri)
                   << " status=" << statusCode
                   << " reason=\"" << qPrintable(reason) << "\"\n";
@@ -229,7 +257,7 @@ int main(int argc, char **argv)
     if (!sip.registerActiveProfile()) {
         std::cerr << "registerActiveProfile() returned false.\n";
         cleanup();
-        return 8;
+        return 9;
     }
 
     if (!waitFor(20000, [&] { return sip.registrationState() == RegistrationState::Registered; })) {
@@ -238,7 +266,7 @@ int main(int argc, char **argv)
                   << " status=" << sip.registrationStatusCode()
                   << " text=" << qPrintable(sip.registrationStatusText()) << '\n';
         cleanup();
-        return 9;
+        return 10;
     }
     std::cout << "REGISTER final state: Registered status="
               << sip.registrationStatusCode() << '\n';
@@ -247,62 +275,63 @@ int main(int argc, char **argv)
     if (!sip.makeCall(target)) {
         std::cerr << "makeCall() returned false.\n";
         cleanup();
-        return 10;
+        return 11;
     }
 
     if (!waitFor(120000, [&] {
             const CallState state = sip.callState();
-            return state == CallState::Active || state == CallState::Failed;
+            return callFailedObserved || state == CallState::Active || state == CallState::Failed;
         })) {
         std::cerr << "Call did not reach Active within timeout. State="
                   << qPrintable(callStateName(sip.callState()))
                   << " status=" << qPrintable(sip.callStatusText()) << '\n';
         cleanup();
-        return 11;
+        return 12;
     }
-    if (sip.callState() == CallState::Failed) {
+    if (callFailedObserved || sip.callState() == CallState::Failed) {
         std::cerr << "Call failed before media became active. Status="
                   << qPrintable(sip.callStatusText()) << '\n';
         cleanup();
-        return 12;
+        return 13;
     }
     std::cout << "CALL reached Active\n";
 
     if (!waitFor(30000, [&] {
-            return audioMediaActive || sip.callState() == CallState::Failed;
+            return audioMediaActive || callFailedObserved || sip.callState() == CallState::Failed;
         })) {
         std::cerr << "Call left Active before audio media became detectable.\n";
         cleanup();
-        return 13;
+        return 14;
     }
-    if (sip.callState() == CallState::Failed) {
+    if (callFailedObserved || sip.callState() == CallState::Failed) {
         std::cerr << "Call failed before audio media became active.\n";
         cleanup();
-        return 13;
+        return 14;
     }
     if (!audioMediaActive) {
         std::cerr << "Audio media callback was not observed.\n";
         cleanup();
-        return 13;
+        return 14;
     }
     std::cout << "AUDIO media active\n";
 
     if (!waitFor(10000, [&] {
-            return sip.callState() == CallState::Idle
+            return callFailedObserved
+                || sip.callState() == CallState::Idle
                 || sip.callState() == CallState::Failed;
         })) {
         std::cout << "Audio media stayed up long enough for manual validation\n";
     } else {
         std::cerr << "Call ended before the manual audio window completed.\n";
         cleanup();
-        return 14;
+        return 15;
     }
 
     std::cout << "HANGUP start\n";
     if (!sip.hangupCall()) {
         std::cerr << "hangupCall() returned false.\n";
         cleanup();
-        return 15;
+        return 16;
     }
 
     if (!waitFor(20000, [&] { return sip.callState() == CallState::Idle; })) {
@@ -310,7 +339,7 @@ int main(int argc, char **argv)
                   << qPrintable(callStateName(sip.callState()))
                   << " status=" << qPrintable(sip.callStatusText()) << '\n';
         cleanup();
-        return 16;
+        return 17;
     }
     std::cout << "HANGUP final state: Idle\n";
 
@@ -318,7 +347,7 @@ int main(int argc, char **argv)
     if (!sip.unregisterActiveProfile()) {
         std::cerr << "unregisterActiveProfile() returned false.\n";
         cleanup();
-        return 17;
+        return 18;
     }
     if (!waitFor(20000, [&] { return sip.registrationState() == RegistrationState::Unregistered; })) {
         std::cerr << "UNREGISTER did not reach Unregistered. State="
@@ -326,7 +355,7 @@ int main(int argc, char **argv)
                   << " status=" << sip.registrationStatusCode()
                   << " text=" << qPrintable(sip.registrationStatusText()) << '\n';
         cleanup();
-        return 18;
+        return 19;
     }
     std::cout << "UNREGISTER final state: Unregistered status="
               << sip.registrationStatusCode() << '\n';
