@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Test Multimedia)
 
+option(BUILD_LIVE_VALIDATION_TOOLS "Build manual live SIP validation tools" OFF)
+
 # Common security sources for tests
 set(SECURITY_SOURCES
     ${CMAKE_SOURCE_DIR}/src/security/CredentialStore.cpp
@@ -366,4 +368,41 @@ if(ENABLE_PJSIP AND PJSIP_FOUND)
             target_link_libraries(${_pjsip_test_target} PRIVATE PJSIP::pjsua2)
         endif()
     endforeach()
+endif()
+
+if(BUILD_LIVE_VALIDATION_TOOLS)
+    if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
+        message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")
+    endif()
+
+    qt_add_executable(live_registration_probe
+        live_registration_probe.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+        ${AUDIO_MEDIA_SOURCES}
+        ${SECURITY_SOURCES}
+        ${SECURITY_HEADERS}
+    )
+
+    target_include_directories(live_registration_probe PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(live_registration_probe PRIVATE
+        Qt6::Core
+        Qt6::Multimedia
+        PJSIP::pjsua2
+    )
+
+    if(WIN32)
+        target_link_libraries(live_registration_probe PRIVATE Advapi32)
+    endif()
 endif()

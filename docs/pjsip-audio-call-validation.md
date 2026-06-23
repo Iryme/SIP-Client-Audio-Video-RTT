@@ -24,6 +24,27 @@ cmake -S . -B build-pjsip-real `
 
 The app and tests compile with `HAVE_PJSIP`; `test_sip_manager` asserts `SipManager::backendName() == "PJSIP/pjsua2"`. Live Kamailio registration, INVITE, RTP, and BYE validation are still the next step.
 
+### Live Validation Tool
+
+When you want a focused registration-only check, build the probe with `BUILD_LIVE_VALIDATION_TOOLS=ON`:
+
+`BUILD_LIVE_VALIDATION_TOOLS` is `OFF` by default.
+
+```cmd
+cmake -S . -B build-pjsip-real ^
+  -DENABLE_PJSIP=ON ^
+  -DPJSIP_DIR=F:\Project\Iryme\SIP-Client-Audio-Video-RTT\.deps\pjsip-msvc-install ^
+  -DBUILD_TESTS=ON ^
+  -DBUILD_LIVE_VALIDATION_TOOLS=ON ^
+  -DCMAKE_PREFIX_PATH=F:\Programs\Qt\6.11.1\msvc2022_64
+
+cmake --build build-pjsip-real --config Debug --target live_registration_probe
+```
+
+The probe reads `SIP_LIVE_SERVER`, `SIP_LIVE_PORT`, `SIP_LIVE_DOMAIN`, `SIP_LIVE_USERNAME`, and `SIP_LIVE_PASSWORD` from the environment for the current process only.
+
+The application currently proves digest auth by reaching `Registered`, but it does not yet emit an explicit app-level log entry for the intermediate `401 Unauthorized`/`407 Proxy Authentication Required` challenge. The PJSIP backend handles the challenge correctly, but the log evidence is still indirect until a dedicated signaling trace is added.
+
 ## Test Matrix
 
 Use three SIP accounts on the same Kamailio realm:
