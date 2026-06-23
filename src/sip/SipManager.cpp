@@ -3,6 +3,7 @@
 #include "core/Logger.h"
 #include "security/CredentialStore.h"
 #include "sip/SipProfileManager.h"
+#include "sip/RegistrationRetryPolicy.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -64,6 +65,10 @@ SipManager::SipManager() : QObject(nullptr)
             this, &SipManager::registrationStateChanged);
     connect(&m_stateMachine, &RegistrationStateMachine::transitionTimedOut,
             this, &SipManager::onStateMachineTimedOut);
+
+    m_retryTimer.setSingleShot(true);
+    connect(&m_retryTimer, &QTimer::timeout,
+            this, &SipManager::onRetryTimerFired);
 }
 
 SipManager::~SipManager()
@@ -105,6 +110,9 @@ void SipManager::shutdown()
         return;
 
     Logger::instance().info(LogCategory::Sip, QStringLiteral("Shutting down SIP backend"));
+
+    m_retryTimer.stop();
+    m_retryAttempt = 0;
 
     if (m_account) {
         m_account->startUnregistration();
@@ -221,6 +229,9 @@ bool SipManager::registerActiveProfile()
 
 bool SipManager::unregisterActiveProfile()
 {
+    m_retryTimer.stop();
+    m_retryAttempt = 0;
+
     const RegistrationState current = m_stateMachine.state();
 
     if (current == RegistrationState::Unregistered) {
@@ -323,10 +334,12 @@ void SipManager::onAccountRegistrationStateChanged(RegistrationState state,
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Register success for profile %1 (status %2)")
                 .arg(m_registeredProfileId).arg(statusCode));
+        m_retryAttempt = 0;
     } else if (state == RegistrationState::RegistrationFailed) {
         Logger::instance().error(LogCategory::Sip,
             QStringLiteral("Register failed for profile %1: %2 (status %3)")
                 .arg(m_registeredProfileId, statusText).arg(statusCode));
+        scheduleRetryIfEligible(statusCode);
     } else if (state == RegistrationState::Unregistered) {
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Unregister success for profile %1 (status %2)")
@@ -341,6 +354,10 @@ void SipManager::onStateMachineTimedOut(RegistrationState stuckState)
         QStringLiteral("Registration state machine timed out in %1; cleaning up account")
             .arg(registrationStateName(stuckState)));
     destroyAccount();
+
+    // Watchdog timeout during Registering is treated as a transient failure (code 0).
+    if (stuckState == RegistrationState::Registering)
+        scheduleRetryIfEligible(0);
 }
 
 void SipManager::destroyAccount()
@@ -351,6 +368,62 @@ void SipManager::destroyAccount()
     delete m_account;
     m_account = nullptr;
     m_registeredProfileId.clear();
+}
+
+void SipManager::scheduleRetryIfEligible(int statusCode)
+{
+    if (!RegistrationRetryPolicy::isRetryable(statusCode)) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Registration failed with non-retryable status %1; not retrying")
+                .arg(statusCode));
+        m_retryAttempt = 0;
+        return;
+    }
+
+    if (m_retryAttempt >= m_retryPolicy.maxAttempts) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Max retry attempts (%1) reached for profile %2; giving up")
+                .arg(m_retryPolicy.maxAttempts)
+                .arg(SipProfileManager::instance().activeProfileId()));
+        m_retryAttempt = 0;
+        return;
+    }
+
+    ++m_retryAttempt;
+    const int delay = m_retryPolicy.delayForAttempt(m_retryAttempt);
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Scheduling retry %1/%2 in %3 ms for profile %4")
+            .arg(m_retryAttempt)
+            .arg(m_retryPolicy.maxAttempts)
+            .arg(delay)
+            .arg(SipProfileManager::instance().activeProfileId()));
+    m_retryTimer.start(delay);
+    emit retryScheduled(m_retryAttempt, delay);
+}
+
+void SipManager::setRetryPolicy(const RegistrationRetryPolicy &policy)
+{
+    m_retryPolicy = policy;
+}
+
+const RegistrationRetryPolicy &SipManager::retryPolicy() const
+{
+    return m_retryPolicy;
+}
+
+int SipManager::retryAttempt() const
+{
+    return m_retryAttempt;
+}
+
+void SipManager::onRetryTimerFired()
+{
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Retry attempt %1/%2 for profile %3")
+            .arg(m_retryAttempt)
+            .arg(m_retryPolicy.maxAttempts)
+            .arg(SipProfileManager::instance().activeProfileId()));
+    registerActiveProfile();
 }
 
 #ifdef HAVE_PJSIP

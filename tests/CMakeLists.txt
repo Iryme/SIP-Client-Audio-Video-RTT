@@ -132,6 +132,7 @@ qt_add_executable(test_sip_manager
     ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${SECURITY_SOURCES}
@@ -151,3 +152,30 @@ if(WIN32)
 endif()
 
 add_test(NAME test_sip_manager COMMAND test_sip_manager)
+
+# ---- test_registration_retry -------------------------------------------
+qt_add_executable(test_registration_retry
+    test_registration_retry.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
+)
+
+target_include_directories(test_registration_retry PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_registration_retry PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+if(WIN32)
+    target_link_libraries(test_registration_retry PRIVATE Advapi32)
+endif()
+
+add_test(NAME test_registration_retry COMMAND test_registration_retry)
