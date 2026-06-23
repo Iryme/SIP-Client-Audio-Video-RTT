@@ -3,6 +3,7 @@
 #include <QPointer>
 
 #include "core/Logger.h"
+#include "media/AudioMediaManager.h"
 #include "security/CredentialStore.h"
 #include "sip/SipProfileManager.h"
 #include "sip/RegistrationRetryPolicy.h"
@@ -623,10 +624,26 @@ void SipManager::onRefreshTimerFired()
 // Call control
 // ---------------------------------------------------------------------------
 
+bool SipManager::setCallMuted(bool muted)
+{
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("setCallMuted: no active call"));
+        return false;
+    }
+    return m_activeCall->setMuted(muted);
+}
+
+bool SipManager::isCallMuted() const
+{
+    return m_activeCall ? m_activeCall->isMuted() : false;
+}
+
 void SipManager::destroyActiveCall()
 {
     if (!m_activeCall)
         return;
+    AudioMediaManager::instance().detachCall();
     disconnect(m_activeCall, nullptr, this, nullptr);
     delete m_activeCall;
     m_activeCall = nullptr;
@@ -658,13 +675,17 @@ bool SipManager::makeCall(const QString &remoteUri)
             this, &SipManager::callDisconnected);
     connect(m_activeCall, &SipCall::callFailed,
             this, &SipManager::callFailed);
-
-#ifdef HAVE_PJSIP
-    if (m_account)
-        // Give SipCall access to the pjsua2 Account so it can create pj::Call.
-        ; // m_activeCall->m_impl->pjAccountHandle = m_account->pjAccountHandle();
-        // Direct Impl access is not available here; set via a dedicated method if needed.
-#endif
+    connect(m_activeCall, &SipCall::audioMediaConnected,
+            this, &SipManager::audioMediaConnected);
+    connect(m_activeCall, &SipCall::audioMediaDisconnected,
+            this, &SipManager::audioMediaDisconnected);
+    connect(m_activeCall, &SipCall::muteChanged,
+            this, &SipManager::callMuteChanged);
+    connect(m_activeCall, &SipCall::inputLevelChanged,
+            this, &SipManager::callInputLevelChanged);
+    connect(m_activeCall, &SipCall::outputLevelChanged,
+            this, &SipManager::callOutputLevelChanged);
+    AudioMediaManager::instance().attachCall(m_activeCall);
 
     return m_activeCall->makeCall(remoteUri);
 }
@@ -758,6 +779,17 @@ void SipManager::onAccountIncomingCall(const QString &remoteUri)
             this, &SipManager::callDisconnected);
     connect(m_activeCall, &SipCall::callFailed,
             this, &SipManager::callFailed);
+    connect(m_activeCall, &SipCall::audioMediaConnected,
+            this, &SipManager::audioMediaConnected);
+    connect(m_activeCall, &SipCall::audioMediaDisconnected,
+            this, &SipManager::audioMediaDisconnected);
+    connect(m_activeCall, &SipCall::muteChanged,
+            this, &SipManager::callMuteChanged);
+    connect(m_activeCall, &SipCall::inputLevelChanged,
+            this, &SipManager::callInputLevelChanged);
+    connect(m_activeCall, &SipCall::outputLevelChanged,
+            this, &SipManager::callOutputLevelChanged);
+    AudioMediaManager::instance().attachCall(m_activeCall);
     m_activeCall->stateMachine().tryTransition(CallState::IncomingRinging,
                                                QStringLiteral("Incoming call from %1")
                                                    .arg(remoteUri));
@@ -775,6 +807,7 @@ void SipManager::onActiveCallStateChanged(CallState state,
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Call ended in state %1; releasing call object")
                 .arg(callStateName(state)));
+        AudioMediaManager::instance().detachCall();
         // Defer destruction so signal handlers in the call finish first.
         SipCall *call = m_activeCall;
         m_activeCall = nullptr;

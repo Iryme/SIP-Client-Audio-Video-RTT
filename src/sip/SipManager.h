@@ -54,6 +54,10 @@ public:
     // Resume a held call. No-op if call is not Held.
     bool resumeCall();
 
+    // Mute / unmute the local microphone on the active call.
+    bool setCallMuted(bool muted);
+    bool isCallMuted() const;
+
     CallState callState()          const;
     QString   callStatusText()     const;
     QString   activeCallRemoteUri() const;
@@ -106,6 +110,13 @@ signals:
     void callConnected(const QString &remoteUri);
     void callDisconnected(const QString &remoteUri, const QString &reason, int statusCode);
     void callFailed(const QString &remoteUri, const QString &reason, int statusCode);
+
+    // Audio media signals (forwarded from the active SipCall)
+    void audioMediaConnected();
+    void audioMediaDisconnected();
+    void callMuteChanged(bool muted);
+    void callInputLevelChanged(int level);
+    void callOutputLevelChanged(int level);
 
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,

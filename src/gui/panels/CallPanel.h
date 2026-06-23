@@ -4,6 +4,8 @@
 #include "sip/CallStateMachine.h"
 
 class QLabel;
+class QComboBox;
+class QProgressBar;
 class QPushButton;
 
 class CallPanel : public QWidget
@@ -32,14 +34,27 @@ private slots:
     void onCallConnected(const QString &remoteUri);
     void onCallDisconnected(const QString &remoteUri, const QString &reason, int statusCode);
     void onCallFailed(const QString &remoteUri, const QString &reason, int statusCode);
+    void onInputLevelChanged(int level);
+    void onOutputLevelChanged(int level);
+    void onMuteChanged(bool muted);
 
 private:
     void applyCallState(CallState state);
+    void populateDeviceCombos();
 
     QLabel      *m_remoteName{nullptr};
     QLabel      *m_remoteUri{nullptr};
     QLabel      *m_callState{nullptr};
     QLabel      *m_duration{nullptr};
+
+    // Audio device selectors (visible only during an active call)
+    QWidget     *m_deviceRow{nullptr};
+    QComboBox   *m_micSelector{nullptr};
+    QComboBox   *m_spkSelector{nullptr};
+
+    // Level meters
+    QProgressBar *m_inputMeter{nullptr};
+    QProgressBar *m_outputMeter{nullptr};
 
     QPushButton *m_btnMute{nullptr};
     QPushButton *m_btnVideo{nullptr};

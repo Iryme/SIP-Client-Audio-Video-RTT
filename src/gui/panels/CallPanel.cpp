@@ -2,23 +2,28 @@
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QLabel>
+#include <QComboBox>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QFrame>
 
+#include "media/AudioMediaManager.h"
+#include "media/MediaDeviceManager.h"
+#include "media/MediaDeviceSelectionModel.h"
 #include "sip/SipManager.h"
 
 CallPanel::CallPanel(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName("CallPanel");
-    setFixedHeight(110);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 8, 12, 8);
     layout->setSpacing(4);
 
-    // Call info row
+    // --- Call info row -------------------------------------------------------
     auto *infoRow = new QHBoxLayout();
 
     m_remoteName = new QLabel(tr("No active call"), this);
@@ -46,13 +51,81 @@ CallPanel::CallPanel(QWidget *parent)
     layout->addLayout(infoRow);
     layout->addWidget(m_remoteUri);
 
-    // Separator
+    // --- Separator -----------------------------------------------------------
     auto *sep = new QFrame(this);
     sep->setFrameShape(QFrame::HLine);
     sep->setFrameShadow(QFrame::Sunken);
     layout->addWidget(sep);
 
-    // Call control buttons
+    // --- Audio level meters --------------------------------------------------
+    auto *meterRow = new QHBoxLayout();
+    meterRow->setSpacing(6);
+
+    auto *micLabel = new QLabel(tr("Mic:"), this);
+    micLabel->setStyleSheet("color: #888888; font-size: 10px;");
+    micLabel->setFixedWidth(24);
+
+    m_inputMeter = new QProgressBar(this);
+    m_inputMeter->setObjectName("InputMeter");
+    m_inputMeter->setRange(0, 100);
+    m_inputMeter->setValue(0);
+    m_inputMeter->setTextVisible(false);
+    m_inputMeter->setFixedHeight(8);
+    m_inputMeter->setStyleSheet(
+        "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
+        "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
+
+    auto *spkLabel = new QLabel(tr("Spk:"), this);
+    spkLabel->setStyleSheet("color: #888888; font-size: 10px;");
+    spkLabel->setFixedWidth(24);
+
+    m_outputMeter = new QProgressBar(this);
+    m_outputMeter->setObjectName("OutputMeter");
+    m_outputMeter->setRange(0, 100);
+    m_outputMeter->setValue(0);
+    m_outputMeter->setTextVisible(false);
+    m_outputMeter->setFixedHeight(8);
+    m_outputMeter->setStyleSheet(
+        "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
+        "QProgressBar::chunk { background: #5090e0; border-radius: 2px; }");
+
+    meterRow->addWidget(micLabel);
+    meterRow->addWidget(m_inputMeter);
+    meterRow->addSpacing(8);
+    meterRow->addWidget(spkLabel);
+    meterRow->addWidget(m_outputMeter);
+
+    layout->addLayout(meterRow);
+
+    // --- Device selector row (hidden when idle) -------------------------------
+    m_deviceRow = new QWidget(this);
+    auto *devLayout = new QHBoxLayout(m_deviceRow);
+    devLayout->setContentsMargins(0, 0, 0, 0);
+    devLayout->setSpacing(8);
+
+    auto *micDevLabel = new QLabel(tr("Microphone:"), m_deviceRow);
+    micDevLabel->setStyleSheet("color: #888888; font-size: 10px;");
+
+    m_micSelector = new QComboBox(m_deviceRow);
+    m_micSelector->setObjectName("MicSelector");
+    m_micSelector->setFixedHeight(24);
+
+    auto *spkDevLabel = new QLabel(tr("Speaker:"), m_deviceRow);
+    spkDevLabel->setStyleSheet("color: #888888; font-size: 10px;");
+
+    m_spkSelector = new QComboBox(m_deviceRow);
+    m_spkSelector->setObjectName("SpkSelector");
+    m_spkSelector->setFixedHeight(24);
+
+    devLayout->addWidget(micDevLabel);
+    devLayout->addWidget(m_micSelector, 1);
+    devLayout->addWidget(spkDevLabel);
+    devLayout->addWidget(m_spkSelector, 1);
+
+    m_deviceRow->setVisible(false);
+    layout->addWidget(m_deviceRow);
+
+    // --- Call control buttons ------------------------------------------------
     auto *ctrlRow = new QHBoxLayout();
     ctrlRow->setSpacing(8);
 
@@ -79,7 +152,7 @@ CallPanel::CallPanel(QWidget *parent)
     m_btnReject->setObjectName("RejectBtn");
     m_btnHangup->setObjectName("HangupBtn");
 
-    // Share and Record are placeholders
+    // Share and Record are placeholders.
     m_btnShare->setEnabled(false);
     m_btnRecord->setEnabled(false);
 
@@ -96,6 +169,7 @@ CallPanel::CallPanel(QWidget *parent)
 
     layout->addLayout(ctrlRow);
 
+    // --- Internal signal wiring ----------------------------------------------
     connect(m_btnMute,   &QPushButton::toggled, this, &CallPanel::muteToggled);
     connect(m_btnVideo,  &QPushButton::toggled, this, &CallPanel::videoToggled);
     connect(m_btnHold,   &QPushButton::toggled, this, &CallPanel::holdToggled);
@@ -104,20 +178,45 @@ CallPanel::CallPanel(QWidget *parent)
     connect(m_btnReject, &QPushButton::clicked, this, &CallPanel::rejectRequested);
     connect(m_btnKeypad, &QPushButton::toggled, this, &CallPanel::keypadToggled);
 
-    // Wire to Answer/Reject/Hangup button signals → SipManager
+    // Mute button → AudioMediaManager
+    connect(m_btnMute, &QPushButton::toggled,
+            [](bool checked){ AudioMediaManager::instance().setMuted(checked); });
+
+    // AudioMediaManager → mute button sync + level meters
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::mutedChanged,
+            this, &CallPanel::onMuteChanged);
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::inputLevelChanged,
+            this, &CallPanel::onInputLevelChanged);
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
+            this, &CallPanel::onOutputLevelChanged);
+
+    // Hold button → SipManager
+    connect(this, &CallPanel::holdToggled, [](bool held) {
+        if (held) SipManager::instance().holdCall();
+        else      SipManager::instance().resumeCall();
+    });
+
+    // Answer / Reject / Hangup → SipManager
     connect(this, &CallPanel::answerRequested,
             []{ SipManager::instance().answerCall(); });
     connect(this, &CallPanel::rejectRequested,
             []{ SipManager::instance().rejectCall(); });
     connect(this, &CallPanel::hangupRequested,
             []{ SipManager::instance().hangupCall(); });
-    connect(this, &CallPanel::holdToggled,
-            [](bool held){
-                if (held) SipManager::instance().holdCall();
-                else      SipManager::instance().resumeCall();
-            });
 
-    // Wire to SipManager call signals
+    // Device combos → AudioMediaManager
+    connect(m_micSelector, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        const QString id = m_micSelector->itemData(idx).toString();
+        if (!id.isEmpty())
+            AudioMediaManager::instance().setMicrophone(id);
+    });
+    connect(m_spkSelector, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        const QString id = m_spkSelector->itemData(idx).toString();
+        if (!id.isEmpty())
+            AudioMediaManager::instance().setSpeaker(id);
+    });
+
+    // SipManager call signals
     connect(&SipManager::instance(), &SipManager::callStateChanged,
             this, &CallPanel::onCallStateChanged);
     connect(&SipManager::instance(), &SipManager::incomingCall,
@@ -129,14 +228,55 @@ CallPanel::CallPanel(QWidget *parent)
     connect(&SipManager::instance(), &SipManager::callFailed,
             this, &CallPanel::onCallFailed);
 
-    // Set initial idle state
+    // Initial idle state
     applyCallState(CallState::Idle);
+    populateDeviceCombos();
 }
+
+// ---------------------------------------------------------------------------
 
 void CallPanel::setRemoteName(const QString &name)  { m_remoteName->setText(name); }
 void CallPanel::setRemoteUri(const QString &uri)    { m_remoteUri->setText(uri); }
 void CallPanel::setCallState(const QString &state)  { m_callState->setText(state); }
 void CallPanel::setDuration(const QString &dur)     { m_duration->setText(dur); }
+
+void CallPanel::populateDeviceCombos()
+{
+    // Preserve current selection
+    const QString curMic = m_micSelector->currentData().toString();
+    const QString curSpk = m_spkSelector->currentData().toString();
+
+    // Resolve persisted defaults
+    MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
+    const QString defaultMicId = sel.selectedMicrophone().id;
+    const QString defaultSpkId = sel.selectedSpeaker().id;
+
+    m_micSelector->blockSignals(true);
+    m_spkSelector->blockSignals(true);
+
+    m_micSelector->clear();
+    for (const MediaDevice &d : MediaDeviceManager::instance().listMicrophones())
+        m_micSelector->addItem(d.displayName, d.id);
+
+    m_spkSelector->clear();
+    for (const MediaDevice &d : MediaDeviceManager::instance().listSpeakers())
+        m_spkSelector->addItem(d.displayName, d.id);
+
+    // Restore selection: prefer the previous call-panel selection, then the persisted default.
+    auto selectById = [](QComboBox *combo, const QString &preferred, const QString &fallback) {
+        for (int i = 0; i < combo->count(); ++i) {
+            if (combo->itemData(i).toString() == preferred) { combo->setCurrentIndex(i); return; }
+        }
+        for (int i = 0; i < combo->count(); ++i) {
+            if (combo->itemData(i).toString() == fallback)  { combo->setCurrentIndex(i); return; }
+        }
+    };
+    selectById(m_micSelector, curMic, defaultMicId);
+    selectById(m_spkSelector, curSpk, defaultSpkId);
+
+    m_micSelector->blockSignals(false);
+    m_spkSelector->blockSignals(false);
+}
 
 void CallPanel::applyCallState(CallState state)
 {
@@ -153,9 +293,14 @@ void CallPanel::applyCallState(CallState state)
     m_btnVideo->setEnabled(state == CallState::Active);
     m_btnKeypad->setEnabled(state == CallState::Active);
 
+    // Show device selectors only when a call is in progress.
+    m_deviceRow->setVisible(!isIdle && state != CallState::Failed);
+    if (m_deviceRow->isVisible())
+        populateDeviceCombos();
+
     m_callState->setText(callStateDisplayText(state));
 
-    // Color-code the state label
+    // Color-code the state label.
     QString color = QStringLiteral("#aaaaaa"); // Idle / default
     if (state == CallState::Active)
         color = QStringLiteral("#50c878"); // green
@@ -174,8 +319,14 @@ void CallPanel::applyCallState(CallState state)
         m_remoteName->setText(tr("No active call"));
         m_remoteUri->setText(tr("—"));
         m_duration->setText(tr("00:00:00"));
+        m_inputMeter->setValue(0);
+        m_outputMeter->setValue(0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Slots
+// ---------------------------------------------------------------------------
 
 void CallPanel::onCallStateChanged(CallState state, const QString &statusText, int statusCode)
 {
@@ -218,4 +369,23 @@ void CallPanel::onCallFailed(const QString &remoteUri, const QString &reason, in
     m_btnMute->setEnabled(false);
     m_btnVideo->setEnabled(false);
     m_btnKeypad->setEnabled(false);
+    m_deviceRow->setVisible(false);
+}
+
+void CallPanel::onInputLevelChanged(int level)
+{
+    m_inputMeter->setValue(level);
+}
+
+void CallPanel::onOutputLevelChanged(int level)
+{
+    m_outputMeter->setValue(level);
+}
+
+void CallPanel::onMuteChanged(bool muted)
+{
+    // Sync button checked state without re-triggering the toggled signal.
+    QSignalBlocker blocker(m_btnMute);
+    m_btnMute->setChecked(muted);
+    m_btnMute->setText(muted ? tr("Unmute") : tr("Mute"));
 }

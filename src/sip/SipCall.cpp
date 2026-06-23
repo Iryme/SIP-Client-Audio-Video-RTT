@@ -7,6 +7,7 @@
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
+#include <pjsua-lib/pjsua.h>
 #endif
 
 // ---------------------------------------------------------------------------
@@ -19,13 +20,8 @@ struct SipCall::Impl
     QPointer<SipCall> q;
 
 #ifdef HAVE_PJSIP
-    // pjsua2 Call subclass — maps onCallState() to SipCall state machine.
-    // Constructed with a pj::Account reference; for incoming calls the callId
-    // of the pending invite is passed so pjsua2 can locate the dialog.
-    //
-    // NOTE: SipCall requires a pj::Account& to create PjCall.  SipManager
-    // passes the account handle via SipAccount::pjAccountHandle() and sets it
-    // on Impl before makeCall() / acceptIncoming() is called.
+    // pjsua2 Call subclass — maps onCallState() and onCallMediaState() to the
+    // SipCall state machine and audio bridge respectively.
     class PjCall final : public pj::Call
     {
     public:
@@ -34,6 +30,7 @@ struct SipCall::Impl
 
         void onCallState(pj::OnCallStateParam &prm) override
         {
+            Q_UNUSED(prm)
             if (!m_impl || !m_impl->q)
                 return;
 
@@ -48,6 +45,8 @@ struct SipCall::Impl
             case PJSIP_INV_STATE_CONNECTING:   newState = CallState::Connecting;   break;
             case PJSIP_INV_STATE_CONFIRMED:    newState = CallState::Active;       break;
             case PJSIP_INV_STATE_DISCONNECTED:
+                // Stop audio bridge before the call object is torn down.
+                stopAudioBridge();
                 newState = (code >= 400) ? CallState::Failed : CallState::Idle;
                 break;
             default: return;
@@ -60,12 +59,68 @@ struct SipCall::Impl
             }, Qt::QueuedConnection);
         }
 
+        void onCallMediaState(pj::OnCallMediaStateParam &prm) override
+        {
+            Q_UNUSED(prm)
+            if (!m_impl || !m_impl->q)
+                return;
+
+            pj::CallInfo ci = getInfo();
+            bool bridgeWired = false;
+
+            for (const auto &mi : ci.media) {
+                if (mi.type == PJMEDIA_TYPE_AUDIO
+                        && mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
+                    try {
+                        auto *aud = static_cast<pj::AudioMedia *>(getMedia(mi.index));
+                        pj::AudDevManager &adm =
+                            pj::Endpoint::instance().audDevManager();
+                        adm.getCaptureDevMedia().startTransmit(*aud);
+                        aud->startTransmit(adm.getPlaybackDevMedia());
+                        m_impl->callAudioMedia = aud;
+                        bridgeWired = true;
+                    } catch (...) {
+                        m_impl->callAudioMedia = nullptr;
+                    }
+                    break;
+                }
+            }
+
+            QPointer<SipCall> self = m_impl->q;
+            QMetaObject::invokeMethod(self, [self, bridgeWired]() {
+                if (!self) return;
+                if (bridgeWired)
+                    emit self->audioMediaConnected();
+                else
+                    emit self->audioMediaDisconnected();
+            }, Qt::QueuedConnection);
+        }
+
+        void stopAudioBridge()
+        {
+            if (!m_impl->callAudioMedia)
+                return;
+            try {
+                pj::AudDevManager &adm =
+                    pj::Endpoint::instance().audDevManager();
+                m_impl->callAudioMedia->stopTransmit(adm.getPlaybackDevMedia());
+                adm.getCaptureDevMedia().stopTransmit(*m_impl->callAudioMedia);
+            } catch (...) {}
+            m_impl->callAudioMedia = nullptr;
+
+            QPointer<SipCall> self = m_impl->q;
+            QMetaObject::invokeMethod(self, [self]() {
+                if (self) emit self->audioMediaDisconnected();
+            }, Qt::QueuedConnection);
+        }
+
     private:
         Impl *m_impl;
     };
 
-    PjCall   *pjCall{nullptr};
-    void     *pjAccountHandle{nullptr}; // pj::Account* cast to void*
+    PjCall       *pjCall{nullptr};
+    void         *pjAccountHandle{nullptr}; // pj::Account* cast to void*
+    pj::AudioMedia *callAudioMedia{nullptr}; // valid only while media is active
 #endif
 };
 
@@ -81,10 +136,28 @@ SipCall::SipCall(QObject *parent)
             this, &SipCall::onStateMachineStateChanged);
     connect(&m_stateMachine, &CallStateMachine::transitionTimedOut,
             this, &SipCall::onStateMachineTimedOut);
+
+    // Level timer: fires while audio bridge is active.
+    m_levelTimer.setInterval(100);
+    connect(&m_levelTimer, &QTimer::timeout, this, &SipCall::onLevelTimerFired);
+
+    connect(this, &SipCall::audioMediaConnected, this, [this] {
+        m_levelTimer.start();
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Audio media connected: id=%1").arg(m_callId));
+    });
+    connect(this, &SipCall::audioMediaDisconnected, this, [this] {
+        m_levelTimer.stop();
+        emit inputLevelChanged(0);
+        emit outputLevelChanged(0);
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Audio media disconnected: id=%1").arg(m_callId));
+    });
 }
 
 SipCall::~SipCall()
 {
+    m_levelTimer.stop();
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         try {
@@ -298,10 +371,37 @@ bool SipCall::resume()
     return true;
 }
 
+bool SipCall::setMuted(bool muted)
+{
+    if (m_muted == muted)
+        return true;
+
+    m_muted = muted;
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Mute %1: call id=%2")
+            .arg(muted ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
+
+#ifdef HAVE_PJSIP
+    try {
+        pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
+        adm.getCaptureDevMedia().adjustTxLevel(muted ? 0.0f : 1.0f);
+    } catch (...) {}
+#endif
+
+    emit muteChanged(muted);
+    return true;
+}
+
+bool SipCall::isMuted() const
+{
+    return m_muted;
+}
+
 void SipCall::reset(const QString &reason)
 {
     Logger::instance().info(LogCategory::Sip,
         QStringLiteral("Call id=%1 reset: %2").arg(m_callId, reason));
+    m_levelTimer.stop();
     m_stateMachine.reset(reason);
 }
 
@@ -322,6 +422,17 @@ void SipCall::onStateMachineStateChanged(CallState state,
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Call connected: id=%1 remote=%2").arg(m_callId, m_remoteUri));
         emit callConnected(m_remoteUri);
+        // In stub mode, emit audioMediaConnected when call goes Active
+        // (PJSIP emits it from onCallMediaState instead).
+#ifndef HAVE_PJSIP
+        emit audioMediaConnected();
+#endif
+    } else if (state == CallState::Held || state == CallState::Disconnecting) {
+#ifndef HAVE_PJSIP
+        // Stub: tear down audio when call leaves Active.
+        if (m_levelTimer.isActive())
+            emit audioMediaDisconnected();
+#endif
     } else if (state == CallState::Idle) {
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Call disconnected: id=%1 remote=%2 reason=\"%3\" status=%4")
@@ -340,6 +451,22 @@ void SipCall::onStateMachineTimedOut(CallState stuckState)
     Logger::instance().warn(LogCategory::Sip,
         QStringLiteral("Call state machine timed out in %1; id=%2")
             .arg(callStateName(stuckState), m_callId));
+}
+
+void SipCall::onLevelTimerFired()
+{
+#ifdef HAVE_PJSIP
+    if (!m_impl || !m_impl->pjCall || !m_impl->callAudioMedia)
+        return;
+    try {
+        const pjsua_call_id cid = static_cast<pjsua_call_id>(m_impl->pjCall->getId());
+        const pjsua_conf_port_id slot = pjsua_call_get_conf_port(cid);
+        unsigned txLvl = 0, rxLvl = 0;
+        pjsua_conf_get_signal_level(slot, &txLvl, &rxLvl);
+        emit inputLevelChanged(static_cast<int>(txLvl * 100 / 255));
+        emit outputLevelChanged(static_cast<int>(rxLvl * 100 / 255));
+    } catch (...) {}
+#endif
 }
 
 void SipCall::postStubTransition(CallState to, const QString &reason, int statusCode)

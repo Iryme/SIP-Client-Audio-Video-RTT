@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Test Multimedia)
 
 # Common security sources for tests
 set(SECURITY_SOURCES
@@ -21,6 +21,14 @@ endif()
 set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+)
+
+# Audio media sources — required by any test that uses AudioMediaManager
+set(AUDIO_MEDIA_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/media/AudioMediaManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceSelectionModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/QtMediaDeviceBackend.cpp
 )
 
 # ---- test_sip_profile_manager ------------------------------------------
@@ -143,6 +151,7 @@ qt_add_executable(test_sip_manager
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -154,6 +163,7 @@ target_include_directories(test_sip_manager PRIVATE
 target_link_libraries(test_sip_manager PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Multimedia
 )
 if(WIN32)
     target_link_libraries(test_sip_manager PRIVATE Advapi32)
@@ -172,6 +182,7 @@ qt_add_executable(test_registration_retry
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -183,6 +194,7 @@ target_include_directories(test_registration_retry PRIVATE
 target_link_libraries(test_registration_retry PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Multimedia
 )
 if(WIN32)
     target_link_libraries(test_registration_retry PRIVATE Advapi32)
@@ -201,6 +213,7 @@ qt_add_executable(test_registration_expiry
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -212,6 +225,7 @@ target_include_directories(test_registration_expiry PRIVATE
 target_link_libraries(test_registration_expiry PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Multimedia
 )
 if(WIN32)
     target_link_libraries(test_registration_expiry PRIVATE Advapi32)
@@ -230,6 +244,7 @@ qt_add_executable(test_profile_switch
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -241,6 +256,7 @@ target_include_directories(test_profile_switch PRIVATE
 target_link_libraries(test_profile_switch PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Multimedia
 )
 if(WIN32)
     target_link_libraries(test_profile_switch PRIVATE Advapi32)
@@ -265,3 +281,24 @@ target_link_libraries(test_call_state_machine PRIVATE
 )
 
 add_test(NAME test_call_state_machine COMMAND test_call_state_machine)
+
+# ---- test_audio_media --------------------------------------------------
+qt_add_executable(test_audio_media
+    test_audio_media.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
+)
+
+target_include_directories(test_audio_media PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_audio_media PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Multimedia
+)
+
+add_test(NAME test_audio_media COMMAND test_audio_media)

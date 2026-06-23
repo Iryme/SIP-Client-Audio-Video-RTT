@@ -68,6 +68,7 @@ set(SOURCES
     src/sip/SipProfileManager.cpp
     src/security/CredentialStore.cpp
     src/security/MemoryCredentialBackend.cpp
+    src/media/AudioMediaManager.cpp
     src/media/MediaDeviceManager.cpp
     src/media/MediaDeviceSelectionModel.cpp
     src/media/QtMediaDeviceBackend.cpp
@@ -99,6 +100,7 @@ set(HEADERS
     src/security/ICredentialBackend.h
     src/security/CredentialStore.h
     src/security/MemoryCredentialBackend.h
+    src/media/AudioMediaManager.h
     src/media/MediaDevice.h
     src/media/IMediaDeviceBackend.h
     src/media/QtMediaDeviceBackend.h

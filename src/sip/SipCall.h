@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimer>
 
 #include "sip/CallStateMachine.h"
 
@@ -37,6 +38,11 @@ public:
     // Resume a held call. Must be in Held state.
     bool resume();
 
+    // Mute / unmute the local microphone. Works in any call state.
+    // In PJSIP mode adjusts capture device tx level immediately.
+    bool setMuted(bool muted);
+    bool isMuted() const;
+
     // Force to Idle regardless of current state (shutdown / cleanup path).
     void reset(const QString &reason = QStringLiteral("Reset"));
 
@@ -53,9 +59,22 @@ signals:
     void callDisconnected(const QString &remoteUri, const QString &reason, int statusCode);
     void callFailed(const QString &remoteUri, const QString &reason, int statusCode);
 
+    // Emitted when the PJSIP audio bridge is wired (CONFIRMED + media active).
+    // In stub mode emitted when state reaches Active.
+    void audioMediaConnected();
+    void audioMediaDisconnected();
+
+    // Mute state change (true = muted).
+    void muteChanged(bool muted);
+
+    // Audio level updates, ~10 Hz while media is active. Range 0–100.
+    void inputLevelChanged(int level);
+    void outputLevelChanged(int level);
+
 private slots:
     void onStateMachineStateChanged(CallState state, const QString &statusText, int statusCode);
     void onStateMachineTimedOut(CallState stuckState);
+    void onLevelTimerFired();
 
 private:
     void postStubTransition(CallState to, const QString &reason, int statusCode = 0);
@@ -63,6 +82,8 @@ private:
     CallStateMachine m_stateMachine;
     QString          m_remoteUri;
     QString          m_callId;
+    bool             m_muted{false};
+    QTimer           m_levelTimer;
 
     struct Impl;
     Impl *m_impl{nullptr};
