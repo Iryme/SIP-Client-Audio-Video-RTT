@@ -1,6 +1,6 @@
 # SIP Registration
 
-**Status:** IMPLEMENTED (Task 12; state machine Task 13; retry/backoff Task 14; expiry refresh Task 15; real registration requires PJSIP)
+**Status:** IMPLEMENTED (Task 12; state machine Task 13; retry/backoff Task 14; expiry refresh Task 15; profile-switch sequencing Task 16; real registration requires PJSIP)
 
 ## Overview
 
@@ -83,11 +83,38 @@ When the timer fires (`onRefreshTimerFired`):
 | `unregisterActiveProfile()`  | Unregistered       | No-op, returns true |
 | `unregisterActiveProfile()`  | Unregistering      | No-op, returns true |
 
+## Profile Switch Sequencing (Task 16)
+
+`SipManager::switchActiveProfile(newProfileId)` replaces the direct `SipProfileManager::setActiveProfileId()` call from the GUI combo box. It handles two paths:
+
+**Fast path** (`Unregistered` or `RegistrationFailed`):
+1. Retry and refresh timers stopped.
+2. `SipProfileManager::setActiveProfileId(newProfileId)` called immediately.
+3. `registerActiveProfile()` called (if `newProfileId` is non-empty).
+4. `profileSwitchCompleted(newProfileId)` emitted synchronously.
+
+**Slow path** (any other state — `Registering`, `Registered`, `Unregistering`):
+1. `m_pendingProfileId = newProfileId` set.
+2. Retry and refresh timers stopped.
+3. `profileSwitchStarted(newProfileId)` emitted.
+4. `unregisterActiveProfile()` called — transitions to `Unregistering`.
+5. When the `Unregistered` callback fires: old account destroyed, `setActiveProfileId(newProfileId)`, `registerActiveProfile()`, `profileSwitchCompleted(newProfileId)`.
+
+A second `switchActiveProfile()` call while a switch is pending returns `false` (rejected).
+
+`shutdown()` emits `profileSwitchFailed(pendingId, reason)` and clears the pending state.
+
+`registrationStatusText()` returns `"Switching SIP profile..."` while a switch is in flight.
+
+**GUI**: the profile selector combo and Add/Edit/Delete buttons are disabled for the duration of the slow path. They re-enable when `profileSwitchCompleted` or `profileSwitchFailed` is received.
+
 ## Public API
 
 ```cpp
 bool SipManager::registerActiveProfile();
 bool SipManager::unregisterActiveProfile();
+bool SipManager::switchActiveProfile(const QString &newProfileId);
+bool SipManager::isSwitchingProfile() const;
 
 RegistrationState SipManager::registrationState() const;
 QString           SipManager::registrationStatusText() const;
@@ -210,11 +237,22 @@ The global status bar shows the current state with color coding:
 - `Unregistering` state is distinct from `Registering`
 - Diagnostic password non-disclosure end-to-end
 
+`test_profile_switch` (8 tests) covers:
+- Fast-path switch while Unregistered registers new profile directly
+- Fast-path switch to empty profile clears active profile
+- Fast-path switch while RegistrationFailed switches immediately
+- Slow-path switch while Registering unregisters old first, then registers new
+- New profile not registered before old account cleanup completes
+- Second switch rejected while first is pending
+- Shutdown cancels pending switch with `profileSwitchFailed` signal
+- Profile switch does not log passwords
+
 ## Known Limitations (Task 13)
 
 - No automatic registration on startup or profile selection.
-- No refresh scheduling before registration expiry.
-- No retry/backoff on transient failures.
+- ~~No refresh scheduling before registration expiry.~~ (Task 15 done)
+- ~~No retry/backoff on transient failures.~~ (Task 14 done)
+- ~~Profile switch does not wait for old UNREGISTER response.~~ (Task 16 done)
 - Network-change recovery not implemented.
 - One account is supported at a time; multi-account is deferred.
 - Stub mode intentionally cannot register successfully.

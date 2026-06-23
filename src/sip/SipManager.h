@@ -26,6 +26,12 @@ public:
     bool registerActiveProfile();
     bool unregisterActiveProfile();
 
+    // Safely switch the active profile. If currently registered, sends UNREGISTER
+    // for the old account and waits for the callback before creating the new account.
+    // Returns false if a switch is already pending (rejected).
+    bool switchActiveProfile(const QString &newProfileId);
+    bool isSwitchingProfile() const;
+
     bool    isInitialized()        const;
     bool    isPjsipAvailable()     const;
     QString backendName()          const;
@@ -63,6 +69,9 @@ signals:
     void retryScheduled(int attempt, int delayMs);
     void refreshScheduled(int delayMs);
     void refreshStarted();
+    void profileSwitchStarted(const QString &newProfileId);
+    void profileSwitchCompleted(const QString &newProfileId);
+    void profileSwitchFailed(const QString &newProfileId, const QString &reason);
 
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,
@@ -79,6 +88,7 @@ private:
 
     void destroyAccount();
     void scheduleRetryIfEligible(int statusCode);
+    void completePendingSwitch();
 
 #ifdef HAVE_PJSIP
     bool ensureTransport(SipTransport transport, int &transportId, QString &error);
@@ -91,6 +101,7 @@ private:
     QString                  m_lastError;
     SipAccount              *m_account{nullptr};
     QString                  m_registeredProfileId;
+    QString                  m_pendingProfileId;
     RegistrationStateMachine m_stateMachine;
     RegistrationRetryPolicy  m_retryPolicy;
     QTimer                   m_retryTimer;

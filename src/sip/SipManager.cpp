@@ -121,6 +121,14 @@ void SipManager::shutdown()
     m_refreshTimer.stop();
     m_refreshing = false;
 
+    if (!m_pendingProfileId.isEmpty()) {
+        const QString pending = m_pendingProfileId;
+        m_pendingProfileId.clear();
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Profile switch to %1 cancelled by shutdown").arg(pending));
+        emit profileSwitchFailed(pending, QStringLiteral("SIP backend shut down"));
+    }
+
     if (m_account) {
         m_account->startUnregistration();
         destroyAccount();
@@ -317,6 +325,8 @@ RegistrationState SipManager::registrationState() const
 
 QString SipManager::registrationStatusText() const
 {
+    if (!m_pendingProfileId.isEmpty())
+        return QStringLiteral("Switching SIP profile...");
     if (m_refreshing && m_stateMachine.state() == RegistrationState::Registered)
         return QStringLiteral("Registered (refreshing...)");
     return m_stateMachine.statusText();
@@ -335,6 +345,86 @@ QString SipManager::registeredProfileId() const
 RegistrationStateMachine &SipManager::stateMachine()
 {
     return m_stateMachine;
+}
+
+bool SipManager::switchActiveProfile(const QString &newProfileId)
+{
+    if (!m_pendingProfileId.isEmpty()) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Profile switch to %1 rejected: switch to %2 already pending")
+                .arg(newProfileId, m_pendingProfileId));
+        return false;
+    }
+
+    const RegistrationState current = m_stateMachine.state();
+    const QString oldId = m_registeredProfileId.isEmpty()
+        ? SipProfileManager::instance().activeProfileId()
+        : m_registeredProfileId;
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Profile switch requested: %1 -> %2 (state: %3)")
+            .arg(oldId.isEmpty() ? QStringLiteral("(none)") : oldId,
+                 newProfileId.isEmpty() ? QStringLiteral("(none)") : newProfileId,
+                 registrationStateName(current)));
+
+    if (current == RegistrationState::Unregistered
+        || current == RegistrationState::RegistrationFailed) {
+        // Fast path: no active registration to tear down.
+        m_retryTimer.stop();
+        m_retryAttempt = 0;
+        m_refreshTimer.stop();
+        m_refreshing = false;
+        if (newProfileId.isEmpty()) {
+            destroyAccount();
+            SipProfileManager::instance().setActiveProfileId({});
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Profile switch complete: switched to (no profile)"));
+            emit profileSwitchCompleted({});
+        } else {
+            SipProfileManager::instance().setActiveProfileId(newProfileId);
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Profile switch: registering new profile %1").arg(newProfileId));
+            registerActiveProfile();
+            emit profileSwitchCompleted(newProfileId);
+        }
+        return true;
+    }
+
+    // Slow path: active account must be unregistered before the new profile is created.
+    m_pendingProfileId = newProfileId;
+    m_retryTimer.stop();
+    m_retryAttempt = 0;
+    m_refreshTimer.stop();
+    m_refreshing = false;
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Profile switch: unregistering profile %1 before switching to %2")
+            .arg(oldId, newProfileId.isEmpty() ? QStringLiteral("(none)") : newProfileId));
+    emit profileSwitchStarted(newProfileId);
+    unregisterActiveProfile();
+    return true;
+}
+
+bool SipManager::isSwitchingProfile() const
+{
+    return !m_pendingProfileId.isEmpty();
+}
+
+void SipManager::completePendingSwitch()
+{
+    const QString newId = m_pendingProfileId;
+    m_pendingProfileId.clear();
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Profile switch: old account destroyed, completing switch to %1")
+            .arg(newId.isEmpty() ? QStringLiteral("(none)") : newId));
+    SipProfileManager::instance().setActiveProfileId(newId);
+    if (!newId.isEmpty()) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Profile switch: starting registration for new profile %1").arg(newId));
+        registerActiveProfile();
+    }
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Profile switch complete: now using profile %1")
+            .arg(newId.isEmpty() ? QStringLiteral("(none)") : newId));
+    emit profileSwitchCompleted(newId);
 }
 
 void SipManager::onAccountRegistrationExpiryReceived(int seconds)
@@ -393,6 +483,8 @@ void SipManager::onAccountRegistrationStateChanged(RegistrationState state,
             QStringLiteral("Unregister success for profile %1 (status %2)")
                 .arg(m_registeredProfileId).arg(statusCode));
         destroyAccount();
+        if (!m_pendingProfileId.isEmpty())
+            completePendingSwitch();
     }
 }
 
@@ -402,6 +494,15 @@ void SipManager::onStateMachineTimedOut(RegistrationState stuckState)
         QStringLiteral("Registration state machine timed out in %1; cleaning up account")
             .arg(registrationStateName(stuckState)));
     destroyAccount();
+
+    if (!m_pendingProfileId.isEmpty()) {
+        // Timeout during a profile switch — destroy old account and proceed anyway.
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Timeout during profile switch; proceeding with switch to %1")
+                .arg(m_pendingProfileId));
+        completePendingSwitch();
+        return;
+    }
 
     // Watchdog timeout during Registering is treated as a transient failure (code 0).
     if (stuckState == RegistrationState::Registering)

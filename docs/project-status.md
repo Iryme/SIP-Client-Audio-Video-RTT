@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-23
-Current task count: 15 of N
+Current task count: 16 of N
 
 ## Completed Tasks
 
@@ -22,6 +22,7 @@ Current task count: 15 of N
 | 13 | Registration State Machine — explicit 5-state SM, transition guards, watchdog timeout, button disable | feature/registration-state-machine | IMPLEMENTED |
 | 14 | Registration Retry/Backoff — RegistrationRetryPolicy, exponential backoff, retryScheduled signal | feature/registration-retry-backoff | IMPLEMENTED |
 | 15 | Registration Expiry & Auto Re-REGISTER — RegistrationRefreshConfig, refresh timer, refresh failure → retry | feature/registration-expiry-refresh | IMPLEMENTED |
+| 16 | Profile Switch Sequencing — switchActiveProfile(), pending-switch guard, UNREGISTER old before registering new | feature/profile-switch-sequencing | IMPLEMENTED |
 
 > **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
 > are not ancestors of the active Tasks 6-10 lineage. The active code uses the
@@ -52,14 +53,14 @@ Current task count: 15 of N
 | MediaDeviceManager | IMPLEMENTED | Qt Multimedia backed; pluggable IMediaDeviceBackend |
 | MediaDeviceSelectionModel | IMPLEMENTED | Persistence + fallback to default |
 | MediaPanel | IMPLEMENTED | Microphone/Speaker/Camera combos + Refresh button in Media tab |
-| SipManager | IMPLEMENTED | Lifecycle + active-profile register/unregister + state machine; stub + PJSIP branches |
+| SipManager | IMPLEMENTED | Lifecycle + register/unregister + switchActiveProfile() sequencing; stub + PJSIP branches |
 | RegistrationStateMachine | IMPLEMENTED | 5-state explicit SM; transition table; watchdog timeout; diagnostics; Registered→RegistrationFailed for refresh failure |
 | RegistrationRetryPolicy | IMPLEMENTED | isRetryable(code), delayForAttempt(n) exponential backoff |
 | RegistrationRefreshConfig | IMPLEMENTED | delayMsForExpiry(expiry): 80% ratio / 30s margin; overrideDelayMs for tests |
 | SipAccount | IMPLEMENTED | pjsua2 account creation, REGISTER/UNREGISTER, queued callbacks; refreshRegistration(); registrationExpiryReceived signal |
 | SipCall | STUB | Header + minimal .cpp; no calls yet |
 | cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
-| SIP registration | IMPLEMENTED | Manual register/unregister; exponential retry on transient failures; auto-refresh before expiry |
+| SIP registration | IMPLEMENTED | Manual register/unregister; exponential retry on transient failures; auto-refresh before expiry; deterministic profile-switch sequencing |
 | Audio calls | NOT STARTED | |
 | Video calls | NOT STARTED | |
 | RFC 4103 RTT | NOT STARTED | |
@@ -141,10 +142,17 @@ Current task count: 15 of N
 
 - Expiry is only extracted from PJSIP AccountInfo; if the server omits it, the configured default (300 s) is used.
 - No automatic registration on startup or profile selection.
-- Profile switch does not wait for old account UNREGISTER response before replacing.
+- ~~Profile switch does not wait for old account UNREGISTER response before replacing.~~ (Task 16 done)
 - Network-change recovery not implemented.
 - CredentialStore Linux/macOS backends not yet implemented.
 
+## Known Limitations (Task 16)
+
+- No automatic registration on startup or when a profile is selected for the first time.
+- Network-change recovery not implemented.
+- Watchdog timeout during profile switch proceeds with the new profile registration even if the old UNREGISTER was not acknowledged by the server; the old registration may live until server-side expiry.
+- One account is supported at a time; multi-account is deferred.
+
 ## Next Recommended Task
 
-**Task 16:** Startup auto-register and profile-switch sequencing — register active profile on `initialize()` when a profile is configured; wait for old account UNREGISTER response before replacing with a new account on profile switch.
+**Task 17:** Startup auto-register — register the active profile automatically on `initialize()` when a profile with a credential is configured.

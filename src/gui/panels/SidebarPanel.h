@@ -24,6 +24,9 @@ private slots:
     void onRegistrationStateChanged(RegistrationState state,
                                     const QString &statusText,
                                     int statusCode);
+    void onProfileSwitchStarted(const QString &newProfileId);
+    void onProfileSwitchCompleted(const QString &newProfileId);
+    void onProfileSwitchFailed(const QString &newProfileId, const QString &reason);
 
 private:
     void refreshProfileSelector();

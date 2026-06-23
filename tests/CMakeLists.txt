@@ -209,3 +209,31 @@ if(WIN32)
 endif()
 
 add_test(NAME test_registration_expiry COMMAND test_registration_expiry)
+
+# ---- test_profile_switch -----------------------------------------------
+qt_add_executable(test_profile_switch
+    test_profile_switch.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
+)
+
+target_include_directories(test_profile_switch PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_profile_switch PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+if(WIN32)
+    target_link_libraries(test_profile_switch PRIVATE Advapi32)
+endif()
+
+add_test(NAME test_profile_switch COMMAND test_profile_switch)

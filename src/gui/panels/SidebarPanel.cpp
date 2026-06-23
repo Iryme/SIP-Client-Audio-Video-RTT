@@ -107,6 +107,12 @@ SidebarPanel::SidebarPanel(QWidget *parent)
             this, &SidebarPanel::onActiveProfileChanged);
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             this, &SidebarPanel::onRegistrationStateChanged);
+    connect(&SipManager::instance(), &SipManager::profileSwitchStarted,
+            this, &SidebarPanel::onProfileSwitchStarted);
+    connect(&SipManager::instance(), &SipManager::profileSwitchCompleted,
+            this, &SidebarPanel::onProfileSwitchCompleted);
+    connect(&SipManager::instance(), &SipManager::profileSwitchFailed,
+            this, &SidebarPanel::onProfileSwitchFailed);
 
     refreshProfileSelector();
 }
@@ -166,8 +172,17 @@ void SidebarPanel::updateAccountCard(const QString &profileId)
 
 void SidebarPanel::onProfileSelectorChanged(int index)
 {
-    SipProfileManager::instance().setActiveProfileId(
-        m_profileSelector->itemData(index).toString());
+    const QString newId = m_profileSelector->itemData(index).toString();
+    if (!SipManager::instance().switchActiveProfile(newId)) {
+        // Switch rejected (one already pending) — revert combo to current active profile.
+        const QString current = SipProfileManager::instance().activeProfileId();
+        const int revertIndex = m_profileSelector->findData(current);
+        if (revertIndex >= 0 && m_profileSelector->currentIndex() != revertIndex) {
+            const bool blocked = m_profileSelector->blockSignals(true);
+            m_profileSelector->setCurrentIndex(revertIndex);
+            m_profileSelector->blockSignals(blocked);
+        }
+    }
 }
 
 void SidebarPanel::onActiveProfileChanged(const QString &profileId)
@@ -253,6 +268,39 @@ void SidebarPanel::onRegistrationClicked()
     }
     // Registering and Unregistering: button should already be disabled by
     // onRegistrationStateChanged; ignore stray clicks defensively.
+}
+
+void SidebarPanel::onProfileSwitchStarted(const QString &newProfileId)
+{
+    Q_UNUSED(newProfileId)
+    m_profileSelector->setEnabled(false);
+    m_addProfile->setEnabled(false);
+    m_editProfile->setEnabled(false);
+    m_deleteProfile->setEnabled(false);
+    m_registrationButton->setEnabled(false);
+    m_regStatus->setText(tr("Switching SIP profile..."));
+    m_regStatus->setStyleSheet(QStringLiteral("color: #e0b850; font-size: 11px;"));
+}
+
+void SidebarPanel::onProfileSwitchCompleted(const QString &newProfileId)
+{
+    Q_UNUSED(newProfileId)
+    m_profileSelector->setEnabled(true);
+    m_addProfile->setEnabled(true);
+    // Edit/delete/register button states are updated by the subsequent registrationStateChanged signal.
+}
+
+void SidebarPanel::onProfileSwitchFailed(const QString &newProfileId, const QString &reason)
+{
+    Q_UNUSED(newProfileId)
+    Q_UNUSED(reason)
+    m_profileSelector->setEnabled(true);
+    m_addProfile->setEnabled(true);
+    const QString activeId = SipProfileManager::instance().activeProfileId();
+    const bool hasActive = !activeId.isEmpty();
+    m_editProfile->setEnabled(hasActive);
+    m_deleteProfile->setEnabled(hasActive);
+    m_registrationButton->setEnabled(hasActive);
 }
 
 void SidebarPanel::onRegistrationStateChanged(RegistrationState state,
