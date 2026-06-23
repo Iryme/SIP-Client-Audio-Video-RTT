@@ -162,15 +162,9 @@ struct SipCall::Impl
         {
             if (!m_impl->callAudioMedia)
                 return;
-            try {
-                pj::AudDevManager &adm =
-                    pj::Endpoint::instance().audDevManager();
-                m_impl->callAudioMedia->stopTransmit(adm.getPlaybackDevMedia());
-                adm.getCaptureDevMedia().stopTransmit(*m_impl->callAudioMedia);
-                Logger::instance().info(LogCategory::Sip,
-                    QStringLiteral("PJSIP RTP audio bridge disconnected: pjsipCallId=%1")
-                        .arg(getId()));
-            } catch (...) {}
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP RTP audio bridge disconnected: pjsipCallId=%1")
+                    .arg(getId()));
             m_impl->callAudioMedia = nullptr;
 
             QPointer<SipCall> self = m_impl->q;
