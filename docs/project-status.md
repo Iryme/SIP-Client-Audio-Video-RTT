@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-23
-Current task count: 16 of N
+Current task count: 17 of N
 
 ## Completed Tasks
 
@@ -23,6 +23,7 @@ Current task count: 16 of N
 | 14 | Registration Retry/Backoff — RegistrationRetryPolicy, exponential backoff, retryScheduled signal | feature/registration-retry-backoff | IMPLEMENTED |
 | 15 | Registration Expiry & Auto Re-REGISTER — RegistrationRefreshConfig, refresh timer, refresh failure → retry | feature/registration-expiry-refresh | IMPLEMENTED |
 | 16 | Profile Switch Sequencing — switchActiveProfile(), pending-switch guard, UNREGISTER old before registering new | feature/profile-switch-sequencing | IMPLEMENTED |
+| 17 | SIP Call State Machine — CallStateMachine (9 states), SipCall API, SipManager call control, CallPanel wiring | feature/call-state-machine | IMPLEMENTED |
 
 > **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
 > are not ancestors of the active Tasks 6-10 lineage. The active code uses the
@@ -58,9 +59,11 @@ Current task count: 16 of N
 | RegistrationRetryPolicy | IMPLEMENTED | isRetryable(code), delayForAttempt(n) exponential backoff |
 | RegistrationRefreshConfig | IMPLEMENTED | delayMsForExpiry(expiry): 80% ratio / 30s margin; overrideDelayMs for tests |
 | SipAccount | IMPLEMENTED | pjsua2 account creation, REGISTER/UNREGISTER, queued callbacks; refreshRegistration(); registrationExpiryReceived signal |
-| SipCall | STUB | Header + minimal .cpp; no calls yet |
+| SipCall | IMPLEMENTED | makeCall/answer/reject/hangup/hold/resume; owns CallStateMachine; stub + PJSIP paths |
+| CallStateMachine | IMPLEMENTED | 9-state explicit SM; transition table; watchdog timeout (OutgoingInit/Disconnecting); diagnostics |
 | cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
 | SIP registration | IMPLEMENTED | Manual register/unregister; exponential retry on transient failures; auto-refresh before expiry; deterministic profile-switch sequencing |
+| SIP call control | IMPLEMENTED | makeCall/answer/reject/hangup/hold/resume; 9-state SM; stub (test-only) + PJSIP scaffolding |
 | Audio calls | NOT STARTED | |
 | Video calls | NOT STARTED | |
 | RFC 4103 RTT | NOT STARTED | |
@@ -153,6 +156,16 @@ Current task count: 16 of N
 - Watchdog timeout during profile switch proceeds with the new profile registration even if the old UNREGISTER was not acknowledged by the server; the old registration may live until server-side expiry.
 - One account is supported at a time; multi-account is deferred.
 
+## Known Limitations (Task 17)
+
+- No automatic registration on startup or profile selection.
+- Network-change recovery not implemented.
+- Call audio/video/RTT media not yet wired — SipCall controls call state only; media setup is deferred.
+- SipCall PJSIP path requires pj::Account access from SipAccount; full PJSIP call integration is scaffolded but requires a live PJSIP installation to test.
+- One concurrent call supported; multi-party/conference is deferred.
+- Call duration timer is a UI placeholder — no elapsed-time counter yet.
+- Incoming call identification (name resolution) not yet implemented — remote URI only.
+
 ## Next Recommended Task
 
-**Task 17:** Startup auto-register — register the active profile automatically on `initialize()` when a profile with a credential is configured.
+**Task 18:** Startup auto-register — register the active profile automatically on `initialize()` when a profile with a credential is configured.

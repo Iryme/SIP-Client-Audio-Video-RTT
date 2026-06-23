@@ -61,6 +61,7 @@ set(SOURCES
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
+    src/sip/CallStateMachine.cpp
     src/sip/RegistrationStateMachine.cpp
     src/sip/RegistrationRetryPolicy.cpp
     src/sip/RegistrationRefreshConfig.cpp
@@ -89,6 +90,7 @@ set(HEADERS
     src/sip/SipManager.h
     src/sip/SipAccount.h
     src/sip/SipCall.h
+    src/sip/CallStateMachine.h
     src/sip/RegistrationStateMachine.h
     src/sip/RegistrationRetryPolicy.h
     src/sip/RegistrationRefreshConfig.h

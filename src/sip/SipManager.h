@@ -5,6 +5,7 @@
 #include <QTimer>
 
 #include "sip/SipAccount.h"
+#include "sip/SipCall.h"
 #include "sip/RegistrationStateMachine.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
@@ -31,6 +32,32 @@ public:
     // Returns false if a switch is already pending (rejected).
     bool switchActiveProfile(const QString &newProfileId);
     bool isSwitchingProfile() const;
+
+    // ---- Call control -------------------------------------------------------
+    // Initiate an outgoing call. Returns false if a call is already active or
+    // if remoteUri is empty.
+    bool makeCall(const QString &remoteUri);
+
+    // Answer an incoming call. Returns false if no incoming call is pending.
+    bool answerCall();
+
+    // Reject an incoming call (sends 486 Busy Here). Returns false if no
+    // incoming call is pending.
+    bool rejectCall();
+
+    // Hang up the active call. No-op if no call is active.
+    bool hangupCall();
+
+    // Place the active call on hold. No-op if call is not Active.
+    bool holdCall();
+
+    // Resume a held call. No-op if call is not Held.
+    bool resumeCall();
+
+    CallState callState()          const;
+    QString   callStatusText()     const;
+    QString   activeCallRemoteUri() const;
+    // -------------------------------------------------------------------------
 
     bool    isInitialized()        const;
     bool    isPjsipAvailable()     const;
@@ -73,6 +100,13 @@ signals:
     void profileSwitchCompleted(const QString &newProfileId);
     void profileSwitchFailed(const QString &newProfileId, const QString &reason);
 
+    // Call signals
+    void callStateChanged(CallState state, const QString &statusText, int statusCode);
+    void incomingCall(const QString &remoteUri);
+    void callConnected(const QString &remoteUri);
+    void callDisconnected(const QString &remoteUri, const QString &reason, int statusCode);
+    void callFailed(const QString &remoteUri, const QString &reason, int statusCode);
+
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,
                                            const QString     &statusText,
@@ -81,6 +115,8 @@ private slots:
     void onStateMachineTimedOut(RegistrationState stuckState);
     void onRetryTimerFired();
     void onRefreshTimerFired();
+    void onAccountIncomingCall(const QString &remoteUri);
+    void onActiveCallStateChanged(CallState state, const QString &statusText, int statusCode);
 
 private:
     SipManager();
@@ -89,6 +125,7 @@ private:
     void destroyAccount();
     void scheduleRetryIfEligible(int statusCode);
     void completePendingSwitch();
+    void destroyActiveCall();
 
 #ifdef HAVE_PJSIP
     bool ensureTransport(SipTransport transport, int &transportId, QString &error);
@@ -97,6 +134,7 @@ private:
     PjEndpoint *m_ep{nullptr};
 #endif
 
+    SipCall                 *m_activeCall{nullptr};
     bool                     m_initialized{false};
     QString                  m_lastError;
     SipAccount              *m_account{nullptr};

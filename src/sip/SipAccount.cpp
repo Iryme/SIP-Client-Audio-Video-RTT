@@ -47,6 +47,42 @@ struct SipAccount::Impl
     public:
         explicit Account(Impl *implementation) : m_impl(implementation) {}
 
+        void onIncomingCall(pj::OnIncomingCallParam &prm) override
+        {
+            if (!m_impl || !m_impl->owner)
+                return;
+            // Retrieve remote URI from the invite dialog.
+            QString remoteUri;
+            try {
+                pj::CallInfo ci;
+                // pjsua2 does not expose CallInfo before the Call object exists;
+                // use prm.rdata to extract the From header URI.
+                const pjsip_msg *msg = static_cast<pjsip_msg *>(prm.rdata.pjRxData
+                    ? static_cast<pjsip_rx_data *>(prm.rdata.pjRxData)->msg_info.msg
+                    : nullptr);
+                if (msg) {
+                    const pjsip_from_hdr *from = static_cast<pjsip_from_hdr *>(
+                        pjsip_msg_find_hdr(msg, PJSIP_H_FROM, nullptr));
+                    if (from) {
+                        char buf[256] = {};
+                        pjsip_uri_print(PJSIP_URI_IN_FROMTO_HDR,
+                                        from->uri, buf, sizeof(buf));
+                        remoteUri = QString::fromUtf8(buf);
+                    }
+                }
+            } catch (...) {}
+
+            if (remoteUri.isEmpty())
+                remoteUri = QStringLiteral("sip:unknown@unknown");
+
+            QPointer<SipAccount> self = m_impl->owner;
+            const QString uri = remoteUri;
+            QMetaObject::invokeMethod(self, [self, uri]() {
+                if (self)
+                    emit self->incomingCallReceived(uri);
+            }, Qt::QueuedConnection);
+        }
+
         void onRegState(pj::OnRegStateParam &prm) override
         {
             RegistrationState state = RegistrationState::RegistrationFailed;
@@ -214,6 +250,15 @@ bool SipAccount::refreshRegistration()
                            QStringLiteral("PJSIP unavailable; registration refresh not attempted"),
                            0);
     return false;
+#endif
+}
+
+void *SipAccount::pjAccountHandle() const
+{
+#ifdef HAVE_PJSIP
+    return m_impl->account; // Impl::Account IS-A pj::Account
+#else
+    return nullptr;
 #endif
 }
 

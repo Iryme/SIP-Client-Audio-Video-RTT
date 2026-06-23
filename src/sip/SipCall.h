@@ -1,33 +1,69 @@
 #pragma once
+
 #include <QObject>
 #include <QString>
 
-// SipCall wraps a pjsua2 Call (future task).
-// Manages audio/video/RTT streams for a single call.
+#include "sip/CallStateMachine.h"
+
+// Manages a single SIP call. Owns a CallStateMachine that enforces valid
+// call state transitions. In stub mode (ENABLE_PJSIP=OFF) all operations
+// resolve locally via queued callbacks. In PJSIP mode (HAVE_PJSIP defined)
+// operations are delegated to pjsua2 and driven by onCallState() callbacks.
 //
-// This header is a forward-declaration stub — implementation deferred to
-// the SIP calls task. No PJSIP types appear here intentionally;
-// pjsua2.hpp is included only in SipCall.cpp when HAVE_PJSIP is defined.
+// SipManager owns the active SipCall instance and provides the public call
+// control API to the rest of the application.
 class SipCall : public QObject
 {
     Q_OBJECT
 public:
-    enum class State { Idle, Calling, IncomingRinging, Connected, Ended };
-
     explicit SipCall(QObject *parent = nullptr);
     ~SipCall() override;
 
-    State   state()      const;
-    QString remoteUri()  const;
-    QString callId()     const;
+    // Initiate an outgoing call. Must be in Idle state.
+    bool makeCall(const QString &remoteUri);
 
-    // Future: makeCall(), answer(), hangup(), hold(), onCallState() callback
+    // Answer an incoming call. Must be in IncomingRinging state.
+    bool answer();
+
+    // Reject an incoming call (sends 4xx). Must be in IncomingRinging state.
+    bool reject();
+
+    // Hang up (any in-progress state except Idle and Failed).
+    bool hangup();
+
+    // Place the call on hold. Must be in Active state.
+    bool hold();
+
+    // Resume a held call. Must be in Held state.
+    bool resume();
+
+    // Force to Idle regardless of current state (shutdown / cleanup path).
+    void reset(const QString &reason = QStringLiteral("Reset"));
+
+    CallState state()      const;
+    QString   statusText() const;
+    QString   remoteUri()  const;
+    QString   callId()     const;
+
+    CallStateMachine &stateMachine();
+
 signals:
-    void stateChanged(SipCall::State state);
-    void callEnded(const QString &callId, const QString &reason);
+    void callStateChanged(CallState state, const QString &statusText, int statusCode);
+    void callConnected(const QString &remoteUri);
+    void callDisconnected(const QString &remoteUri, const QString &reason, int statusCode);
+    void callFailed(const QString &remoteUri, const QString &reason, int statusCode);
+
+private slots:
+    void onStateMachineStateChanged(CallState state, const QString &statusText, int statusCode);
+    void onStateMachineTimedOut(CallState stuckState);
 
 private:
-    State   m_state{State::Idle};
-    QString m_remoteUri;
-    QString m_callId;
+    void postStubTransition(CallState to, const QString &reason, int statusCode = 0);
+
+    CallStateMachine m_stateMachine;
+    QString          m_remoteUri;
+    QString          m_callId;
+
+    struct Impl;
+    Impl *m_impl{nullptr};
 };

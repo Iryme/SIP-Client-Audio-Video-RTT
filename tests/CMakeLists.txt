@@ -17,6 +17,12 @@ if(WIN32)
     list(APPEND SECURITY_HEADERS ${CMAKE_SOURCE_DIR}/src/security/WindowsCredentialBackend.h)
 endif()
 
+# Call subsystem sources — required by any test that compiles SipManager.cpp
+set(CALL_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+)
+
 # ---- test_sip_profile_manager ------------------------------------------
 qt_add_executable(test_sip_profile_manager
     test_sip_profile_manager.cpp
@@ -136,6 +142,7 @@ qt_add_executable(test_sip_manager
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -164,6 +171,7 @@ qt_add_executable(test_registration_retry
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -192,6 +200,7 @@ qt_add_executable(test_registration_expiry
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -220,6 +229,7 @@ qt_add_executable(test_profile_switch
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -237,3 +247,21 @@ if(WIN32)
 endif()
 
 add_test(NAME test_profile_switch COMMAND test_profile_switch)
+
+# ---- test_call_state_machine -------------------------------------------
+qt_add_executable(test_call_state_machine
+    test_call_state_machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_call_state_machine PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_call_state_machine PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_call_state_machine COMMAND test_call_state_machine)

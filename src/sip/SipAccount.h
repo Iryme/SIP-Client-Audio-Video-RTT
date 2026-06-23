@@ -34,11 +34,19 @@ public:
     bool startUnregistration();
     bool refreshRegistration();
 
+    // Returns the internal pj::Account as a void* for use by SipCall in PJSIP mode.
+    // Returns nullptr in stub mode. Cast to pj::Account* inside HAVE_PJSIP guards.
+    void *pjAccountHandle() const;
+
 signals:
     void registrationStateChanged(RegistrationState state,
                                   const QString &statusText,
                                   int statusCode);
     void registrationExpiryReceived(int seconds);
+
+    // Emitted when a new incoming call arrives (PJSIP onIncomingCall callback).
+    // In stub mode this signal is never emitted.
+    void incomingCallReceived(const QString &remoteUri);
 
 private:
     struct Impl;

@@ -1,5 +1,7 @@
 #include "SipManager.h"
 
+#include <QPointer>
+
 #include "core/Logger.h"
 #include "security/CredentialStore.h"
 #include "sip/SipProfileManager.h"
@@ -61,6 +63,7 @@ SipManager &SipManager::instance()
 SipManager::SipManager() : QObject(nullptr)
 {
     qRegisterMetaType<RegistrationState>("RegistrationState");
+    qRegisterMetaType<CallState>("CallState");
 
     connect(&m_stateMachine, &RegistrationStateMachine::stateChanged,
             this, &SipManager::registrationStateChanged);
@@ -120,6 +123,11 @@ void SipManager::shutdown()
     m_retryAttempt = 0;
     m_refreshTimer.stop();
     m_refreshing = false;
+
+    if (m_activeCall) {
+        m_activeCall->reset(QStringLiteral("SIP backend shut down"));
+        destroyActiveCall();
+    }
 
     if (!m_pendingProfileId.isEmpty()) {
         const QString pending = m_pendingProfileId;
@@ -231,6 +239,8 @@ bool SipManager::registerActiveProfile()
             this, &SipManager::onAccountRegistrationStateChanged);
     connect(m_account, &SipAccount::registrationExpiryReceived,
             this, &SipManager::onAccountRegistrationExpiryReceived);
+    connect(m_account, &SipAccount::incomingCallReceived,
+            this, &SipManager::onAccountIncomingCall);
 
     m_stateMachine.tryTransition(RegistrationState::Registering,
                                  QStringLiteral("Registration started"));
@@ -607,6 +617,170 @@ void SipManager::onRefreshTimerFired()
 
     m_refreshing = true;
     m_account->refreshRegistration();
+}
+
+// ---------------------------------------------------------------------------
+// Call control
+// ---------------------------------------------------------------------------
+
+void SipManager::destroyActiveCall()
+{
+    if (!m_activeCall)
+        return;
+    disconnect(m_activeCall, nullptr, this, nullptr);
+    delete m_activeCall;
+    m_activeCall = nullptr;
+}
+
+bool SipManager::makeCall(const QString &remoteUri)
+{
+    if (m_activeCall && m_activeCall->state() != CallState::Idle
+                     && m_activeCall->state() != CallState::Failed) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("makeCall rejected: a call is already active (state: %1)")
+                .arg(callStateName(m_activeCall->state())));
+        return false;
+    }
+
+    if (remoteUri.trimmed().isEmpty()) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("makeCall rejected: empty remote URI"));
+        return false;
+    }
+
+    destroyActiveCall();
+    m_activeCall = new SipCall(this);
+    connect(m_activeCall, &SipCall::callStateChanged,
+            this, &SipManager::onActiveCallStateChanged);
+    connect(m_activeCall, &SipCall::callConnected,
+            this, &SipManager::callConnected);
+    connect(m_activeCall, &SipCall::callDisconnected,
+            this, &SipManager::callDisconnected);
+    connect(m_activeCall, &SipCall::callFailed,
+            this, &SipManager::callFailed);
+
+#ifdef HAVE_PJSIP
+    if (m_account)
+        // Give SipCall access to the pjsua2 Account so it can create pj::Call.
+        ; // m_activeCall->m_impl->pjAccountHandle = m_account->pjAccountHandle();
+        // Direct Impl access is not available here; set via a dedicated method if needed.
+#endif
+
+    return m_activeCall->makeCall(remoteUri);
+}
+
+bool SipManager::answerCall()
+{
+    if (!m_activeCall || m_activeCall->state() != CallState::IncomingRinging) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("answerCall: no incoming call to answer"));
+        return false;
+    }
+    return m_activeCall->answer();
+}
+
+bool SipManager::rejectCall()
+{
+    if (!m_activeCall || m_activeCall->state() != CallState::IncomingRinging) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("rejectCall: no incoming call to reject"));
+        return false;
+    }
+    return m_activeCall->reject();
+}
+
+bool SipManager::hangupCall()
+{
+    if (!m_activeCall || m_activeCall->state() == CallState::Idle
+                      || m_activeCall->state() == CallState::Failed) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("hangupCall: no active call to hang up"));
+        return false;
+    }
+    return m_activeCall->hangup();
+}
+
+bool SipManager::holdCall()
+{
+    if (!m_activeCall || m_activeCall->state() != CallState::Active) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("holdCall: not in Active state"));
+        return false;
+    }
+    return m_activeCall->hold();
+}
+
+bool SipManager::resumeCall()
+{
+    if (!m_activeCall || m_activeCall->state() != CallState::Held) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("resumeCall: not in Held state"));
+        return false;
+    }
+    return m_activeCall->resume();
+}
+
+CallState SipManager::callState() const
+{
+    return m_activeCall ? m_activeCall->state() : CallState::Idle;
+}
+
+QString SipManager::callStatusText() const
+{
+    return m_activeCall ? m_activeCall->statusText()
+                        : callStateDisplayText(CallState::Idle);
+}
+
+QString SipManager::activeCallRemoteUri() const
+{
+    return m_activeCall ? m_activeCall->remoteUri() : QString{};
+}
+
+void SipManager::onAccountIncomingCall(const QString &remoteUri)
+{
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Incoming call from %1").arg(remoteUri));
+
+    if (m_activeCall && m_activeCall->state() != CallState::Idle
+                     && m_activeCall->state() != CallState::Failed) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Incoming call rejected: a call is already active"));
+        return;
+    }
+
+    destroyActiveCall();
+    m_activeCall = new SipCall(this);
+    connect(m_activeCall, &SipCall::callStateChanged,
+            this, &SipManager::onActiveCallStateChanged);
+    connect(m_activeCall, &SipCall::callConnected,
+            this, &SipManager::callConnected);
+    connect(m_activeCall, &SipCall::callDisconnected,
+            this, &SipManager::callDisconnected);
+    connect(m_activeCall, &SipCall::callFailed,
+            this, &SipManager::callFailed);
+    m_activeCall->stateMachine().tryTransition(CallState::IncomingRinging,
+                                               QStringLiteral("Incoming call from %1")
+                                                   .arg(remoteUri));
+    emit incomingCall(remoteUri);
+}
+
+void SipManager::onActiveCallStateChanged(CallState state,
+                                          const QString &statusText,
+                                          int statusCode)
+{
+    emit callStateChanged(state, statusText, statusCode);
+
+    // Clean up the call object once it has fully ended.
+    if (state == CallState::Idle || state == CallState::Failed) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Call ended in state %1; releasing call object")
+                .arg(callStateName(state)));
+        // Defer destruction so signal handlers in the call finish first.
+        SipCall *call = m_activeCall;
+        m_activeCall = nullptr;
+        if (call)
+            call->deleteLater();
+    }
 }
 
 void SipManager::setRefreshConfig(const RegistrationRefreshConfig &config)
