@@ -39,6 +39,14 @@ struct SipCall::Impl
             QString   reason   = QString::fromStdString(ci.lastReason);
             int       code     = ci.lastStatusCode;
 
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP call state callback: pjsipCallId=%1 state=%2 lastCode=%3 reason=\"%4\" remote=%5")
+                    .arg(getId())
+                    .arg(static_cast<int>(ci.state))
+                    .arg(code)
+                    .arg(reason,
+                         QString::fromStdString(ci.remoteUri)));
+
             switch (ci.state) {
             case PJSIP_INV_STATE_CALLING:     newState = CallState::OutgoingInit; break;
             case PJSIP_INV_STATE_EARLY:        newState = CallState::Ringing;      break;
@@ -55,8 +63,18 @@ struct SipCall::Impl
 
             QPointer<SipCall> self = m_impl->q;
             QMetaObject::invokeMethod(self, [self, newState, reason, code]() {
-                if (self)
-                    self->m_stateMachine.tryTransition(newState, reason, code);
+                if (!self)
+                    return;
+                if (newState == CallState::Idle
+                    && self->m_stateMachine.state() != CallState::Idle
+                    && self->m_stateMachine.state() != CallState::IncomingRinging) {
+                    self->m_stateMachine.tryTransition(CallState::Disconnecting,
+                                                       reason.isEmpty()
+                                                           ? QStringLiteral("Call disconnected")
+                                                           : reason,
+                                                       code);
+                }
+                self->m_stateMachine.tryTransition(newState, reason, code);
             }, Qt::QueuedConnection);
         }
 
@@ -70,7 +88,17 @@ struct SipCall::Impl
             bool audioBridgeWired = false;
             bool videoActive      = false;
 
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP media state callback: pjsipCallId=%1 mediaCount=%2")
+                    .arg(getId())
+                    .arg(static_cast<int>(ci.media.size())));
+
             for (const auto &mi : ci.media) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("PJSIP media stream: index=%1 type=%2 status=%3")
+                        .arg(mi.index)
+                        .arg(static_cast<int>(mi.type))
+                        .arg(static_cast<int>(mi.status)));
                 if (mi.type == PJMEDIA_TYPE_AUDIO
                         && mi.status == PJSUA_CALL_MEDIA_ACTIVE
                         && !audioBridgeWired) {
@@ -82,8 +110,17 @@ struct SipCall::Impl
                         aud->startTransmit(adm.getPlaybackDevMedia());
                         m_impl->callAudioMedia = aud;
                         audioBridgeWired = true;
+                        const pjsua_call_id cid = static_cast<pjsua_call_id>(getId());
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("PJSIP RTP audio bridge connected: pjsipCallId=%1 confSlot=%2 mediaIndex=%3")
+                                .arg(getId())
+                                .arg(pjsua_call_get_conf_port(cid))
+                                .arg(mi.index));
                     } catch (...) {
                         m_impl->callAudioMedia = nullptr;
+                        Logger::instance().warn(LogCategory::Sip,
+                            QStringLiteral("PJSIP RTP audio bridge failed: pjsipCallId=%1 mediaIndex=%2")
+                                .arg(getId()).arg(mi.index));
                     }
                 } else if (mi.type == PJMEDIA_TYPE_VIDEO
                            && mi.status == PJSUA_CALL_MEDIA_ACTIVE
@@ -130,6 +167,9 @@ struct SipCall::Impl
                     pj::Endpoint::instance().audDevManager();
                 m_impl->callAudioMedia->stopTransmit(adm.getPlaybackDevMedia());
                 adm.getCaptureDevMedia().stopTransmit(*m_impl->callAudioMedia);
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("PJSIP RTP audio bridge disconnected: pjsipCallId=%1")
+                        .arg(getId()));
             } catch (...) {}
             m_impl->callAudioMedia = nullptr;
 
@@ -245,6 +285,9 @@ bool SipCall::makeCall(const QString &remoteUri)
         try {
             m_impl->pjCall = new Impl::PjCall(m_impl, *account);
             pj::CallOpParam prm(true);
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP INVITE outbound: call=%1 target=%2")
+                    .arg(m_callId, m_remoteUri));
             m_impl->pjCall->makeCall(m_remoteUri.toStdString(), prm);
             return true;
         } catch (const pj::Error &e) {
@@ -262,6 +305,60 @@ bool SipCall::makeCall(const QString &remoteUri)
     // Stub: advance to Ringing after a queued tick to allow OutgoingInit observers.
     postStubTransition(CallState::Ringing, QStringLiteral("Remote ringing"));
     return true;
+}
+
+void SipCall::setPjsipAccountHandle(void *accountHandle)
+{
+#ifdef HAVE_PJSIP
+    m_impl->pjAccountHandle = accountHandle;
+#else
+    Q_UNUSED(accountHandle)
+#endif
+}
+
+bool SipCall::bindIncomingPjsipCall(void *accountHandle, int callId, const QString &remoteUri)
+{
+#ifdef HAVE_PJSIP
+    if (!accountHandle || callId == PJSUA_INVALID_ID) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Incoming PJSIP call bind rejected: invalid account or call id"));
+        return false;
+    }
+    if (m_stateMachine.state() != CallState::Idle) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Incoming PJSIP call bind rejected: current state is %1")
+                .arg(callStateName(m_stateMachine.state())));
+        return false;
+    }
+
+    try {
+        auto *account = static_cast<pj::Account *>(accountHandle);
+        m_impl->pjAccountHandle = accountHandle;
+        m_impl->pjCall = new Impl::PjCall(m_impl, *account, callId);
+        m_remoteUri = remoteUri.trimmed().isEmpty()
+            ? QStringLiteral("sip:unknown@unknown")
+            : remoteUri.trimmed();
+        m_callId = QStringLiteral("pjsip-%1").arg(callId);
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP INVITE inbound bound: call=%1 pjsipCallId=%2 remote=%3")
+                .arg(m_callId).arg(callId).arg(m_remoteUri));
+        return m_stateMachine.tryTransition(CallState::IncomingRinging,
+                                            QStringLiteral("Incoming call from %1")
+                                                .arg(m_remoteUri));
+    } catch (const pj::Error &e) {
+        delete m_impl->pjCall;
+        m_impl->pjCall = nullptr;
+        m_stateMachine.tryTransition(CallState::Failed,
+                                     QString::fromStdString(e.reason),
+                                     static_cast<int>(e.status));
+        return false;
+    }
+#else
+    Q_UNUSED(accountHandle)
+    Q_UNUSED(callId)
+    Q_UNUSED(remoteUri)
+    return false;
+#endif
 }
 
 bool SipCall::answer()
@@ -283,6 +380,9 @@ bool SipCall::answer()
         try {
             pj::CallOpParam prm;
             prm.statusCode = PJSIP_SC_OK;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP INVITE answer 200 OK: call=%1 remote=%2")
+                    .arg(m_callId, m_remoteUri));
             m_impl->pjCall->answer(prm);
             return true;
         } catch (const pj::Error &e) {
@@ -315,6 +415,9 @@ bool SipCall::reject()
         try {
             pj::CallOpParam prm;
             prm.statusCode = PJSIP_SC_BUSY_HERE;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP INVITE reject 486 Busy Here: call=%1 remote=%2")
+                    .arg(m_callId, m_remoteUri));
             m_impl->pjCall->hangup(prm);
             return true;
         } catch (const pj::Error &e) {
@@ -344,6 +447,9 @@ bool SipCall::hangup()
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         try {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP BYE/hangup requested: call=%1 remote=%2")
+                    .arg(m_callId, m_remoteUri));
             m_impl->pjCall->hangup(pj::CallOpParam());
             return true;
         } catch (const pj::Error &e) {

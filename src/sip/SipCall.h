@@ -23,6 +23,11 @@ public:
     // Initiate an outgoing call. Must be in Idle state.
     bool makeCall(const QString &remoteUri);
 
+    // Binds the call to the active PJSIP account or existing incoming INVITE.
+    // No-op in stub builds; the handle is a pj::Account* behind HAVE_PJSIP.
+    void setPjsipAccountHandle(void *accountHandle);
+    bool bindIncomingPjsipCall(void *accountHandle, int callId, const QString &remoteUri);
+
     // Answer an incoming call. Must be in IncomingRinging state.
     bool answer();
 

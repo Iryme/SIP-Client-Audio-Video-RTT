@@ -48,6 +48,10 @@ signals:
     // In stub mode this signal is never emitted.
     void incomingCallReceived(const QString &remoteUri);
 
+    // PJSIP-only detail for binding an incoming INVITE to SipCall without
+    // exposing pjsua2 headers outside SipAccount/SipCall/SipManager.
+    void incomingPjsipCallReceived(const QString &remoteUri, int callId);
+
 private:
     struct Impl;
 

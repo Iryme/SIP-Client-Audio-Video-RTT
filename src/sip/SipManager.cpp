@@ -253,8 +253,81 @@ bool SipManager::registerActiveProfile()
             this, &SipManager::onAccountRegistrationStateChanged);
     connect(m_account, &SipAccount::registrationExpiryReceived,
             this, &SipManager::onAccountRegistrationExpiryReceived);
+#ifdef HAVE_PJSIP
+    connect(m_account, &SipAccount::incomingPjsipCallReceived,
+            this, [this](const QString &remoteUri, int callId) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Incoming PJSIP call dispatch: callId=%1 remote=%2")
+                        .arg(callId).arg(remoteUri));
+                if (m_activeCall && m_activeCall->state() != CallState::Idle
+                                 && m_activeCall->state() != CallState::Failed) {
+                    Logger::instance().warn(LogCategory::Sip,
+                        QStringLiteral("Incoming PJSIP call rejected locally: a call is already active"));
+                    return;
+                }
+
+                destroyActiveCall();
+                m_activeCall = new SipCall(this);
+                m_activeCall->setPjsipAccountHandle(m_account ? m_account->pjAccountHandle() : nullptr);
+                connect(m_activeCall, &SipCall::callStateChanged,
+                        this, &SipManager::onActiveCallStateChanged);
+                connect(m_activeCall, &SipCall::callConnected,
+                        this, &SipManager::callConnected);
+                connect(m_activeCall, &SipCall::callDisconnected,
+                        this, &SipManager::callDisconnected);
+                connect(m_activeCall, &SipCall::callFailed,
+                        this, &SipManager::callFailed);
+                connect(m_activeCall, &SipCall::audioMediaConnected,
+                        this, &SipManager::audioMediaConnected);
+                connect(m_activeCall, &SipCall::audioMediaDisconnected,
+                        this, &SipManager::audioMediaDisconnected);
+                connect(m_activeCall, &SipCall::muteChanged,
+                        this, &SipManager::callMuteChanged);
+                connect(m_activeCall, &SipCall::inputLevelChanged,
+                        this, &SipManager::callInputLevelChanged);
+                connect(m_activeCall, &SipCall::outputLevelChanged,
+                        this, &SipManager::callOutputLevelChanged);
+                connect(m_activeCall, &SipCall::videoMediaConnected,
+                        this, &SipManager::videoMediaConnected);
+                connect(m_activeCall, &SipCall::videoMediaDisconnected,
+                        this, &SipManager::videoMediaDisconnected);
+                connect(m_activeCall, &SipCall::videoMuteChanged,
+                        this, &SipManager::callVideoMuteChanged);
+                connect(m_activeCall, &SipCall::localVideoStarted,
+                        this, &SipManager::localVideoStarted);
+                connect(m_activeCall, &SipCall::localVideoStopped,
+                        this, &SipManager::localVideoStopped);
+                connect(m_activeCall, &SipCall::remoteVideoStarted,
+                        this, &SipManager::remoteVideoStarted);
+                connect(m_activeCall, &SipCall::remoteVideoStopped,
+                        this, &SipManager::remoteVideoStopped);
+                AudioMediaManager::instance().attachCall(m_activeCall);
+                VideoMediaManager::instance().attachCall(m_activeCall);
+
+                {
+                    SipMessageTrace trace;
+                    trace.direction = SipMessageTrace::Direction::Inbound;
+                    trace.method    = QStringLiteral("INVITE");
+                    trace.fromUri   = remoteUri;
+                    const SipProfile ip = SipProfileManager::instance().activeProfile();
+                    if (!ip.isNull())
+                        trace.toUri = ip.effectiveSipUri();
+                    SipTraceLogger::instance().logMessage(trace);
+                }
+
+                if (m_activeCall->bindIncomingPjsipCall(
+                        m_account ? m_account->pjAccountHandle() : nullptr,
+                        callId,
+                        remoteUri)) {
+                    emit incomingCall(remoteUri);
+                } else {
+                    destroyActiveCall();
+                }
+            });
+#else
     connect(m_account, &SipAccount::incomingCallReceived,
             this, &SipManager::onAccountIncomingCall);
+#endif
 
     m_stateMachine.tryTransition(RegistrationState::Registering,
                                  QStringLiteral("Registration started"));
@@ -787,6 +860,10 @@ bool SipManager::makeCall(const QString &remoteUri)
             this, &SipManager::remoteVideoStopped);
     AudioMediaManager::instance().attachCall(m_activeCall);
     VideoMediaManager::instance().attachCall(m_activeCall);
+#ifdef HAVE_PJSIP
+    if (m_account)
+        m_activeCall->setPjsipAccountHandle(m_account->pjAccountHandle());
+#endif
 
     // Emit INVITE outbound trace.
     {

@@ -3,6 +3,8 @@
 #include <QMetaObject>
 #include <QPointer>
 
+#include "core/Logger.h"
+
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
 #endif
@@ -77,9 +79,13 @@ struct SipAccount::Impl
 
             QPointer<SipAccount> self = m_impl->owner;
             const QString uri = remoteUri;
-            QMetaObject::invokeMethod(self, [self, uri]() {
+            const int callId = prm.callId;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP incoming INVITE: callId=%1 remote=%2")
+                    .arg(callId).arg(uri));
+            QMetaObject::invokeMethod(self, [self, uri, callId]() {
                 if (self)
-                    emit self->incomingCallReceived(uri);
+                    emit self->incomingPjsipCallReceived(uri, callId);
             }, Qt::QueuedConnection);
         }
 
@@ -118,6 +124,13 @@ struct SipAccount::Impl
                     text = QStringLiteral("Registration rejected");
             }
 
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP registration callback: state=%1 code=%2 status=%3 reason=\"%4\" expiry=%5")
+                    .arg(registrationStateName(state))
+                    .arg(code)
+                    .arg(static_cast<int>(prm.status))
+                    .arg(text)
+                    .arg(expiry));
             if (m_impl)
                 m_impl->notify(state, text, code, expiry);
         }
@@ -181,6 +194,13 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
         if (!proxy.isEmpty())
             config.sipConfig.proxies.push_back(ensureSipUri(proxy).toStdString());
 
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP REGISTER create account: idUri=%1 registrar=%2 transportId=%3 authUser=%4 proxy=%5")
+                .arg(QString::fromStdString(config.idUri),
+                     QString::fromStdString(config.regConfig.registrarUri))
+                .arg(transportId)
+                .arg(username,
+                     proxy.isEmpty() ? QStringLiteral("(none)") : ensureSipUri(proxy)));
         m_impl->account = new Impl::Account(m_impl);
         m_impl->account->create(config, true);
         return true;
@@ -213,6 +233,8 @@ bool SipAccount::startUnregistration()
     }
 
     try {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP REGISTER unregister account for profile %1").arg(m_profileId));
         m_impl->account->setRegistration(false);
         return true;
     } catch (const pj::Error &e) {
@@ -237,6 +259,8 @@ bool SipAccount::refreshRegistration()
         return false;
     }
     try {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP REGISTER refresh account for profile %1").arg(m_profileId));
         m_impl->account->setRegistration(true);
         return true;
     } catch (const pj::Error &e) {
