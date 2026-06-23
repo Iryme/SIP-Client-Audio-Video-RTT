@@ -10,6 +10,7 @@ enum class RegistrationState {
     Unregistered,
     Registering,
     Registered,
+    Unregistering,
     RegistrationFailed
 };
 

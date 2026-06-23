@@ -19,6 +19,7 @@ Current task count: 12 of N
 | 10 | PJSIP build integration — FindPJSIP.cmake, ENABLE_PJSIP option, SipManager lifecycle skeleton | feature/pjsip-build-integration | IMPLEMENTED |
 | 11 | Project Handoff 001 — formal project snapshot and continuation prompt | feature/project-handoff-001 | IMPLEMENTED |
 | 12 | SIP Register / Unregister — active profile, secure credential lookup, pjsua2 callbacks, GUI status | feature/sip-registration | IMPLEMENTED |
+| 13 | Registration State Machine — explicit 5-state SM, transition guards, watchdog timeout, button disable | feature/registration-state-machine | IMPLEMENTED |
 
 > **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
 > are not ancestors of the active Tasks 6-10 lineage. The active code uses the
@@ -49,7 +50,8 @@ Current task count: 12 of N
 | MediaDeviceManager | IMPLEMENTED | Qt Multimedia backed; pluggable IMediaDeviceBackend |
 | MediaDeviceSelectionModel | IMPLEMENTED | Persistence + fallback to default |
 | MediaPanel | IMPLEMENTED | Microphone/Speaker/Camera combos + Refresh button in Media tab |
-| SipManager | IMPLEMENTED | Lifecycle + active-profile register/unregister + typed state; stub + PJSIP branches |
+| SipManager | IMPLEMENTED | Lifecycle + active-profile register/unregister + state machine; stub + PJSIP branches |
+| RegistrationStateMachine | IMPLEMENTED | 5-state explicit SM; transition table; watchdog timeout; diagnostics |
 | SipAccount | IMPLEMENTED | pjsua2 account creation, REGISTER/UNREGISTER, queued callbacks |
 | SipCall | STUB | Header + minimal .cpp; no calls yet |
 | cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
@@ -117,10 +119,16 @@ Current task count: 12 of N
 
 - Real PJSIP registration was not integration-tested on this machine because PJSIP is not installed; stub mode and guarded APIs were verified.
 - Registration is manual; there is no startup/profile-change auto-register behavior.
-- No expiry refresh, retry/backoff, timeout, network-change recovery, or multi-account support yet.
 - Profile switching does not wait for an old account's unregister response before account replacement.
-- TLS certificate policy, NAT behavior, and registrar interoperability remain environment-dependent and untested.
+
+## Known Limitations (Task 13)
+
+- No automatic registration on startup or profile selection.
+- No refresh scheduling before registration expiry.
+- No retry/backoff on transient failures; state stays `RegistrationFailed` until the user retries.
+- Network-change recovery not implemented.
+- One account supported at a time; multi-account deferred.
 
 ## Next Recommended Task
 
-**Task 13:** Registration State Machine — add automatic refresh before expiry, timeout handling, retry/backoff, network-change recovery, explicit unregistering semantics, and deterministic profile-switch sequencing while preserving the four public registration states.
+**Task 14:** Registration State Machine Extensions — automatic re-register before expiry, retry/backoff on transient failures, network-change recovery, and deterministic profile-switch sequencing (wait for old-account UNREGISTER response before replacing with new account).

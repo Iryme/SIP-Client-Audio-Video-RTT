@@ -107,11 +107,31 @@ target_link_libraries(test_media_device PRIVATE
 
 add_test(NAME test_media_device COMMAND test_media_device)
 
+# ---- test_registration_state_machine -----------------------------------
+qt_add_executable(test_registration_state_machine
+    test_registration_state_machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_registration_state_machine PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_registration_state_machine PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_registration_state_machine COMMAND test_registration_state_machine)
+
 # ---- test_sip_manager --------------------------------------------------
 qt_add_executable(test_sip_manager
     test_sip_manager.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${SECURITY_SOURCES}

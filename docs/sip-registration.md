@@ -1,10 +1,53 @@
 # SIP Registration
 
-**Status:** IMPLEMENTED (Task 12; real registration requires PJSIP)
+**Status:** IMPLEMENTED (Task 12; state machine added Task 13; real registration requires PJSIP)
 
 ## Overview
 
-`SipManager` registers and unregisters the active `SipProfile` through one owned `SipAccount`. The implementation preserves the dependency-free stub backend and keeps all pjsua2 types behind `HAVE_PJSIP` guards.
+`SipManager` registers and unregisters the active `SipProfile` through one owned `SipAccount`. All state transitions are enforced by `RegistrationStateMachine`. The implementation preserves the dependency-free stub backend and keeps all pjsua2 types behind `HAVE_PJSIP` guards.
+
+## Registration States
+
+There are five explicit states:
+
+| State                | Meaning |
+|---|---|
+| `Unregistered`       | No active registration; register action is allowed |
+| `Registering`        | REGISTER request in flight; actions rejected |
+| `Registered`         | Active registration confirmed; unregister is allowed |
+| `Unregistering`      | REGISTER with Expires:0 in flight; actions rejected |
+| `RegistrationFailed` | Last attempt failed; retry/register is allowed |
+
+Profile editing (Edit/Delete buttons) is disabled while the state is `Registering` or `Unregistering`.
+
+## State Transition Table
+
+| From               | To                    | Trigger |
+|---|---|---|
+| Unregistered       | Registering           | `registerActiveProfile()` — preflight passed |
+| Unregistered       | RegistrationFailed    | `registerActiveProfile()` — preflight failed (no profile/credential) |
+| Registering        | Registered            | `onRegState` — active registration confirmed |
+| Registering        | RegistrationFailed    | `onRegState` error, or watchdog timeout (30 s default) |
+| Registering        | Unregistering         | `unregisterActiveProfile()` called while Registering (cancel) |
+| Registered         | Unregistering         | `unregisterActiveProfile()` |
+| Unregistering      | Unregistered          | `onRegState` — inactive registration confirmed |
+| Unregistering      | RegistrationFailed    | `onRegState` error, or watchdog timeout (30 s default) |
+| RegistrationFailed | Registering           | `registerActiveProfile()` retry — preflight passed |
+| RegistrationFailed | RegistrationFailed    | `registerActiveProfile()` retry — preflight failed again |
+| RegistrationFailed | Unregistered          | `unregisterActiveProfile()` — cleanup after failure |
+
+All other transitions (e.g. `Registered → Registering`, `Unregistered → Unregistered`) are rejected.
+`reset()` unconditionally transitions to `Unregistered` from any state (used during shutdown).
+
+## Rejected Operations
+
+| Attempted operation          | Current state      | Result |
+|---|---|---|
+| `registerActiveProfile()`    | Registering        | Rejected, returns false, WARN logged |
+| `registerActiveProfile()`    | Unregistering      | Rejected, returns false, WARN logged |
+| `registerActiveProfile()`    | Registered (different profile) | Rejected — must unregister first |
+| `unregisterActiveProfile()`  | Unregistered       | No-op, returns true |
+| `unregisterActiveProfile()`  | Unregistering      | No-op, returns true |
 
 ## Public API
 
@@ -13,40 +56,70 @@ bool SipManager::registerActiveProfile();
 bool SipManager::unregisterActiveProfile();
 
 RegistrationState SipManager::registrationState() const;
-QString SipManager::registrationStatusText() const;
-int SipManager::registrationStatusCode() const;
-QString SipManager::registeredProfileId() const;
+QString           SipManager::registrationStatusText() const;
+int               SipManager::registrationStatusCode() const;
+QString           SipManager::registeredProfileId() const;
+RegistrationStateMachine &SipManager::stateMachine();  // for test injection
 ```
 
-Registration states are `Unregistered`, `Registering`, `Registered`, and `RegistrationFailed`.
-
-`registrationStateChanged(state, statusText, statusCode)` is emitted for state changes. `SipAccount` marshals pjsua2 registration callbacks to the Qt event thread with a queued `QMetaObject::invokeMethod` call.
+`registrationStateChanged(state, statusText, statusCode)` is emitted on every state change. `SipAccount` marshals pjsua2 callbacks to the Qt event thread with a queued `QMetaObject::invokeMethod` call.
 
 ## Registration Flow
 
 ```text
 Sidebar Register button
   -> SipManager::registerActiveProfile()
+     -> check state (reject if Registering / Unregistering / Registered-other-profile)
      -> SipProfileManager::activeProfile()
      -> CredentialStore::loadPassword(profileId, authUsername)
-     -> create/locate UDP, TCP, or TLS PJSIP transport
+     -> create/locate UDP, TCP, or TLS PJSIP transport (HAVE_PJSIP only)
+     -> RegistrationStateMachine::tryTransition(Registering, ...)
      -> SipAccount::startRegistration(profile, password, transportId)
         -> pj::Account::create(AccountConfig, true)
         -> REGISTER and onRegState callback
      -> sidebar + status bar + diagnostics
 ```
 
-The authentication username is `authUsername` when configured, otherwise `sipUsername`. The registrar and proxy are normalized to SIP URIs. The selected profile transport is created once per endpoint and assigned to the account.
+## Watchdog Timeout
 
-Unregister uses `pj::Account::setRegistration(false)`. Account destruction calls pjsua2 `Account::shutdown()` before deleting the derived account, and application shutdown destroys the account before the endpoint.
+`RegistrationStateMachine` starts a 30-second single-shot timer whenever it enters `Registering` or `Unregistering`. If the timer fires before the state changes:
+
+- Stuck in `Registering` → forced to `RegistrationFailed`
+- Stuck in `Unregistering` → forced to `Unregistered`
+
+`SipManager::onStateMachineTimedOut()` receives `transitionTimedOut` and calls `destroyAccount()`. The timeout interval can be overridden via `stateMachine().setTimeoutMs(ms)`.
 
 ## Credential Safety
 
 - Passwords are loaded only through `CredentialStore` at registration time.
 - Passwords are not members of `SipManager`, `SipAccount`, or `SipProfile`.
 - Passwords are not persisted in application/profile settings.
+- Passwords are never passed as state machine `reason` strings.
 - Registration diagnostics contain profile IDs, status text, and status codes, never passwords.
-- The stub regression suite uses a known sentinel secret and verifies that it does not occur in emitted diagnostic messages.
+- Regression tests use a known sentinel secret and verify it does not appear in emitted diagnostic messages.
+
+## Diagnostics
+
+Every state transition is logged by `RegistrationStateMachine`:
+
+```
+Registration SM: <OldState> → <NewState>; reason="<reason>"; status=<code>
+```
+
+Rejected transitions are logged at WARN:
+
+```
+Registration SM: rejected <OldState> → <Attempted>; <reason>
+```
+
+Timeouts:
+
+```
+Registration SM: timeout in state <State> after <N> ms
+Registration SM: <State> → <Fallback> (timeout forced)
+```
+
+The SIP category also records register started, register success, register failure with status/code, unregister started, and unregister success from `SipManager`.
 
 ## Backend Behavior
 
@@ -67,26 +140,48 @@ Unregister uses `pj::Account::setRegistration(false)`. Account destruction calls
 
 ## GUI
 
-The profile sidebar includes a Register/Unregister button. Its account card shows registration state with red, amber, or green status styling and exposes status detail as a tooltip.
+The profile sidebar Register/Unregister button follows the state machine:
 
-The global status bar mirrors registration state and provides the status text/code as a tooltip. During unregister, the four-state model uses `Registering` with status text `Unregistering`.
+| State              | Button text        | Button enabled |
+|---|---|---|
+| Unregistered       | Register           | Yes (if profile selected) |
+| Registering        | Register           | No |
+| Registered         | Unregister         | Yes |
+| Unregistering      | Unregister         | No |
+| RegistrationFailed | Retry registration | Yes (if profile selected) |
 
-## Diagnostics
+Profile Edit and Delete buttons are disabled during `Registering` and `Unregistering`.
 
-The SIP category records register started, register success, register failure with status/code, unregister started, and unregister success. No password or authorization header is logged.
+The global status bar shows the current state with color coding:
+- Green (#50c878): Registered
+- Amber (#e0b850): Registering / Unregistering
+- Red (#e05050): Unregistered / RegistrationFailed
 
 ## Tests
 
-`test_sip_manager` covers endpoint lifecycle, stub behavior, stable state names, missing active-profile failure, safe stub register/unregister transitions, and diagnostic password non-disclosure.
+`test_registration_state_machine` (27 tests) covers:
+- All 11 valid transitions pass
+- 6 invalid transitions are rejected with `transitionRejected` signal and no state change
+- `stateChanged` signal not emitted on rejected transitions
+- Timeout from `Registering` → `RegistrationFailed` (50 ms injected)
+- Timeout from `Unregistering` → `Unregistered` (50 ms injected)
+- `reset()` from all four non-Unregistered states
+- State name stability for all five states
+- Password-as-reason plumbing guard
 
-At Task 12 completion, a fresh Windows Visual Studio 2026 Debug stub build succeeded and all five CTest suites passed. Real PJSIP registration could not be integration-tested because PJSIP was not installed; guarded API usage was checked against the current official pjproject headers.
+`test_sip_manager` (14 tests) additionally covers:
+- `registerActiveProfile()` rejected while Registering
+- `registerActiveProfile()` rejected while Registered (different profile)
+- `unregisterActiveProfile()` no-op while Unregistered
+- `Unregistering` state is distinct from `Registering`
+- Diagnostic password non-disclosure end-to-end
 
-## Known Limitations
+## Known Limitations (Task 13)
 
-- No automatic registration on startup/profile selection.
+- No automatic registration on startup or profile selection.
 - No refresh scheduling before registration expiry.
-- No retry/backoff, registration timeout, or network-change recovery state machine.
-- One account is supported at a time.
-- Switching profiles does not provide a staged wait for the old unregister response.
-- Stub mode intentionally cannot register.
+- No retry/backoff on transient failures.
+- Network-change recovery not implemented.
+- One account is supported at a time; multi-account is deferred.
+- Stub mode intentionally cannot register successfully.
 - Real registrar interoperability, TLS certificates, NAT behavior, and failure codes require PJSIP-enabled integration testing.

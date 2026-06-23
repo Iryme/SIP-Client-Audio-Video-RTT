@@ -79,8 +79,11 @@ void AppStatusBar::setRegistrationStatus(RegistrationState state,
         text = QStringLiteral("Unregistered");
         break;
     case RegistrationState::Registering:
-        text = statusText == QStringLiteral("Unregistering")
-            ? QStringLiteral("Unregistering") : QStringLiteral("Registering");
+        text  = QStringLiteral("Registering");
+        color = QStringLiteral("#e0b850");
+        break;
+    case RegistrationState::Unregistering:
+        text  = QStringLiteral("Unregistering");
         color = QStringLiteral("#e0b850");
         break;
     case RegistrationState::Registered:

@@ -61,6 +61,7 @@ set(SOURCES
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
+    src/sip/RegistrationStateMachine.cpp
     src/sip/SipProfileManager.cpp
     src/security/CredentialStore.cpp
     src/security/MemoryCredentialBackend.cpp
@@ -86,6 +87,7 @@ set(HEADERS
     src/sip/SipManager.h
     src/sip/SipAccount.h
     src/sip/SipCall.h
+    src/sip/RegistrationStateMachine.h
     src/sip/SipProfile.h
     src/sip/SipProfileManager.h
     src/security/ICredentialBackend.h

@@ -244,13 +244,15 @@ void SidebarPanel::onDeleteProfile()
 void SidebarPanel::onRegistrationClicked()
 {
     auto &sip = SipManager::instance();
-    const QString activeId = SipProfileManager::instance().activeProfileId();
-    if (sip.registrationState() == RegistrationState::Registered
-        && sip.registeredProfileId() == activeId) {
+    const RegistrationState state = sip.registrationState();
+    if (state == RegistrationState::Registered) {
         sip.unregisterActiveProfile();
-    } else {
+    } else if (state == RegistrationState::Unregistered
+               || state == RegistrationState::RegistrationFailed) {
         sip.registerActiveProfile();
     }
+    // Registering and Unregistering: button should already be disabled by
+    // onRegistrationStateChanged; ignore stray clicks defensively.
 }
 
 void SidebarPanel::onRegistrationStateChanged(RegistrationState state,
@@ -263,6 +265,9 @@ void SidebarPanel::onRegistrationStateChanged(RegistrationState state,
     if (!registeredId.isEmpty() && registeredId != activeId)
         return;
 
+    const bool transient = (state == RegistrationState::Registering
+                            || state == RegistrationState::Unregistering);
+
     QString color = QStringLiteral("#e05050");
     switch (state) {
     case RegistrationState::Unregistered:
@@ -271,13 +276,16 @@ void SidebarPanel::onRegistrationStateChanged(RegistrationState state,
         break;
     case RegistrationState::Registering:
         color = QStringLiteral("#e0b850");
-        m_regStatus->setText(statusText == QStringLiteral("Unregistering")
-            ? tr("Unregistering") : tr("Registering"));
+        m_regStatus->setText(tr("Registering"));
         break;
     case RegistrationState::Registered:
         color = QStringLiteral("#50c878");
         m_regStatus->setText(tr("Registered"));
         m_registrationButton->setText(tr("Unregister"));
+        break;
+    case RegistrationState::Unregistering:
+        color = QStringLiteral("#e0b850");
+        m_regStatus->setText(tr("Unregistering"));
         break;
     case RegistrationState::RegistrationFailed:
         m_regStatus->setText(tr("Registration failed"));
@@ -288,6 +296,16 @@ void SidebarPanel::onRegistrationStateChanged(RegistrationState state,
     m_regStatus->setToolTip(statusText);
     m_regStatus->setStyleSheet(
         QStringLiteral("color: %1; font-size: 11px;").arg(color));
-    m_registrationButton->setEnabled(
-        !activeId.isEmpty() && state != RegistrationState::Registering);
+
+    // Register button: enabled only when action can be taken.
+    const bool canRegister = !activeId.isEmpty()
+        && (state == RegistrationState::Unregistered
+            || state == RegistrationState::Registered
+            || state == RegistrationState::RegistrationFailed);
+    m_registrationButton->setEnabled(canRegister);
+
+    // Profile editing must not be available while a transient operation is in progress.
+    const bool hasActive = !activeId.isEmpty();
+    m_editProfile->setEnabled(hasActive && !transient);
+    m_deleteProfile->setEnabled(hasActive && !transient);
 }

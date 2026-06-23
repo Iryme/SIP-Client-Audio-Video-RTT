@@ -13,6 +13,7 @@ QString registrationStateName(RegistrationState state)
     case RegistrationState::Unregistered:       return QStringLiteral("Unregistered");
     case RegistrationState::Registering:         return QStringLiteral("Registering");
     case RegistrationState::Registered:          return QStringLiteral("Registered");
+    case RegistrationState::Unregistering:       return QStringLiteral("Unregistering");
     case RegistrationState::RegistrationFailed:  return QStringLiteral("RegistrationFailed");
     }
     return QStringLiteral("Unregistered");

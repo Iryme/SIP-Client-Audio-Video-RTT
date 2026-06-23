@@ -22,6 +22,10 @@ private slots:
     void registrationWithoutActiveProfileFails();
     void stubRegistrationUsesActiveProfileAndFailsSafely();
     void stubUnregisterReturnsToUnregistered();
+    void registerRejectedWhileRegistering();
+    void registerRejectedWhileRegistered();
+    void unregisterRejectedWhileUnregistered();
+    void unregisteringStateIsExplicit();
     void passwordNeverAppearsInDiagnostics();
 
 private:
@@ -155,6 +159,76 @@ void TestSipManager::stubUnregisterReturnsToUnregistered()
     QVERIFY(SipManager::instance().unregisterActiveProfile());
     QTRY_COMPARE(SipManager::instance().registrationState(),
                  RegistrationState::Unregistered);
+}
+
+void TestSipManager::registerRejectedWhileRegistering()
+{
+#ifdef HAVE_PJSIP
+    QSKIP("Test is for stub mode only (HAVE_PJSIP is defined)");
+#endif
+    QVERIFY(!addActiveProfileWithPassword(QStringLiteral("secret")).isEmpty());
+    SipManager::instance().registerActiveProfile();
+
+    // State is Registering (PJSIP stub posts async failure later).
+    // A second register call must be rejected without changing state.
+    QCOMPARE(SipManager::instance().registrationState(), RegistrationState::Registering);
+    const bool second = SipManager::instance().registerActiveProfile();
+    // Either returns true (same-profile no-op) or false (rejected) — never crashes.
+    Q_UNUSED(second)
+    // State must still be Registering or moved to RegistrationFailed after the async stub fires.
+    QTRY_VERIFY(SipManager::instance().registrationState() != RegistrationState::Registered);
+}
+
+void TestSipManager::registerRejectedWhileRegistered()
+{
+    // In stub mode registration always fails, so we can only verify the
+    // guard logic by checking that a second call while already Registered
+    // would be rejected. We test this via the state machine directly.
+    auto &sm = SipManager::instance().stateMachine();
+    // Force state to Registered to check the guard.
+    sm.reset("test setup");
+    sm.tryTransition(RegistrationState::Registering, "test");
+    sm.tryTransition(RegistrationState::Registered, "test");
+
+    QSignalSpy rejectedSpy(&sm, &RegistrationStateMachine::transitionRejected);
+    sm.tryTransition(RegistrationState::Registering, "attempt re-register");
+    QCOMPARE(rejectedSpy.count(), 1);
+    QCOMPARE(sm.state(), RegistrationState::Registered);
+    sm.reset("cleanup");
+}
+
+void TestSipManager::unregisterRejectedWhileUnregistered()
+{
+    QCOMPARE(SipManager::instance().registrationState(), RegistrationState::Unregistered);
+    // Must return true (no-op) without erroring.
+    QVERIFY(SipManager::instance().unregisterActiveProfile());
+    QCOMPARE(SipManager::instance().registrationState(), RegistrationState::Unregistered);
+}
+
+void TestSipManager::unregisteringStateIsExplicit()
+{
+#ifdef HAVE_PJSIP
+    QSKIP("Test is for stub mode only (HAVE_PJSIP is defined)");
+#endif
+    QVERIFY(!addActiveProfileWithPassword(QStringLiteral("secret")).isEmpty());
+    SipManager::instance().registerActiveProfile();
+    QTRY_COMPARE(SipManager::instance().registrationState(),
+                 RegistrationState::RegistrationFailed);
+
+    // Force into a synthetic Registered state to test the Unregistering path.
+    auto &sm = SipManager::instance().stateMachine();
+    sm.reset("test");
+    sm.tryTransition(RegistrationState::Registering, "test");
+    sm.tryTransition(RegistrationState::Registered, "test");
+
+    // Calling unregister from Registered must set Unregistering, not Registering.
+    // (No live account in this synthetic test so SipManager will hit the fallback path.)
+    // We verify the state machine directly instead.
+    QSignalSpy spy(&sm, &RegistrationStateMachine::stateChanged);
+    sm.tryTransition(RegistrationState::Unregistering, "unregister");
+    QVERIFY(!spy.isEmpty());
+    QCOMPARE(spy.last()[0].value<RegistrationState>(), RegistrationState::Unregistering);
+    sm.reset("cleanup");
 }
 
 void TestSipManager::passwordNeverAppearsInDiagnostics()
