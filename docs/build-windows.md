@@ -139,6 +139,94 @@ Prefix:  .deps\pjsip-msvc-install
 Options: PJMEDIA_WITH_AUDIODEV_WASAPI=OFF, PJMEDIA_WITH_AUDIODEV_WMME=ON, PJMEDIA_WITH_AUDIODEV_NULL=ON, BUILD_TESTING=OFF
 ```
 
+### Video Capture and VPX Codec Support (Task 25B)
+
+To enable DirectShow video capture and VP8/VP9 codecs, three additional steps are required before building pjproject.
+
+#### 1. Build libvpx via vcpkg
+
+```powershell
+git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+C:\vcpkg\bootstrap-vcpkg.bat
+C:\vcpkg\vcpkg install libvpx:x64-windows-static
+```
+
+This produces `vpx.lib` and `vpx/vpx_encoder.h` under `C:\vcpkg\installed\x64-windows-static\`.
+
+#### 2. Obtain DirectShow BaseClasses headers
+
+The DShow capture backend (`pjmedia-videodev`) needs `streams.h` and related BaseClasses headers. These ship with the Windows SDK samples:
+
+- Path: `C:\Program Files (x86)\Windows Kits\10\Samples\<ver>\multimedia\directshow\baseclasses`
+
+Copy the `baseclasses` directory to `.deps\pjproject\pjmedia\src\pjmedia-videodev\baseclasses` (or set `DSHOW_BASECLASSES_DIR` in your cmake configure). pjproject's DShow backend lists `baseclasses` as a relative include path.
+
+Alternatively, build the BaseClasses static lib separately and point PJSIP at it.
+
+#### 3. Fix `config_auto.h.cm` (pjproject upstream bug)
+
+pjproject's CMake template `pjmedia/include/pjmedia-codec/config_auto.h.cm` is missing the VPX entry. Without this fix, `PJMEDIA_HAS_VPX_CODEC` is never written into the installed `config_auto.h` and all VPX codec code compiles out as empty stubs even when `PJMEDIA_WITH_VPX_CODEC=ON`.
+
+Add before the closing `#endif` in `config_auto.h.cm`:
+
+```c
+/* VPX (VP8/VP9) video codec */
+#ifndef PJMEDIA_HAS_VPX_CODEC
+#cmakedefine01 PJMEDIA_HAS_VPX_CODEC
+#endif
+
+/* OpenH264 video codec */
+#ifndef PJMEDIA_HAS_OPENH264_CODEC
+#cmakedefine01 PJMEDIA_HAS_OPENH264_CODEC
+#endif
+```
+
+This fix is already applied in `.deps/pjproject` in this workspace.
+
+#### 4. Configure pjproject with video flags
+
+```powershell
+cmake -S .deps\pjproject -B .deps\pjproject-build `
+  -G "Visual Studio 18 2026" -A x64 `
+  -DCMAKE_INSTALL_PREFIX=".deps\pjsip-msvc-install" `
+  -DPJMEDIA_WITH_VIDEODEV_DSHOW=ON `
+  -DPJMEDIA_WITH_VPX_CODEC=ON `
+  -DVPX_INCLUDE_DIR="C:\vcpkg\installed\x64-windows-static\include" `
+  -DVPX_LIBRARY="C:\vcpkg\installed\x64-windows-static\lib\vpx.lib" `
+  -DPJMEDIA_WITH_AUDIODEV_WASAPI=OFF `
+  -DPJMEDIA_WITH_AUDIODEV_WMME=ON `
+  -DPJMEDIA_WITH_AUDIODEV_NULL=ON `
+  -DBUILD_TESTING=OFF
+
+cmake --build .deps\pjproject-build --config Debug --parallel
+cmake --install .deps\pjproject-build --config Debug
+```
+
+#### 5. Configure the app with VPX hints
+
+`PjConfig.cmake` calls `find_dependency(VPX)` at package load time. If VPX is not found, `find_package(Pj CONFIG QUIET)` fails silently and the fallback path searches for `pj.lib` (which does not exist — the real file is `pjlib.lib`), causing 362 unresolved externals. Pass VPX paths explicitly:
+
+```powershell
+cmake -S . -B build-pjsip-real `
+  -DENABLE_PJSIP=ON `
+  -DPJSIP_DIR=".deps\pjsip-msvc-install" `
+  -DVPX_INCLUDE_DIR="C:\vcpkg\installed\x64-windows-static\include" `
+  -DVPX_LIBRARY="C:\vcpkg\installed\x64-windows-static\lib\vpx.lib" `
+  -DBUILD_TESTS=ON `
+  -DCMAKE_PREFIX_PATH="F:\Programs\Qt\6.11.1\msvc2022_64"
+```
+
+Expected startup log on success:
+```
+[INFO] [MEDIA] PJSIP video support: ENABLED (PJMEDIA_HAS_VIDEO=1)
+[INFO] [MEDIA] PJSIP video devices (5 total):
+[INFO] [MEDIA]   [0] "OBS Virtual Camera"  driver=dshow  dir=1
+[INFO] [MEDIA] CodecManager: video codecs (1 available):
+[INFO] [MEDIA]   ENABLED   VP8/102                          priority=230
+```
+
+Note: `LNK4098: defaultlib 'LIBCMT' conflicts` is expected — `vpx.lib` (release static from vcpkg) links against `LIBCMT` while the debug app links `LIBCMTD`. The build succeeds; the warning is harmless.
+
 ### Configure The App With PJSIP
 
 ```cmd

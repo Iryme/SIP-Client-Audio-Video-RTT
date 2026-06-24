@@ -53,9 +53,12 @@ if(Pj_FOUND AND TARGET Pj::pjsua2)
 
     if(NOT TARGET PJSIP::pjsua2)
         add_library(PJSIP::pjsua2 INTERFACE IMPORTED)
+        # Include Pj::pjmedia and Pj::pjmedia-videodev as PUBLIC so their
+        # INTERFACE_COMPILE_DEFINITIONS (PJMEDIA_HAS_VIDEO, etc.) propagate
+        # to the app.  Pj::pjsua2 marks them LINK_ONLY which stops propagation.
         set_target_properties(PJSIP::pjsua2 PROPERTIES
             INTERFACE_INCLUDE_DIRECTORIES "${PJSIP_INCLUDE_DIRS}"
-            INTERFACE_LINK_LIBRARIES Pj::pjsua2
+            INTERFACE_LINK_LIBRARIES "Pj::pjsua2;Pj::pjmedia;Pj::pjmedia-videodev;Pj::pjmedia-audiodev"
         )
     endif()
 

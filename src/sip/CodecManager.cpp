@@ -175,9 +175,9 @@ void CodecManager::logCodecMatrix() const
             .arg(m_audioCodecs.size()));
     for (const auto &e : m_audioCodecs) {
         Logger::instance().info(LogCategory::Media,
-            QStringLiteral("  %1  %-32s priority=%2")
+            QStringLiteral("  %1  %2 priority=%3")
                 .arg(e.priority > 0 ? QStringLiteral("ENABLED ") : QStringLiteral("DISABLED"))
-                .arg(e.codecId)
+                .arg(e.codecId, -32)
                 .arg(e.priority));
     }
     if (m_audioCodecs.isEmpty())
@@ -193,9 +193,9 @@ void CodecManager::logCodecMatrix() const
             .arg(m_videoCodecs.size()));
     for (const auto &e : m_videoCodecs) {
         Logger::instance().info(LogCategory::Media,
-            QStringLiteral("  %1  %-32s priority=%2")
+            QStringLiteral("  %1  %2 priority=%3")
                 .arg(e.priority > 0 ? QStringLiteral("ENABLED ") : QStringLiteral("DISABLED"))
-                .arg(e.codecId)
+                .arg(e.codecId, -32)
                 .arg(e.priority));
     }
     if (m_videoCodecs.isEmpty()) {
@@ -211,8 +211,8 @@ void CodecManager::logCodecMatrix() const
                        "not negotiated via PJSIP in this build):"));
     for (const auto &e : rttCodecs()) {
         Logger::instance().info(LogCategory::Media,
-            QStringLiteral("  MODEL  %-32s priority=%2")
-                .arg(e.codecId)
+            QStringLiteral("  MODEL  %1 priority=%2")
+                .arg(e.codecId, -32)
                 .arg(e.priority));
     }
 }
