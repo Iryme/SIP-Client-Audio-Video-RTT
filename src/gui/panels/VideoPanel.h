@@ -42,6 +42,9 @@ private:
     void repositionOverlays();
     void populateCameraCombo();
     void applyVideoState();
+    // Re-fit the embedded PJSIP video HWND to fill its parent widget area.
+    // Called on resize when video is active.
+    void resizeEmbeddedVideoWindows();
 
     // Main-area overlays
     QLabel      *m_remoteLabel{nullptr};

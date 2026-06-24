@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <qwindowdefs.h>
 
 #include "media/MediaDevice.h"
 
@@ -43,6 +44,11 @@ public:
     // call is active (PJSIP video device re-initialisation is scaffolded; takes
     // effect on next call in the current stub implementation).
     void setCamera(const QString &deviceId);
+
+    // Attach PJSIP video windows to the given Qt widget native handles.
+    // Forwards to the active SipCall::attachVideoWindows(). No-op when no
+    // active call or on non-Windows / stub builds.
+    void attachVideoToWidgets(WId remoteWidget, WId localPreviewWidget);
 
 public slots:
     void setVideoMuted(bool muted);

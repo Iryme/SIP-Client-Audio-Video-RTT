@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <qwindowdefs.h>
 
 #include "sip/CallStateMachine.h"
 
@@ -58,6 +59,13 @@ public:
     // videoMediaConnected / videoMediaDisconnected).
     bool isLocalVideoAvailable()  const;
     bool isRemoteVideoAvailable() const;
+
+    // Embed PJSIP video windows into Qt native widget handles.
+    // remoteWidget: winId() of the main remote video area.
+    // localPreview:  winId() of the local PiP widget.
+    // Call from the Qt main thread after videoMediaConnected is emitted.
+    // No-op on non-Windows or stub builds.
+    void attachVideoWindows(WId remoteWidget, WId localPreview);
 
     // Force to Idle regardless of current state (shutdown / cleanup path).
     void reset(const QString &reason = QStringLiteral("Reset"));

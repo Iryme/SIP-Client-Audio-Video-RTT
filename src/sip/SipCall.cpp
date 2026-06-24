@@ -106,8 +106,10 @@ struct SipCall::Impl
                 return;
 
             pj::CallInfo ci = getInfo();
-            bool audioBridgeWired = false;
-            bool videoActive      = false;
+            bool audioBridgeWired    = false;
+            bool videoActive         = false;
+            int  videoIncomingWinId  = PJSUA_INVALID_ID;
+            int  videoCapDevId       = -1;
 
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP media state callback: pjsipCallId=%1 mediaCount=%2")
@@ -176,7 +178,9 @@ struct SipCall::Impl
                     try {
                         auto *vid = static_cast<pj::VideoMedia *>(getMedia(mi.index));
                         m_impl->callVideoMedia = vid;
-                        videoActive = true;
+                        videoActive        = true;
+                        videoIncomingWinId = mi.videoIncomingWindowId;
+                        videoCapDevId      = mi.videoCapDev;
                         Logger::instance().info(LogCategory::Sip,
                             QStringLiteral("PJSIP video media active: pjsipCallId=%1 "
                                            "mediaIndex=%2 winId=%3 capDev=%4")
@@ -222,19 +226,26 @@ struct SipCall::Impl
             }
 
             QPointer<SipCall> self = m_impl->q;
-            QMetaObject::invokeMethod(self, [self, audioBridgeWired, videoActive]() {
+            QMetaObject::invokeMethod(self,
+                [self, audioBridgeWired, videoActive, videoIncomingWinId, videoCapDevId]() {
                 if (!self) return;
                 if (audioBridgeWired)
                     emit self->audioMediaConnected();
                 else
                     emit self->audioMediaDisconnected();
                 if (videoActive) {
+                    // Store on Qt main thread — read by attachVideoWindows on same thread.
+                    self->m_impl->videoIncomingWinId =
+                        static_cast<pjsua_vid_win_id>(videoIncomingWinId);
+                    self->m_impl->videoCapDev = videoCapDevId;
                     self->m_localVideoAvailable  = true;
                     self->m_remoteVideoAvailable = true;
                     emit self->videoMediaConnected();
                     emit self->localVideoStarted();
                     emit self->remoteVideoStarted();
                 } else if (self->m_localVideoAvailable || self->m_remoteVideoAvailable) {
+                    self->m_impl->videoIncomingWinId = PJSUA_INVALID_ID;
+                    self->m_impl->videoCapDev        = -1;
                     self->m_localVideoAvailable  = false;
                     self->m_remoteVideoAvailable = false;
                     emit self->localVideoStopped();
@@ -303,11 +314,13 @@ struct SipCall::Impl
         Impl *m_impl;
     };
 
-    PjCall         *pjCall{nullptr};
-    pj::Call       *earlyCall{nullptr};       // EarlyCall from SipAccount; freed after pjCall
-    void           *pjAccountHandle{nullptr}; // pj::Account* cast to void*
-    pj::AudioMedia *callAudioMedia{nullptr};  // valid only while audio media is active
-    pj::VideoMedia *callVideoMedia{nullptr};  // valid only while video media is active
+    PjCall             *pjCall{nullptr};
+    pj::Call           *earlyCall{nullptr};           // EarlyCall from SipAccount; freed after pjCall
+    void               *pjAccountHandle{nullptr};     // pj::Account* cast to void*
+    pj::AudioMedia     *callAudioMedia{nullptr};      // valid only while audio media is active
+    pj::VideoMedia     *callVideoMedia{nullptr};      // valid only while video media is active
+    pjsua_vid_win_id    videoIncomingWinId{PJSUA_INVALID_ID}; // incoming video window id
+    int                 videoCapDev{-1};              // capture device index for local preview
 #endif
 };
 
@@ -715,6 +728,147 @@ void SipCall::releasePjsipCall()
         delete m_impl->earlyCall;
         m_impl->earlyCall = nullptr;
     }
+#endif
+}
+
+void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
+{
+#if defined(HAVE_PJSIP) && defined(Q_OS_WIN)
+    if (!m_impl)
+        return;
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("attachVideoWindows: remoteHwnd=0x%1 localHwnd=0x%2 "
+                       "videoWinId=%3 capDev=%4")
+            .arg(static_cast<quintptr>(remoteWidget), 0, 16)
+            .arg(static_cast<quintptr>(localPreview), 0, 16)
+            .arg(m_impl->videoIncomingWinId)
+            .arg(m_impl->videoCapDev));
+
+    // --- Remote incoming video ------------------------------------------------
+    if (m_impl->videoIncomingWinId != PJSUA_INVALID_ID && remoteWidget != 0) {
+        try {
+            pj::VideoWindow vw(m_impl->videoIncomingWinId);
+            pj::VideoWindowInfo info = vw.getInfo();
+            HWND pjHwnd  = static_cast<HWND>(info.winHandle.handle.window);
+            HWND qtHwnd  = reinterpret_cast<HWND>(static_cast<quintptr>(remoteWidget));
+
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Remote video PJSIP hwnd=0x%1 isNative=%2")
+                    .arg(reinterpret_cast<quintptr>(pjHwnd), 0, 16)
+                    .arg(info.isNative));
+
+            if (pjHwnd && qtHwnd) {
+                // Reparent the PJSIP video window into our Qt remote-video widget.
+                // Change window style from popup to child so it behaves correctly.
+                LONG style = GetWindowLong(pjHwnd, GWL_STYLE);
+                style = (style & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME))
+                        | WS_CHILD | WS_VISIBLE;
+                SetWindowLong(pjHwnd, GWL_STYLE, style);
+                SetParent(pjHwnd, qtHwnd);
+
+                RECT rc{};
+                GetClientRect(qtHwnd, &rc);
+                MoveWindow(pjHwnd, 0, 0, rc.right, rc.bottom, TRUE);
+                ShowWindow(pjHwnd, SW_SHOW);
+
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Remote video embedded into widget: %1x%2")
+                        .arg(rc.right).arg(rc.bottom));
+            } else {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Remote video attach skipped: pjHwnd or qtHwnd is null"));
+            }
+        } catch (const pj::Error &e) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("attachVideoWindows remote failed: %1")
+                    .arg(QString::fromStdString(e.reason)));
+        }
+    } else {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("Remote video attach skipped: videoWinId=%1 remoteWidget=%2")
+                .arg(m_impl->videoIncomingWinId)
+                .arg(static_cast<quintptr>(remoteWidget)));
+    }
+
+    // --- Local preview --------------------------------------------------------
+    if (m_impl->videoCapDev >= 0 && localPreview != 0) {
+        pjsua_vid_win_id previewWinId = pjsua_vid_preview_get_win(
+            static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev));
+
+        if (previewWinId == PJSUA_INVALID_ID) {
+            pjsua_vid_preview_param pvp;
+            pjsua_vid_preview_param_default(&pvp);
+            pvp.show = PJ_FALSE;
+            const pj_status_t st = pjsua_vid_preview_start(
+                static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev), &pvp);
+            if (st == PJ_SUCCESS) {
+                previewWinId = pjsua_vid_preview_get_win(
+                    static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev));
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Local preview started: capDev=%1 previewWinId=%2")
+                        .arg(m_impl->videoCapDev).arg(previewWinId));
+            } else {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Local preview start failed: capDev=%1 status=%2")
+                        .arg(m_impl->videoCapDev).arg(st));
+            }
+        } else {
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Local preview already running: capDev=%1 previewWinId=%2")
+                    .arg(m_impl->videoCapDev).arg(previewWinId));
+        }
+
+        if (previewWinId != PJSUA_INVALID_ID) {
+            try {
+                pj::VideoWindow pvw(previewWinId);
+                pj::VideoWindowInfo pinfo = pvw.getInfo();
+                HWND pjPreviewHwnd = static_cast<HWND>(pinfo.winHandle.handle.window);
+                HWND qtPreviewHwnd =
+                    reinterpret_cast<HWND>(static_cast<quintptr>(localPreview));
+
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Local preview PJSIP hwnd=0x%1")
+                        .arg(reinterpret_cast<quintptr>(pjPreviewHwnd), 0, 16));
+
+                if (pjPreviewHwnd && qtPreviewHwnd) {
+                    LONG style = GetWindowLong(pjPreviewHwnd, GWL_STYLE);
+                    style = (style & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME))
+                            | WS_CHILD | WS_VISIBLE;
+                    SetWindowLong(pjPreviewHwnd, GWL_STYLE, style);
+                    SetParent(pjPreviewHwnd, qtPreviewHwnd);
+
+                    RECT rc{};
+                    GetClientRect(qtPreviewHwnd, &rc);
+                    MoveWindow(pjPreviewHwnd, 0, 0, rc.right, rc.bottom, TRUE);
+                    ShowWindow(pjPreviewHwnd, SW_SHOW);
+
+                    Logger::instance().info(LogCategory::Media,
+                        QStringLiteral("Local preview embedded into widget: %1x%2")
+                            .arg(rc.right).arg(rc.bottom));
+                } else {
+                    Logger::instance().warn(LogCategory::Media,
+                        QStringLiteral("Local preview attach skipped: hwnd null"));
+                }
+            } catch (const pj::Error &e) {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("attachVideoWindows local preview failed: %1")
+                        .arg(QString::fromStdString(e.reason)));
+            }
+        } else {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("Local preview window not available: capDev=%1")
+                    .arg(m_impl->videoCapDev));
+        }
+    } else {
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("Local preview attach skipped: capDev=%1 localWidget=%2")
+                .arg(m_impl->videoCapDev)
+                .arg(static_cast<quintptr>(localPreview)));
+    }
+#else
+    Q_UNUSED(remoteWidget)
+    Q_UNUSED(localPreview)
 #endif
 }
 

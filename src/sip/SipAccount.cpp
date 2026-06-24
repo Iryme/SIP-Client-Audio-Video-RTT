@@ -242,7 +242,10 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
 
 #if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
         config.videoConfig.autoTransmitOutgoing = true;
-        config.videoConfig.autoShowIncoming     = true;
+        // Keep incoming video window hidden until we embed it into the Qt widget
+        // via attachVideoWindows / SetParent. autoShowIncoming=true would create
+        // a floating OS popup that we can't control.
+        config.videoConfig.autoShowIncoming = false;
 #endif
 
         Logger::instance().info(LogCategory::Sip,

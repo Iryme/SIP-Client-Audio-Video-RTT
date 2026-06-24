@@ -10,6 +10,11 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
+
+#include "core/Logger.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoMediaManager.h"
@@ -21,6 +26,8 @@ VideoPanel::VideoPanel(QWidget *parent)
     setObjectName("VideoPanel");
     setMinimumSize(320, 240);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    // Native window handle required for PJSIP video embedding via SetParent.
+    setAttribute(Qt::WA_NativeWindow);
 
     // --- Remote video label (bottom-left) ------------------------------------
     m_remoteLabel = new QLabel(tr("No active call"), this);
@@ -45,6 +52,8 @@ VideoPanel::VideoPanel(QWidget *parent)
     m_localPreview->setText(tr("Camera\nOff"));
     m_localPreview->setWordWrap(true);
     m_localPreview->setFixedSize(160, 90);
+    // Native handle required so PJSIP can embed the local preview via SetParent.
+    m_localPreview->setAttribute(Qt::WA_NativeWindow);
 
     // --- Control overlay (hidden until a call is active) ---------------------
     m_controlOverlay = new QWidget(this);
@@ -149,6 +158,8 @@ void VideoPanel::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     repositionOverlays();
+    if (m_videoActive)
+        resizeEmbeddedVideoWindows();
 }
 
 void VideoPanel::repositionOverlays()
@@ -191,6 +202,40 @@ void VideoPanel::repositionOverlays()
     if (m_btnSwap)
         m_btnSwap->move((w - m_btnSwap->width()) / 2,
                          h - m_btnSwap->height() - margin);
+}
+
+void VideoPanel::resizeEmbeddedVideoWindows()
+{
+#ifdef Q_OS_WIN
+    // Resize any PJSIP child HWNDs that were embedded via SetParent.
+    // Enumerate the direct children of our widget HWND and fit them.
+    HWND parentHwnd = reinterpret_cast<HWND>(static_cast<quintptr>(winId()));
+    if (!parentHwnd)
+        return;
+    RECT rc{};
+    GetClientRect(parentHwnd, &rc);
+    HWND child = GetWindow(parentHwnd, GW_CHILD);
+    while (child) {
+        MoveWindow(child, 0, 0, rc.right, rc.bottom, TRUE);
+        child = GetNextWindow(child, GW_HWNDNEXT);
+        // Only resize direct children that are not Qt widgets
+        // (Qt overlays are positioned by repositionOverlays, not here).
+        break; // one PJSIP video window expected; stop after first
+    }
+
+    // Resize local preview child too
+    if (m_localPreview) {
+        HWND previewParent =
+            reinterpret_cast<HWND>(static_cast<quintptr>(m_localPreview->winId()));
+        if (previewParent) {
+            RECT prc{};
+            GetClientRect(previewParent, &prc);
+            HWND pchild = GetWindow(previewParent, GW_CHILD);
+            if (pchild)
+                MoveWindow(pchild, 0, 0, prc.right, prc.bottom, TRUE);
+        }
+    }
+#endif
 }
 
 void VideoPanel::paintEvent(QPaintEvent *event)
@@ -284,6 +329,19 @@ void VideoPanel::onVideoMediaConnected()
     m_videoActive = true;
     populateCameraCombo();
     applyVideoState();
+
+    // Force native window creation before passing handles to PJSIP.
+    // winId() on a WA_NativeWindow widget creates the HWND if not yet realised.
+    const WId remoteHwnd = winId();
+    const WId localHwnd  = m_localPreview->winId();
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoPanel: attaching PJSIP video windows — "
+                       "remoteHwnd=0x%1 localHwnd=0x%2")
+            .arg(static_cast<quintptr>(remoteHwnd), 0, 16)
+            .arg(static_cast<quintptr>(localHwnd), 0, 16));
+
+    VideoMediaManager::instance().attachVideoToWidgets(remoteHwnd, localHwnd);
 }
 
 void VideoPanel::onVideoMediaDisconnected()
