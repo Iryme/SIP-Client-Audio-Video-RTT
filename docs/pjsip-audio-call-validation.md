@@ -87,6 +87,80 @@ The microphone and speaker combos in the Media panel now control PJSIP's `AudDev
 5. Register, place a call — call audio uses the selected capture device. Log confirms `PJSIP audio devices applied: capture=N playback=M`.
 6. All 13 unit tests pass (ctest 13/13).
 
+### Task 25A — PJSIP Video Path Validation (2026-06-24)
+
+**Objective:** Determine whether the PJSIP build has video support, and validate the video media path as far as it can go without a video codec or DirectShow capture device.
+
+#### PJSIP video build status
+
+| Item | Status |
+|------|--------|
+| `PJMEDIA_HAS_VIDEO` | **1** (enabled via cmake interface compile definition on `Pj::pjmedia`) |
+| `pjmedia-videodev.lib` | Present in `.deps\pjsip-msvc-install\bin\` |
+| `PJMEDIA_VIDEO_DEV_HAS_DSHOW` | **0** — DirectShow capture backend not compiled |
+| `PJMEDIA_VIDEO_DEV_HAS_AVI` | **1** — AVI file source compiled (file playback only) |
+| Video capture devices | **0** at runtime — no Windows camera capture backend |
+| Video codecs | **0** at runtime — VPX=OFF, OpenH264=OFF, FFMPEG=OFF |
+
+#### What was implemented (Task 25A)
+
+1. **`SipManager::logVideoSubsystemStatus()`** (new static function, called in `initialize()`):
+   - Logs `PJMEDIA_HAS_VIDEO` status on startup
+   - Enumerates all video devices via `pj::Endpoint::instance().vidDevManager().getDevInfo()`
+   - Enumerates all video codecs via `pj::Endpoint::instance().videoCodecEnum2()`
+   - Logs explicit warnings when no devices or codecs are found
+
+2. **`SipAccount::startRegistration()`** — account video config:
+   - `cfg.videoConfig.autoTransmitOutgoing = true` — PJSIP will attempt to include video in INVITE
+   - `cfg.videoConfig.autoShowIncoming = true` — PJSIP will accept incoming video streams
+
+3. **`SipCall::onCallMediaState()`** — enhanced video media logging:
+   - Active: logs `pjsipCallId`, `mediaIndex`, `videoIncomingWindowId`, `videoCapDev`
+   - Inactive: logs `pjsipCallId`, `mediaIndex`, `status` for non-active video streams
+
+#### Expected startup log output
+
+```
+[Media] PJSIP video support: ENABLED (PJMEDIA_HAS_VIDEO=1)
+[Media] PJSIP video devices (0 total):
+[Media] WARN: PJSIP video: no capture/render devices (PJMEDIA_VIDEO_DEV_HAS_DSHOW=0; no DirectShow backend compiled)
+[Media] PJSIP video codecs (0 total):
+[Media] WARN: PJSIP video: no video codecs available (VPX=OFF, OpenH264=OFF, FFMPEG=OFF). INVITE will not include a video media line.
+```
+
+#### Why INVITE does not offer video
+
+With `PJMEDIA_HAS_VIDEO=1` but zero video codecs registered, PJSIP does not add an `m=video` line to the outgoing INVITE SDP. This is correct behaviour — without a codec, there is nothing to negotiate. The existing audio media (PCMU/PCMA) is unaffected.
+
+To validate video negotiation, the PJSIP build must be rebuilt with at least one video codec:
+
+| Codec | Build flag | Notes |
+|-------|-----------|-------|
+| VP8/VP9 | `-DPJMEDIA_WITH_VPX=ON` after installing libvpx | Most common for WebRTC-compatible SIP |
+| H.264 | `-DPJMEDIA_WITH_OPENH264=ON` after installing OpenH264 | Required for interop with iOS/Android |
+| FFMPEG codecs | `-DPJMEDIA_WITH_FFMPEG=ON` | Broadest codec support |
+
+Additionally, a Windows camera capture backend requires:
+```
+-DPJMEDIA_WITH_VIDEODEV_DSHOW=ON
+```
+This requires the Windows SDK `dshow.h` (part of the Windows Desktop SDK).
+
+#### Audio regression test
+
+Audio calls remain fully functional. The video config changes (`autoTransmitOutgoing=true`) have no effect on the SDP when there are no video codecs, so no audio regression is possible.
+
+#### Test results
+
+13/13 unit tests pass (ctest, 2026-06-24).
+
+#### What remains for actual video
+
+1. Rebuild PJSIP with `PJMEDIA_WITH_VIDEODEV_DSHOW=ON` and at least one video codec (e.g. `-DPJMEDIA_WITH_VPX=ON` after installing libvpx, or `-DPJMEDIA_WITH_FFMPEG=ON`).
+2. The PJSIP endpoint video subsystem and account config are already wired. On next call with video codecs available, PJSIP will include `m=video` in the INVITE.
+3. When `onCallMediaState` fires with `PJMEDIA_TYPE_VIDEO / PJSUA_CALL_MEDIA_ACTIVE`, the log will show `videoIncomingWindowId` — this is the native window handle that the remote video stream renders into.
+4. Actual Qt widget rendering: embed the PJSIP render window (by win32 HWND) into `VideoPanel` using `QWindow::fromWinId()` + `QWidget::createWindowContainer()`.
+
 ### Task 22E — Account Deletion Race Fix (2026-06-24)
 
 **Issue:** PJSIP logged `Warning: deleting account 0 while call 0 is still active (forced)` when unregister immediately followed hangup.

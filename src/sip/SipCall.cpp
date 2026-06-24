@@ -129,9 +129,28 @@ struct SipCall::Impl
                         auto *vid = static_cast<pj::VideoMedia *>(getMedia(mi.index));
                         m_impl->callVideoMedia = vid;
                         videoActive = true;
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("PJSIP video media active: pjsipCallId=%1 "
+                                           "mediaIndex=%2 winId=%3 capDev=%4")
+                                .arg(getId())
+                                .arg(mi.index)
+                                .arg(mi.videoIncomingWindowId)
+                                .arg(mi.videoCapDev));
                     } catch (...) {
                         m_impl->callVideoMedia = nullptr;
+                        Logger::instance().warn(LogCategory::Sip,
+                            QStringLiteral("PJSIP video media active but getMedia failed: "
+                                           "pjsipCallId=%1 mediaIndex=%2")
+                                .arg(getId()).arg(mi.index));
                     }
+                } else if (mi.type == PJMEDIA_TYPE_VIDEO
+                           && mi.status != PJSUA_CALL_MEDIA_ACTIVE) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("PJSIP video media not active: pjsipCallId=%1 "
+                                       "mediaIndex=%2 status=%3")
+                            .arg(getId())
+                            .arg(mi.index)
+                            .arg(static_cast<int>(mi.status)));
                 }
             }
 

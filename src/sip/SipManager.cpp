@@ -58,6 +58,60 @@ static void shutdownPjsip(SipManager::PjEndpoint *&ep)
     ep = nullptr;
 }
 
+static void logVideoSubsystemStatus()
+{
+#if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("PJSIP video support: ENABLED (PJMEDIA_HAS_VIDEO=1)"));
+    try {
+        pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
+        const unsigned count = vdm.getDevCount();
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("PJSIP video devices (%1 total):").arg(count));
+        for (unsigned i = 0; i < count; ++i) {
+            try {
+                pj::VideoDevInfo info = vdm.getDevInfo(static_cast<int>(i));
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("  [%1] \"%2\"  driver=%3  dir=%4")
+                        .arg(i)
+                        .arg(QString::fromStdString(info.name))
+                        .arg(QString::fromStdString(info.driver))
+                        .arg(static_cast<int>(info.dir)));
+            } catch (...) {}
+        }
+        if (count == 0) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("PJSIP video: no capture/render devices "
+                               "(PJMEDIA_VIDEO_DEV_HAS_DSHOW=0; "
+                               "no DirectShow backend compiled)"));
+        }
+        pj::CodecInfoVector2 codecs = pj::Endpoint::instance().videoCodecEnum2();
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("PJSIP video codecs (%1 total):")
+                .arg(static_cast<int>(codecs.size())));
+        for (const auto &c : codecs) {
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("  %1  priority=%2")
+                    .arg(QString::fromStdString(c->codecId))
+                    .arg(c->priority));
+        }
+        if (codecs.empty()) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("PJSIP video: no video codecs available "
+                               "(VPX=OFF, OpenH264=OFF, FFMPEG=OFF). "
+                               "INVITE will not include a video media line."));
+        }
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("PJSIP video subsystem query failed: %1")
+                .arg(QString::fromStdString(e.reason)));
+    }
+#else
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("PJSIP video support: DISABLED (PJMEDIA_HAS_VIDEO=0)"));
+#endif
+}
+
 #endif
 
 SipManager &SipManager::instance()
@@ -116,6 +170,7 @@ bool SipManager::initialize()
         return false;
     }
     PjsipAudioMapper::logAllDevices();
+    logVideoSubsystemStatus();
     applyPersistedAudioDevices();
 #else
     Logger::instance().warn(LogCategory::Sip,

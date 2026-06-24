@@ -194,6 +194,12 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
         if (!proxy.isEmpty())
             config.sipConfig.proxies.push_back(ensureSipUri(proxy).toStdString());
 
+
+#if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+        config.videoConfig.autoTransmitOutgoing = true;
+        config.videoConfig.autoShowIncoming     = true;
+#endif
+
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("PJSIP REGISTER create account: idUri=%1 registrar=%2 transportId=%3 authUser=%4 proxy=%5")
                 .arg(QString::fromStdString(config.idUri),
