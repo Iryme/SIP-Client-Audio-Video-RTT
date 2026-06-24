@@ -61,7 +61,9 @@ void SipLadderWidget::paintEvent(QPaintEvent *)
     // Entity header boxes
     QFont boldFont = p.font();
     boldFont.setBold(true);
-    boldFont.setPointSizeF(boldFont.pointSizeF() * 0.88);
+    const qreal basePt = boldFont.pointSizeF();
+    if (basePt > 0)
+        boldFont.setPointSizeF(basePt * 0.88);
     p.setFont(boldFont);
 
     auto drawEntity = [&](int cx, const QString &label) {
@@ -98,12 +100,16 @@ void SipLadderWidget::paintEvent(QPaintEvent *)
     // Per-row font
     QFont rowFont = p.font();
     rowFont.setBold(false);
-    rowFont.setPointSizeF(rowFont.pointSizeF() * 0.86);
+    const qreal rowPt = rowFont.pointSizeF();
+    if (rowPt > 0)
+        rowFont.setPointSizeF(rowPt * 0.86);
     p.setFont(rowFont);
     const QFontMetrics fm(rowFont);
 
     QFont annFont = rowFont;
-    annFont.setPointSizeF(annFont.pointSizeF() * 0.82);
+    const qreal annPt = annFont.pointSizeF();
+    if (annPt > 0)
+        annFont.setPointSizeF(annPt * 0.82);
     const QFontMetrics afm(annFont);
 
     for (int i = 0; i < m_traces.size(); ++i) {
