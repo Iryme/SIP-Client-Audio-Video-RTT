@@ -161,6 +161,26 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# --- Deploy Qt runtime (Windows) ---
+# Runs windeployqt after every build so plugins (multimedia, platforms, etc.)
+# are always present next to the executable. Without this, QMediaDevices returns
+# empty device lists because windowsmediaplugin.dll is not found.
+if(WIN32)
+    find_program(WINDEPLOYQT windeployqt6 windeployqt
+        HINTS "${Qt6_DIR}/../../../bin"
+        NO_DEFAULT_PATH)
+    if(WINDEPLOYQT)
+        add_custom_command(TARGET SIPClient POST_BUILD
+            COMMAND "${WINDEPLOYQT}"
+                --no-translations
+                --no-system-d3d-compiler
+                $<$<CONFIG:Debug>:--debug>$<$<NOT:$<CONFIG:Debug>>:--release>
+                "$<TARGET_FILE:SIPClient>"
+            COMMENT "Running windeployqt..."
+            VERBATIM)
+    endif()
+endif()
+
 # --- Install ---
 install(TARGETS SIPClient
     BUNDLE  DESTINATION .
