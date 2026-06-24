@@ -141,6 +141,15 @@ void SipManager::shutdown()
     }
 
     if (m_account) {
+#ifdef HAVE_PJSIP
+        // Pump the PJSIP event loop briefly so any call-state transitions that
+        // were queued just before shutdown (e.g. a failed outgoing call) are
+        // fully processed.  Without this, setRegistration(false) can hit
+        // PJSIP_EBUSY if the call slot has not been released internally yet.
+        if (m_ep) {
+            try { m_ep->ep.libHandleEvents(100); } catch (...) {}
+        }
+#endif
         m_account->startUnregistration();
         destroyAccount();
     }

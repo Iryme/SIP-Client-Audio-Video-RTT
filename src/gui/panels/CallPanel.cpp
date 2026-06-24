@@ -10,11 +10,14 @@
 #include <QPushButton>
 #include <QFrame>
 
+#include "core/Logger.h"
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoMediaManager.h"
 #include "sip/SipManager.h"
+#include "sip/SipProfileManager.h"
+#include "sip/SipUriNormalizer.h"
 
 CallPanel::CallPanel(QWidget *parent)
     : QWidget(parent)
@@ -273,9 +276,31 @@ CallPanel::CallPanel(QWidget *parent)
 
     // Dial row: Call button and Enter key both trigger makeCall.
     auto triggerCall = [this] {
-        const QString uri = m_dialInput->text().trimmed();
-        if (!uri.isEmpty())
-            SipManager::instance().makeCall(uri);
+        const QString raw = m_dialInput->text().trimmed();
+        if (raw.isEmpty()) {
+            m_regStatusLabel->setText(tr("Enter a SIP URI or extension to call"));
+            m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+            return;
+        }
+        const QString fallbackDomain =
+            SipProfileManager::instance().activeProfile().sipDomain;
+        const SipUriNormalizer::Result result =
+            SipUriNormalizer::normalize(raw, fallbackDomain);
+        if (!result.isValid) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Dial URI invalid: input=\"%1\" error=\"%2\"")
+                    .arg(raw, result.error));
+            m_regStatusLabel->setText(tr("Invalid URI: %1").arg(result.error));
+            m_regStatusLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+            return;
+        }
+        if (result.uri != raw) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Dial URI normalized: \"%1\" → \"%2\"")
+                    .arg(raw, result.uri));
+            m_dialInput->setText(result.uri);
+        }
+        SipManager::instance().makeCall(result.uri);
     };
     connect(m_btnCall,  &QPushButton::clicked,  this, triggerCall);
     connect(m_dialInput, &QLineEdit::returnPressed, this, triggerCall);
@@ -349,9 +374,10 @@ void CallPanel::populateDeviceCombos()
 void CallPanel::applyCallState(CallState state)
 {
     const bool isIdle     = (state == CallState::Idle);
+    const bool isFailed   = (state == CallState::Failed);
     const bool isIncoming = (state == CallState::IncomingRinging);
     const bool isActive   = (state == CallState::Active || state == CallState::Held);
-    const bool hasCall    = !isIdle && state != CallState::Failed;
+    const bool hasCall    = !isIdle && !isFailed;
 
     m_btnAnswer->setVisible(isIncoming);
     m_btnReject->setVisible(isIncoming);
@@ -361,23 +387,27 @@ void CallPanel::applyCallState(CallState state)
     m_btnVideo->setEnabled(state == CallState::Active);
     m_btnKeypad->setEnabled(state == CallState::Active);
 
-    // Dial row: visible and active only when Idle.
-    m_dialRow->setVisible(isIdle);
-    if (isIdle) {
+    // Dial row: visible when Idle or Failed so the user can retry after a failed call.
+    m_dialRow->setVisible(isIdle || isFailed);
+    if (isIdle || isFailed) {
         const bool registered =
             (SipManager::instance().registrationState() == RegistrationState::Registered);
         m_btnCall->setEnabled(registered);
-        if (registered) {
-            m_regStatusLabel->setText(tr("Registered — enter a SIP URI and press Call"));
-            m_regStatusLabel->setStyleSheet("color: #50c878; font-size: 10px;");
-        } else {
-            m_regStatusLabel->setText(tr("Not registered — register a SIP profile first"));
-            m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+        if (isIdle) {
+            // Reset status label to registration hint when returning to Idle normally.
+            if (registered) {
+                m_regStatusLabel->setText(tr("Registered — enter a SIP URI and press Call"));
+                m_regStatusLabel->setStyleSheet("color: #50c878; font-size: 10px;");
+            } else {
+                m_regStatusLabel->setText(tr("Not registered — register a SIP profile first"));
+                m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+            }
         }
+        // For Failed: leave the label for onCallFailed to fill with the specific reason.
     }
 
-    // Show device selectors only when a call is in progress.
-    m_deviceRow->setVisible(!isIdle && state != CallState::Failed);
+    // Show device selectors only while a call is in progress.
+    m_deviceRow->setVisible(!isIdle && !isFailed);
     if (m_deviceRow->isVisible())
         populateDeviceCombos();
 
@@ -443,16 +473,13 @@ void CallPanel::onCallFailed(const QString &remoteUri, const QString &reason, in
 {
     Q_UNUSED(remoteUri)
     Q_UNUSED(statusCode)
-    m_callState->setText(tr("Call Failed: %1").arg(reason));
-    m_callState->setStyleSheet(QStringLiteral("color: #e05050; font-size: 12px;"));
-    m_btnHangup->setVisible(false);
-    m_btnAnswer->setVisible(false);
-    m_btnReject->setVisible(false);
-    m_btnHold->setEnabled(false);
-    m_btnMute->setEnabled(false);
-    m_btnVideo->setEnabled(false);
-    m_btnKeypad->setEnabled(false);
-    m_deviceRow->setVisible(false);
+    // applyCallState(Failed) has already run (callStateChanged fires before callFailed).
+    // Override the status label with the specific failure reason so the user can correct it.
+    m_regStatusLabel->setText(
+        tr("Call failed: %1 — correct the URI and try again").arg(reason));
+    m_regStatusLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+    Logger::instance().info(LogCategory::App,
+        QStringLiteral("Call failed — dial row visible; user can retry without restarting"));
 }
 
 void CallPanel::onInputLevelChanged(int level)

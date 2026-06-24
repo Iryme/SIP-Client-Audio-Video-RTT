@@ -276,6 +276,23 @@ endif()
 
 add_test(NAME test_profile_switch COMMAND test_profile_switch)
 
+# ---- test_sip_uri_normalizer -------------------------------------------
+qt_add_executable(test_sip_uri_normalizer
+    test_sip_uri_normalizer.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
+)
+
+target_include_directories(test_sip_uri_normalizer PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sip_uri_normalizer PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sip_uri_normalizer COMMAND test_sip_uri_normalizer)
+
 # ---- test_call_state_machine -------------------------------------------
 qt_add_executable(test_call_state_machine
     test_call_state_machine.cpp
