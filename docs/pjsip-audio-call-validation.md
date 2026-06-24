@@ -14,6 +14,24 @@ Live outbound INVITE → peer answered → call reached Active. Audio codec: PCM
 
 Outbound proxy (`SIP_LIVE_OUTBOUND_PROXY=sip:<server>;transport=udp`) required to prevent `PJ_ERESOLVE` when target AoR contains a hostname.
 
+### Task 23A — GUI Live Audio Call (2026-06-24)
+
+Validated the full audio call flow through the real GUI application (`build-pjsip-real\Debug\SIPClient.exe`).
+
+**Issue found:** CallPanel had no dialing UI (no URI input, no Call button). Outbound calls could not be initiated from the GUI.
+
+**Fix:** Added a minimal dial row to `CallPanel` — a `QLineEdit` for the SIP URI and a "Call" button, visible only in Idle state. The Call button is enabled only when registered. Both the button click and the Enter key trigger `SipManager::makeCall()`. Row hides when a call is in progress.
+
+**GUI validation flow:**
+1. Launch `build-pjsip-real\Debug\SIPClient.exe`.
+2. Add profile via "+ Profile": username `1001`, domain `sensor-x.local`, registrar `10.2.0.180`, outbound proxy `sip:10.2.0.180;transport=udp`.
+3. Click Register → status turns green (Registered).
+4. In dial row: enter `sip:1002@sensor-x.local`, click Call.
+5. Peer (MicroSIP/Linphone as `1002`) rings → answer.
+6. Call state reaches Active (green). Level meters move.
+7. Click Hangup → Idle.
+8. Click Unregister → Unregistered. No crash. No PJSIP warning.
+
 ### Task 22E — Account Deletion Race Fix (2026-06-24)
 
 **Issue:** PJSIP logged `Warning: deleting account 0 while call 0 is still active (forced)` when unregister immediately followed hangup.

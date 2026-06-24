@@ -5,6 +5,7 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QFrame>
@@ -170,6 +171,26 @@ CallPanel::CallPanel(QWidget *parent)
 
     layout->addLayout(ctrlRow);
 
+    // --- Dial row (visible only when Idle) -----------------------------------
+    m_dialRow = new QWidget(this);
+    auto *dialLayout = new QHBoxLayout(m_dialRow);
+    dialLayout->setContentsMargins(0, 4, 0, 0);
+    dialLayout->setSpacing(6);
+
+    m_dialInput = new QLineEdit(m_dialRow);
+    m_dialInput->setObjectName("DialInput");
+    m_dialInput->setPlaceholderText(tr("sip:user@domain or user@domain"));
+    m_dialInput->setFixedHeight(28);
+
+    m_btnCall = new QPushButton(tr("Call"), m_dialRow);
+    m_btnCall->setObjectName("CallBtn");
+    m_btnCall->setFixedHeight(28);
+    m_btnCall->setMinimumWidth(60);
+
+    dialLayout->addWidget(m_dialInput, 1);
+    dialLayout->addWidget(m_btnCall);
+    layout->addWidget(m_dialRow);
+
     // --- Internal signal wiring ----------------------------------------------
     connect(m_btnMute,   &QPushButton::toggled, this, &CallPanel::muteToggled);
     connect(m_btnVideo,  &QPushButton::toggled, this, &CallPanel::videoToggled);
@@ -237,9 +258,25 @@ CallPanel::CallPanel(QWidget *parent)
     connect(&SipManager::instance(), &SipManager::callFailed,
             this, &CallPanel::onCallFailed);
 
+    // Dial row: Call button and Enter key both trigger makeCall.
+    auto triggerCall = [this] {
+        const QString uri = m_dialInput->text().trimmed();
+        if (!uri.isEmpty())
+            SipManager::instance().makeCall(uri);
+    };
+    connect(m_btnCall,  &QPushButton::clicked,  this, triggerCall);
+    connect(m_dialInput, &QLineEdit::returnPressed, this, triggerCall);
+
+    // Dial row: show only when registered and Idle.
+    connect(&SipManager::instance(), &SipManager::registrationStateChanged,
+            this, [this](RegistrationState state, const QString &, int) {
+        const bool registered = (state == RegistrationState::Registered);
+        m_btnCall->setEnabled(registered);
+        // Visibility follows call state; just ensure button enable is correct.
+    });
+
     // Initial idle state
     applyCallState(CallState::Idle);
-    populateDeviceCombos();
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +338,14 @@ void CallPanel::applyCallState(CallState state)
     m_btnMute->setEnabled(state == CallState::Active);
     m_btnVideo->setEnabled(state == CallState::Active);
     m_btnKeypad->setEnabled(state == CallState::Active);
+
+    // Dial row: visible and active only when Idle.
+    m_dialRow->setVisible(isIdle);
+    if (isIdle) {
+        const bool registered =
+            (SipManager::instance().registrationState() == RegistrationState::Registered);
+        m_btnCall->setEnabled(registered);
+    }
 
     // Show device selectors only when a call is in progress.
     m_deviceRow->setVisible(!isIdle && state != CallState::Failed);

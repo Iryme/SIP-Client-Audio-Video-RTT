@@ -5,6 +5,7 @@
 
 class QLabel;
 class QComboBox;
+class QLineEdit;
 class QProgressBar;
 class QPushButton;
 
@@ -66,4 +67,9 @@ private:
     QPushButton *m_btnAnswer{nullptr};
     QPushButton *m_btnReject{nullptr};
     QPushButton *m_btnHangup{nullptr};
+
+    // Dial row — visible only when Idle and registered.
+    QWidget     *m_dialRow{nullptr};
+    QLineEdit   *m_dialInput{nullptr};
+    QPushButton *m_btnCall{nullptr};
 };
