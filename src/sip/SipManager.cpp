@@ -8,6 +8,7 @@
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoMediaManager.h"
 #include "security/CredentialStore.h"
+#include "sip/CodecManager.h"
 #include "sip/PjsipAudioMapper.h"
 #include "sip/SipProfileManager.h"
 #include "sip/RegistrationRetryPolicy.h"
@@ -58,7 +59,7 @@ static void shutdownPjsip(SipManager::PjEndpoint *&ep)
     ep = nullptr;
 }
 
-static void logVideoSubsystemStatus()
+static void logVideoDevices()
 {
 #if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
     Logger::instance().info(LogCategory::Media,
@@ -85,25 +86,9 @@ static void logVideoSubsystemStatus()
                                "(PJMEDIA_VIDEO_DEV_HAS_DSHOW=0; "
                                "no DirectShow backend compiled)"));
         }
-        pj::CodecInfoVector2 codecs = pj::Endpoint::instance().videoCodecEnum2();
-        Logger::instance().info(LogCategory::Media,
-            QStringLiteral("PJSIP video codecs (%1 total):")
-                .arg(static_cast<int>(codecs.size())));
-        for (const auto &c : codecs) {
-            Logger::instance().info(LogCategory::Media,
-                QStringLiteral("  %1  priority=%2")
-                    .arg(QString::fromStdString(c->codecId))
-                    .arg(c->priority));
-        }
-        if (codecs.empty()) {
-            Logger::instance().warn(LogCategory::Media,
-                QStringLiteral("PJSIP video: no video codecs available "
-                               "(VPX=OFF, OpenH264=OFF, FFMPEG=OFF). "
-                               "INVITE will not include a video media line."));
-        }
     } catch (const pj::Error &e) {
         Logger::instance().warn(LogCategory::Media,
-            QStringLiteral("PJSIP video subsystem query failed: %1")
+            QStringLiteral("PJSIP video device query failed: %1")
                 .arg(QString::fromStdString(e.reason)));
     }
 #else
@@ -170,7 +155,8 @@ bool SipManager::initialize()
         return false;
     }
     PjsipAudioMapper::logAllDevices();
-    logVideoSubsystemStatus();
+    logVideoDevices();
+    CodecManager::instance().initialize();
     applyPersistedAudioDevices();
 #else
     Logger::instance().warn(LogCategory::Sip,

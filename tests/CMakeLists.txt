@@ -24,6 +24,11 @@ set(PJSIP_AUDIO_MAPPER_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/PjsipAudioMapper.cpp
 )
 
+# Codec manager — required by any test that compiles SipManager.cpp
+set(CODEC_MANAGER_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/CodecManager.cpp
+)
+
 # Call subsystem sources — required by any test that compiles SipManager.cpp
 set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
@@ -167,6 +172,7 @@ qt_add_executable(test_sip_manager
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
+    ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -200,6 +206,7 @@ qt_add_executable(test_registration_retry
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
+    ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -233,6 +240,7 @@ qt_add_executable(test_registration_expiry
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
+    ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -266,6 +274,7 @@ qt_add_executable(test_profile_switch
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
+    ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -362,6 +371,24 @@ target_link_libraries(test_video_media PRIVATE
 
 add_test(NAME test_video_media COMMAND test_video_media)
 
+# ---- test_codec_manager ------------------------------------------------
+qt_add_executable(test_codec_manager
+    test_codec_manager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CodecManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_codec_manager PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_codec_manager PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_codec_manager COMMAND test_codec_manager)
+
 # ---- test_sip_trace ----------------------------------------------------
 qt_add_executable(test_sip_trace
     test_sip_trace.cpp
@@ -389,6 +416,7 @@ if(ENABLE_PJSIP AND PJSIP_FOUND)
         test_profile_switch
         test_audio_media
         test_video_media
+        test_codec_manager
     )
         if(TARGET ${_pjsip_test_target})
             target_link_libraries(${_pjsip_test_target} PRIVATE PJSIP::pjsua2)

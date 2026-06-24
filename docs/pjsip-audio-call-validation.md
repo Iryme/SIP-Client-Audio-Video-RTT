@@ -161,6 +161,76 @@ Audio calls remain fully functional. The video config changes (`autoTransmitOutg
 3. When `onCallMediaState` fires with `PJMEDIA_TYPE_VIDEO / PJSUA_CALL_MEDIA_ACTIVE`, the log will show `videoIncomingWindowId` — this is the native window handle that the remote video stream renders into.
 4. Actual Qt widget rendering: embed the PJSIP render window (by win32 HWND) into `VideoPanel` using `QWindow::fromWinId()` + `QWidget::createWindowContainer()`.
 
+### Task 26A — Codec Capability Matrix and Automatic SDP Negotiation (2026-06-24)
+
+**Objective:** Add a `CodecManager` abstraction that detects available PJSIP codecs at runtime, applies default priorities, logs the full codec matrix, and enables automatic SDP negotiation without forcing any codec.
+
+#### What was implemented
+
+1. **`src/sip/CodecManager.h/.cpp`** (new):
+   - `CodecEntry` struct: `codecId`, `mediaType` (`SipMediaType` enum: Audio/Video/Text), `priority`, `available`
+   - `CodecManager::initialize()` — called once after `libStart()`:
+     - Audio: enumerates via `pj::Endpoint::instance().codecEnum2()`, applies priority table
+     - Video: enumerates via `pj::Endpoint::instance().videoCodecEnum2()`, applies priority table
+     - RTT/Text: populated as model only (`available=false`); PJSIP has no T.140 codec
+   - Default priority table (audio): Opus=240 > G722=230 > PCMA=220 > PCMU=210 > GSM=200 > telephone-event=195
+   - Default priority table (video): H264=240 > VP8=230 > VP9=220 > H263=210
+   - `hasUsableAudioCodec()` / `hasUsableVideoCodec()` — true iff at least one codec is available and has priority > 0
+   - `logCodecMatrix()` — logs all audio, video, and RTT codecs with ENABLED/DISABLED/MODEL tags
+
+2. **`src/sip/SipManager.cpp`**:
+   - `logVideoSubsystemStatus()` → `logVideoDevices()` (video device enumeration only; codec enumeration moved to `CodecManager`)
+   - `CodecManager::instance().initialize()` called in `initialize()` after `logVideoDevices()`
+
+3. **`src/sip/SipCall.cpp`** — negotiated codec logging:
+   - After audio bridge wires up in `onCallMediaState`, calls `pjsua_call_get_stream_info()` to extract `pjmedia_codec_info.encoding_name` and `clock_rate`
+   - Logs: `Negotiated audio codec: PCMU/8000  pt=0`
+
+4. **RTT model**: `CodecManager::rttCodecs()` returns `red/90000/1` (priority=240) and `t140/1000/1` (priority=230) as model entries (`available=false`). No PJSIP negotiation until RTT transport is implemented.
+
+#### Expected startup log output
+
+```
+[Media] PJSIP video support: ENABLED (PJMEDIA_HAS_VIDEO=1)
+[Media] PJSIP video devices (0 total):
+[Media] WARN: PJSIP video: no capture/render devices (PJMEDIA_VIDEO_DEV_HAS_DSHOW=0; ...)
+[Media] CodecManager: audio codecs (N available):
+[Media]   ENABLED   PCMU/8000/1              priority=210
+[Media]   ENABLED   PCMA/8000/1              priority=220
+[Media]   ENABLED   G722/16000/1             priority=230
+[Media]   ENABLED   telephone-event/8000/1   priority=195
+[Media]   ...
+[Media] CodecManager: video codecs (0 available):
+[Media] WARN: CodecManager: no video codecs available (VPX/OpenH264/FFmpeg not compiled) — INVITE will NOT include a video m-line
+[Media] CodecManager: RTT/text codecs (model only — not negotiated via PJSIP in this build):
+[Media]   MODEL   red/90000/1    priority=240
+[Media]   MODEL   t140/1000/1    priority=230
+```
+
+#### On audio connect
+
+```
+[Media] Negotiated audio codec: PCMU/8000  pt=0
+```
+
+#### PJSIP API notes
+
+| Purpose | API |
+|---------|-----|
+| Enumerate audio codecs | `pj::Endpoint::codecEnum2()` → `CodecInfoVector2` (value type, use `.`) |
+| Set audio codec priority | `pj::Endpoint::codecSetPriority(id, priority)` |
+| Enumerate video codecs | `pj::Endpoint::videoCodecEnum2()` |
+| Set video codec priority | `pj::Endpoint::videoCodecSetPriority(id, priority)` |
+| Negotiated codec at call time | `pjsua_call_get_stream_info(call_id, med_idx, &si)` → `si.info.aud.fmt.encoding_name` |
+
+#### Test results
+
+15/15 unit tests pass (ctest, 2026-06-24). `test_codec_manager` skips in PJSIP mode (by design — tests stub-mode codec list only).
+
+#### Audio regression
+
+Audio calls unaffected. Codec priority changes via `codecSetPriority()` only reorder PJSIP's internal preference list; they do not disable codecs or alter the SDP if the peer does not support the preferred codec.
+
 ### Task 22E — Account Deletion Race Fix (2026-06-24)
 
 **Issue:** PJSIP logged `Warning: deleting account 0 while call 0 is still active (forced)` when unregister immediately followed hangup.

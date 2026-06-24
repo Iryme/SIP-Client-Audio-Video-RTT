@@ -62,6 +62,7 @@ set(SOURCES
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
     src/sip/SipUriNormalizer.cpp
+    src/sip/CodecManager.cpp
     src/sip/PjsipAudioMapper.cpp
     src/sip/CallStateMachine.cpp
     src/sip/RegistrationStateMachine.cpp
@@ -100,6 +101,7 @@ set(HEADERS
     src/sip/SipAccount.h
     src/sip/SipCall.h
     src/sip/SipUriNormalizer.h
+    src/sip/CodecManager.h
     src/sip/PjsipAudioMapper.h
     src/sip/CallStateMachine.h
     src/sip/RegistrationStateMachine.h

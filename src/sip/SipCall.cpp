@@ -116,6 +116,25 @@ struct SipCall::Impl
                                 .arg(getId())
                                 .arg(pjsua_call_get_conf_port(cid))
                                 .arg(mi.index));
+                        // Log negotiated audio codec from SDP.
+                        try {
+                            pjsua_stream_info si;
+                            pj_bzero(&si, sizeof(si));
+                            if (pjsua_call_get_stream_info(cid,
+                                    static_cast<unsigned>(mi.index), &si) == PJ_SUCCESS
+                                && si.type == PJMEDIA_TYPE_AUDIO) {
+                                const pjmedia_codec_info &fmt = si.info.aud.fmt;
+                                const QString encName = fmt.encoding_name.slen > 0
+                                    ? QString::fromLatin1(fmt.encoding_name.ptr,
+                                                          static_cast<int>(fmt.encoding_name.slen))
+                                    : QStringLiteral("(unknown)");
+                                Logger::instance().info(LogCategory::Media,
+                                    QStringLiteral("Negotiated audio codec: %1/%2  pt=%3")
+                                        .arg(encName)
+                                        .arg(fmt.clock_rate)
+                                        .arg(fmt.pt));
+                            }
+                        } catch (...) {}
                     } catch (...) {
                         m_impl->callAudioMedia = nullptr;
                         Logger::instance().warn(LogCategory::Sip,
