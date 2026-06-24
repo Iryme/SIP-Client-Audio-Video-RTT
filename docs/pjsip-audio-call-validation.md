@@ -2,6 +2,26 @@
 
 Task 22 validates the real PJSIP path with `ENABLE_PJSIP=ON`. This is a validation and bug-fix pass only: video, RTT, ETSI behavior, call history, and SIP ladder improvements are out of scope.
 
+## Live Validation Results
+
+### Task 22C — Registration (2026-06-24, PASS)
+
+Live REGISTER → 401 challenge → 200 OK against Kamailio validated via `live_registration_probe`. Re-REGISTER refresh fired and rescheduled. UNREGISTER with Expires:0 returned 200 OK. State machine reached Unregistered cleanly.
+
+### Task 22D — Audio Call (2026-06-24, PASS)
+
+Live outbound INVITE → peer answered → call reached Active. Audio codec: PCMU @ 8 kHz. PJSIP media callback fired, RTP audio bridge connected. RX and TX packets exchanged with 0% packet loss. BYE sent on hangup, call reached Idle. UNREGISTER returned 200 OK.
+
+Outbound proxy (`SIP_LIVE_OUTBOUND_PROXY=sip:<server>;transport=udp`) required to prevent `PJ_ERESOLVE` when target AoR contains a hostname.
+
+### Task 22E — Account Deletion Race Fix (2026-06-24)
+
+**Issue:** PJSIP logged `Warning: deleting account 0 while call 0 is still active (forced)` when unregister immediately followed hangup.
+
+**Root cause:** `SipManager::onActiveCallStateChanged` used `deleteLater()` to defer `SipCall` destruction, which was correct for Qt signal-stack safety but meant the `pj::Call` slot inside `SipCall` outlived the `pj::Account`. When unregister completed and `destroyAccount()` ran, the `pj::Account` was deleted while PJSIP still tracked call 0 as occupying a slot.
+
+**Fix:** `SipCall::releasePjsipCall()` synchronously deletes `m_impl->pjCall` (and calls `pj::Call::hangup` if still active as a safety guard) before `deleteLater()` is scheduled. This frees the PJSIP call slot immediately while the Qt wrapper object's deferred cleanup proceeds normally. `SipCall::~SipCall()` checks `m_impl->pjCall != nullptr` before acting, so there is no double-delete.
+
 ## Local Status
 
 Task 22B installed and validated a real local PJSIP backend on 2026-06-23. The local install prefix is:
@@ -22,7 +42,7 @@ cmake -S . -B build-pjsip-real `
   -DCMAKE_PREFIX_PATH=F:\Programs\Qt\6.11.1\msvc2022_64
 ```
 
-The app and tests compile with `HAVE_PJSIP`; `test_sip_manager` asserts `SipManager::backendName() == "PJSIP/pjsua2"`. Live Kamailio registration, INVITE, RTP, and BYE validation are still the next step.
+The app and tests compile with `HAVE_PJSIP`; `test_sip_manager` asserts `SipManager::backendName() == "PJSIP/pjsua2"`. Live Kamailio registration, INVITE, RTP, and BYE were validated in Tasks 22C–22E (see results above).
 
 ### Live Validation Tool
 

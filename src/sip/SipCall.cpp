@@ -575,6 +575,22 @@ bool SipCall::isVideoMuted()           const { return m_videoMuted; }
 bool SipCall::isLocalVideoAvailable()  const { return m_localVideoAvailable; }
 bool SipCall::isRemoteVideoAvailable() const { return m_remoteVideoAvailable; }
 
+void SipCall::releasePjsipCall()
+{
+#ifdef HAVE_PJSIP
+    if (m_impl->pjCall) {
+        try {
+            if (m_impl->pjCall->isActive())
+                m_impl->pjCall->hangup(pj::CallOpParam());
+        } catch (...) {}
+        delete m_impl->pjCall;
+        m_impl->pjCall = nullptr;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP call slot released: id=%1").arg(m_callId));
+    }
+#endif
+}
+
 void SipCall::reset(const QString &reason)
 {
     Logger::instance().info(LogCategory::Sip,

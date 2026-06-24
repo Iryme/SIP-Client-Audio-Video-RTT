@@ -1090,11 +1090,15 @@ void SipManager::onActiveCallStateChanged(CallState state,
                 .arg(callStateName(state)));
         AudioMediaManager::instance().detachCall();
         VideoMediaManager::instance().detachCall();
-        // Defer destruction so signal handlers in the call finish first.
+        // Defer Qt-object cleanup, but release the pj::Call slot now.
+        // Without this, deleteLater fires after destroyAccount() when unregister
+        // follows hangup immediately, producing "deleting account while call active".
         SipCall *call = m_activeCall;
         m_activeCall = nullptr;
-        if (call)
+        if (call) {
+            call->releasePjsipCall();
             call->deleteLater();
+        }
     }
 }
 

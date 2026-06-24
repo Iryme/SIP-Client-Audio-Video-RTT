@@ -61,6 +61,11 @@ public:
     // Force to Idle regardless of current state (shutdown / cleanup path).
     void reset(const QString &reason = QStringLiteral("Reset"));
 
+    // Release the underlying pj::Call slot immediately (no-op in stub mode).
+    // Call this before deleteLater() when the PJSIP account may be destroyed
+    // soon after, to avoid the "deleting account while call active" warning.
+    void releasePjsipCall();
+
     CallState state()      const;
     QString   statusText() const;
     QString   remoteUri()  const;
