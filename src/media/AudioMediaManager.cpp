@@ -117,14 +117,13 @@ void AudioMediaManager::setMicrophone(const QString &deviceId)
     MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
     sel.selectMicrophone(deviceId);
 
-    if (m_mediaActive) {
-        // PJSIP device-index mapping not yet implemented.
-        // The selection is persisted and will take effect on the next call.
+    if (m_mediaActive)
         Logger::instance().info(LogCategory::Media,
-            QStringLiteral("Microphone device changed during active call: %1 "
-                           "(PJSIP hot-swap scaffolded; takes effect on next call)")
+            QStringLiteral("Microphone changed during active call: %1 "
+                           "(takes effect on next call)")
                 .arg(dev.displayName));
-    }
+
+    emit audioDeviceSelectionChanged();
 }
 
 void AudioMediaManager::setSpeaker(const QString &deviceId)
@@ -143,12 +142,13 @@ void AudioMediaManager::setSpeaker(const QString &deviceId)
     MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
     sel.selectSpeaker(deviceId);
 
-    if (m_mediaActive) {
+    if (m_mediaActive)
         Logger::instance().info(LogCategory::Media,
-            QStringLiteral("Speaker device changed during active call: %1 "
-                           "(PJSIP hot-swap scaffolded; takes effect on next call)")
+            QStringLiteral("Speaker changed during active call: %1 "
+                           "(takes effect on next call)")
                 .arg(dev.displayName));
-    }
+
+    emit audioDeviceSelectionChanged();
 }
 
 // ---------------------------------------------------------------------------

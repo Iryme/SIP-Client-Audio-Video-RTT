@@ -58,6 +58,9 @@ signals:
     void outputLevelChanged(int level);
     void mediaConnected();
     void mediaDisconnected();
+    // Emitted when the user selects a new microphone or speaker.
+    // SipManager connects to this and re-applies PJSIP device selection.
+    void audioDeviceSelectionChanged();
 
 private:
     AudioMediaManager();

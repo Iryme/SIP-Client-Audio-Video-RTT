@@ -4,8 +4,11 @@
 
 #include "core/Logger.h"
 #include "media/AudioMediaManager.h"
+#include "media/MediaDeviceManager.h"
+#include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoMediaManager.h"
 #include "security/CredentialStore.h"
+#include "sip/PjsipAudioMapper.h"
 #include "sip/SipProfileManager.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
@@ -80,6 +83,15 @@ SipManager::SipManager() : QObject(nullptr)
     m_refreshTimer.setSingleShot(true);
     connect(&m_refreshTimer, &QTimer::timeout,
             this, &SipManager::onRefreshTimerFired);
+
+    // Re-apply PJSIP audio device selection when the user picks a new device,
+    // or when the device list is refreshed (which resolves persisted names).
+    connect(&AudioMediaManager::instance(),
+            &AudioMediaManager::audioDeviceSelectionChanged,
+            this, &SipManager::applyPersistedAudioDevices);
+    connect(&MediaDeviceManager::instance(),
+            &MediaDeviceManager::devicesChanged,
+            this, &SipManager::applyPersistedAudioDevices);
 }
 
 SipManager::~SipManager()
@@ -103,6 +115,8 @@ bool SipManager::initialize()
         emit initializationFailed(m_lastError);
         return false;
     }
+    PjsipAudioMapper::logAllDevices();
+    applyPersistedAudioDevices();
 #else
     Logger::instance().warn(LogCategory::Sip,
         QStringLiteral("PJSIP unavailable - running stub SIP backend"));
@@ -1160,3 +1174,25 @@ bool SipManager::ensureTransport(SipTransport transport, int &transportId,
     }
 }
 #endif
+
+void SipManager::applyPersistedAudioDevices()
+{
+#ifdef HAVE_PJSIP
+    if (!m_ep || !m_initialized)
+        return;
+
+    MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
+    const MediaDevice mic = sel.selectedMicrophone();
+    const MediaDevice spk = sel.selectedSpeaker();
+
+    const QString micName = mic.isNull() ? QString{} : mic.displayName;
+    const QString spkName = spk.isNull() ? QString{} : spk.displayName;
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Applying audio device selection: mic=\"%1\" speaker=\"%2\"")
+            .arg(micName.isEmpty() ? QStringLiteral("(default)") : micName,
+                 spkName.isEmpty() ? QStringLiteral("(default)") : spkName));
+
+    PjsipAudioMapper::applyDevicesByName(micName, spkName);
+#endif
+}

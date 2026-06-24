@@ -62,9 +62,30 @@ Full end-to-end GUI audio call confirmed working against the live Kamailio serve
 7. Click Hangup → BYE sent, call state returns to Idle.
 8. Click Unregister → state returns to Unregistered.
 
-**Known limitation — audio device selector:**
+**Note — audio device selector:** wired to PJSIP `AudDevManager` in Task 24A. Changing devices during an active call still takes effect on the next call only.
 
-The Media panel lists audio input/output devices using Qt's `QMediaDevices` API. The selection is stored in application settings. However, PJSIP's audio bridge uses the WMME (Windows Multimedia) default device and does not read the Qt device selection at runtime. As a result, changing the microphone or speaker in the Media panel has no effect on the active call audio. The call always uses the Windows default audio device. Wiring the Qt device selection to PJSIP's `AudDevManager` is deferred to a future task.
+### Task 24A — GUI Audio Device Selection Wired to PJSIP (2026-06-24, PASS)
+
+The microphone and speaker combos in the Media panel now control PJSIP's `AudDevManager`. Device selection persists across app restarts and takes effect on the next call.
+
+**What was implemented:**
+
+- `PjsipAudioMapper` (new static helper) maps Qt display names to PJSIP device indices using case-insensitive exact/substring scoring against `adm.getDevInfo(i).name`. Returns -1 (PJSIP default) when no match is found.
+- `AudioMediaManager` gained an `audioDeviceSelectionChanged()` signal emitted from `setMicrophone()` and `setSpeaker()`.
+- `MediaPanel` forwards combo selections to `AudioMediaManager::setMicrophone/setSpeaker` via lambda connections.
+- `SipManager::applyPersistedAudioDevices()` reads `MediaDeviceSelectionModel`, resolves display names to PJSIP indices via `PjsipAudioMapper::applyDevicesByName()`, and calls `adm.setCaptureDev/setPlaybackDev`. Called at PJSIP init and whenever `audioDeviceSelectionChanged` or `devicesChanged` fires.
+- All PJSIP device enumeration is logged at init: index, name, input count, output count.
+
+**Known limitation:** changing the device during an active call does not rewire the active RTP bridge. The new selection takes effect on the next call.
+
+**Validation:**
+
+1. Launch `build\SIPClient.exe` with PJSIP enabled.
+2. Open Media panel — microphone and speaker combos populate from `QMediaDevices`.
+3. Select a non-default microphone. Check log: `Applying audio device selection: mic="..." speaker="..."` and `PjsipAudioMapper: "..." → capture[N]`.
+4. Close and reopen app — selection is restored from QSettings.
+5. Register, place a call — call audio uses the selected capture device. Log confirms `PJSIP audio devices applied: capture=N playback=M`.
+6. All 13 unit tests pass (ctest 13/13).
 
 ### Task 22E — Account Deletion Race Fix (2026-06-24)
 

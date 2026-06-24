@@ -19,6 +19,11 @@ if(WIN32)
     list(APPEND SECURITY_HEADERS ${CMAKE_SOURCE_DIR}/src/security/WindowsCredentialBackend.h)
 endif()
 
+# PJSIP audio mapper — required by any test that compiles SipManager.cpp
+set(PJSIP_AUDIO_MAPPER_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/PjsipAudioMapper.cpp
+)
+
 # Call subsystem sources — required by any test that compiles SipManager.cpp
 set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
@@ -161,6 +166,7 @@ qt_add_executable(test_sip_manager
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -193,6 +199,7 @@ qt_add_executable(test_registration_retry
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -225,6 +232,7 @@ qt_add_executable(test_registration_expiry
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -257,6 +265,7 @@ qt_add_executable(test_profile_switch
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${SECURITY_SOURCES}
     ${SECURITY_HEADERS}
 )
@@ -405,6 +414,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
         ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
         ${AUDIO_MEDIA_SOURCES}
+        ${PJSIP_AUDIO_MAPPER_SOURCES}
         ${SECURITY_SOURCES}
         ${SECURITY_HEADERS}
     )
@@ -436,6 +446,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
         ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
         ${AUDIO_MEDIA_SOURCES}
+        ${PJSIP_AUDIO_MAPPER_SOURCES}
         ${SECURITY_SOURCES}
         ${SECURITY_HEADERS}
     )

@@ -151,6 +151,10 @@ private:
     void completePendingSwitch();
     void destroyActiveCall();
 
+    // Reads the persisted mic/speaker selection from MediaDeviceSelectionModel
+    // and applies it to PJSIP AudDevManager. No-op when PJSIP is not active.
+    void applyPersistedAudioDevices();
+
 #ifdef HAVE_PJSIP
 public:
     struct PjEndpoint;
