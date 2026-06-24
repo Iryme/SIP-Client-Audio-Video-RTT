@@ -155,6 +155,25 @@ struct SipCall::Impl
                                 .arg(mi.index)
                                 .arg(mi.videoIncomingWindowId)
                                 .arg(mi.videoCapDev));
+                        // Log negotiated video codec.
+                        try {
+                            pjsua_stream_info si;
+                            pj_bzero(&si, sizeof(si));
+                            const pjsua_call_id cid = static_cast<pjsua_call_id>(getId());
+                            if (pjsua_call_get_stream_info(cid,
+                                    static_cast<unsigned>(mi.index), &si) == PJ_SUCCESS
+                                && si.type == PJMEDIA_TYPE_VIDEO) {
+                                const pjmedia_vid_codec_info &vfmt = si.info.vid.codec_info;
+                                const QString encName = vfmt.encoding_name.slen > 0
+                                    ? QString::fromLatin1(vfmt.encoding_name.ptr,
+                                                          static_cast<int>(vfmt.encoding_name.slen))
+                                    : QStringLiteral("(unknown)");
+                                Logger::instance().info(LogCategory::Media,
+                                    QStringLiteral("Negotiated video codec: %1  pt=%2")
+                                        .arg(encName)
+                                        .arg(vfmt.pt));
+                            }
+                        } catch (...) {}
                     } catch (...) {
                         m_impl->callVideoMedia = nullptr;
                         Logger::instance().warn(LogCategory::Sip,
@@ -194,6 +213,25 @@ struct SipCall::Impl
                     emit self->videoMediaDisconnected();
                 }
             }, Qt::QueuedConnection);
+        }
+
+        void onCallSdpCreated(pj::OnCallSdpCreatedParam &prm) override
+        {
+            // Extract m= lines from the created SDP offer/answer so callers can
+            // verify that m=audio and m=video are both present without needing a
+            // live SIP trace capture.
+            const QString sdp = QString::fromStdString(prm.sdp.wholeSdp);
+            QStringList mLines;
+            for (const QString &line : sdp.split(QLatin1Char('\n'))) {
+                const QString trimmed = line.trimmed();
+                if (trimmed.startsWith(QLatin1String("m=")))
+                    mLines.append(trimmed);
+            }
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("SDP offer/answer m= lines (%1): %2")
+                    .arg(mLines.size())
+                    .arg(mLines.isEmpty() ? QStringLiteral("(none)")
+                                          : mLines.join(QStringLiteral(", "))));
         }
 
         void stopAudioBridge()

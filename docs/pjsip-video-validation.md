@@ -2,6 +2,20 @@
 
 Task 25B validates Windows video capture device enumeration and VP8/VP9 codec availability with `ENABLE_PJSIP=ON`. Scope: DShow camera enumeration, VPX codec availability, SDP m=video line presence. Live call testing and rendering are deferred.
 
+## SDP Offer Logging
+
+`PjCall::onCallSdpCreated()` (added 2026-06-24) logs the m= lines from every SDP offer and answer to `LogCategory::Media`:
+
+```
+[INFO] [MEDIA] SDP offer/answer m= lines (2): m=audio 5004 RTP/AVP ..., m=video 5006 RTP/AVP ...
+```
+
+This confirms m=audio and m=video are both offered without requiring a live peer. When video is negotiated and the stream goes active, the negotiated video codec is also logged:
+
+```
+[INFO] [MEDIA] Negotiated video codec: VP8  pt=102
+```
+
 ## Validated Components
 
 ### Task 25B — Video Device Enumeration and VPX Codec (2026-06-24, PASS)
@@ -38,8 +52,8 @@ Note: the final warn line is a log from before the rebuild landed in the binary;
 ## Known Limitations
 
 - **VP9 not available**: pjproject only registers VP8 by default. VP9 requires `PJMEDIA_HAS_VPX_CODEC_VP9=1` defined before `vpx.c` is compiled. This can be set via `config_site.h` or an additional CMake define if needed.
-- **No live video call test**: An outgoing INVITE from this build will include an `m=video` SDP line (PJSIP adds it when a usable video codec is present). Live negotiation against Linphone or similar was not done in this session.
-- **Rendering not implemented**: `VideoMediaManager` creates a pjsua2 `VideoWindow` but does not wire it to a Qt widget. Incoming video frames are decoded but not displayed.
+- **Live Linphone test pending**: SDP offer/answer m= line logging is now in place (see above). The next validation step is to make an outgoing call to a Linphone peer and confirm the `SDP offer/answer m= lines` log shows both `m=audio` and `m=video`, and that Linphone negotiates VP8.
+- **Rendering not implemented**: `VideoMediaManager` creates a pjsua2 `VideoWindow` but does not wire it to a Qt widget. Incoming video frames are decoded but not displayed. SDP/media negotiation will succeed; the only missing piece is routing decoded frames to a Qt surface.
 - **LNK4098 warning expected**: `vpx.lib` (vcpkg `x64-windows-static`) is a release build linking `LIBCMT`; the debug app links `LIBCMTD`. The warning is harmless — the runtime mismatch only affects debug-heap detection in release builds of vpx internals, not the app itself.
 
 ## Bugs Fixed During Task 25B
