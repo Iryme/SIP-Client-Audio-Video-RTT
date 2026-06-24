@@ -1,10 +1,12 @@
 #include "Application.h"
 #include "gui/MainWindow.h"
+#include "media/MediaDeviceManager.h"
 #include "sip/SipManager.h"
 #include "core/Logger.h"
 
 #include <QFile>
 #include <QStyleFactory>
+#include <QTimer>
 
 Application::Application(int &argc, char **argv)
     : QApplication(argc, argv)
@@ -24,6 +26,13 @@ Application::Application(int &argc, char **argv)
 
     SipManager::instance().initialize();
     m_mainWindow->updateSipBackendStatus();
+
+    // Defer audio device enumeration so the Windows multimedia backend has
+    // time to initialise after the event loop starts. Without this, Qt's
+    // QMediaDevices::audioInputs() may return an empty list on first call.
+    QTimer::singleShot(400, this, [] {
+        MediaDeviceManager::instance().refreshDevices();
+    });
 }
 
 Application::~Application()

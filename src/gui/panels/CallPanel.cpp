@@ -173,22 +173,35 @@ CallPanel::CallPanel(QWidget *parent)
 
     // --- Dial row (visible only when Idle) -----------------------------------
     m_dialRow = new QWidget(this);
-    auto *dialLayout = new QHBoxLayout(m_dialRow);
-    dialLayout->setContentsMargins(0, 4, 0, 0);
+    m_dialRow->setObjectName("DialRow");
+    m_dialRow->setStyleSheet(
+        "QWidget#DialRow { background: #1e2a1e; border: 1px solid #3a5a3a; border-radius: 5px; }");
+
+    auto *dialOuter = new QVBoxLayout(m_dialRow);
+    dialOuter->setContentsMargins(10, 8, 10, 8);
+    dialOuter->setSpacing(4);
+
+    m_regStatusLabel = new QLabel(tr("Not registered — register a SIP profile first"), m_dialRow);
+    m_regStatusLabel->setObjectName("DialRegStatus");
+    m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+    dialOuter->addWidget(m_regStatusLabel);
+
+    auto *dialLayout = new QHBoxLayout();
     dialLayout->setSpacing(6);
 
     m_dialInput = new QLineEdit(m_dialRow);
     m_dialInput->setObjectName("DialInput");
-    m_dialInput->setPlaceholderText(tr("sip:user@domain or user@domain"));
-    m_dialInput->setFixedHeight(28);
+    m_dialInput->setPlaceholderText(tr("sip:user@domain  or  user@domain"));
+    m_dialInput->setFixedHeight(30);
 
     m_btnCall = new QPushButton(tr("Call"), m_dialRow);
     m_btnCall->setObjectName("CallBtn");
-    m_btnCall->setFixedHeight(28);
-    m_btnCall->setMinimumWidth(60);
+    m_btnCall->setFixedHeight(30);
+    m_btnCall->setMinimumWidth(64);
 
     dialLayout->addWidget(m_dialInput, 1);
     dialLayout->addWidget(m_btnCall);
+    dialOuter->addLayout(dialLayout);
     layout->addWidget(m_dialRow);
 
     // --- Internal signal wiring ----------------------------------------------
@@ -267,12 +280,21 @@ CallPanel::CallPanel(QWidget *parent)
     connect(m_btnCall,  &QPushButton::clicked,  this, triggerCall);
     connect(m_dialInput, &QLineEdit::returnPressed, this, triggerCall);
 
-    // Dial row: show only when registered and Idle.
+    // Dial row: update registration status label and button enable.
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             this, [this](RegistrationState state, const QString &, int) {
         const bool registered = (state == RegistrationState::Registered);
         m_btnCall->setEnabled(registered);
-        // Visibility follows call state; just ensure button enable is correct.
+        if (registered) {
+            m_regStatusLabel->setText(tr("Registered — enter a SIP URI and press Call"));
+            m_regStatusLabel->setStyleSheet("color: #50c878; font-size: 10px;");
+        } else if (state == RegistrationState::Registering) {
+            m_regStatusLabel->setText(tr("Registering…"));
+            m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+        } else {
+            m_regStatusLabel->setText(tr("Not registered — register a SIP profile first"));
+            m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+        }
     });
 
     // Initial idle state
@@ -345,6 +367,13 @@ void CallPanel::applyCallState(CallState state)
         const bool registered =
             (SipManager::instance().registrationState() == RegistrationState::Registered);
         m_btnCall->setEnabled(registered);
+        if (registered) {
+            m_regStatusLabel->setText(tr("Registered — enter a SIP URI and press Call"));
+            m_regStatusLabel->setStyleSheet("color: #50c878; font-size: 10px;");
+        } else {
+            m_regStatusLabel->setText(tr("Not registered — register a SIP profile first"));
+            m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+        }
     }
 
     // Show device selectors only when a call is in progress.
@@ -448,4 +477,20 @@ void CallPanel::onVideoMuteChanged(bool muted)
     QSignalBlocker blocker(m_btnVideo);
     m_btnVideo->setChecked(muted);
     m_btnVideo->setText(muted ? tr("Show Video") : tr("Video"));
+}
+
+void CallPanel::setDialTarget(const QString &uri)
+{
+    if (m_dialInput) {
+        m_dialInput->setText(uri);
+        focusDialInput();
+    }
+}
+
+void CallPanel::focusDialInput()
+{
+    if (m_dialInput) {
+        m_dialInput->setFocus();
+        m_dialInput->selectAll();
+    }
 }

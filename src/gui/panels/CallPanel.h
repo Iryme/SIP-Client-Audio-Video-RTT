@@ -29,6 +29,11 @@ signals:
     void rejectRequested();
     void keypadToggled(bool visible);
 
+public slots:
+    // Populate the dial input with uri and give it focus (called from contacts/menu).
+    void setDialTarget(const QString &uri);
+    void focusDialInput();
+
 private slots:
     void onCallStateChanged(CallState state, const QString &statusText, int statusCode);
     void onIncomingCall(const QString &remoteUri);
@@ -70,6 +75,7 @@ private:
 
     // Dial row — visible only when Idle and registered.
     QWidget     *m_dialRow{nullptr};
+    QLabel      *m_regStatusLabel{nullptr};
     QLineEdit   *m_dialInput{nullptr};
     QPushButton *m_btnCall{nullptr};
 };

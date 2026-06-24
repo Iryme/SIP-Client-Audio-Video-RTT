@@ -46,6 +46,7 @@ set(SOURCES
     src/gui/MainWindow.cpp
     src/gui/panels/NavRail.cpp
     src/gui/panels/SidebarPanel.cpp
+    src/gui/panels/ContactsPanel.cpp
     src/gui/panels/CallPanel.cpp
     src/gui/panels/VideoPanel.cpp
     src/gui/panels/RttPanel.cpp
@@ -56,6 +57,7 @@ set(SOURCES
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/core/Logger.cpp
+    src/core/ContactStore.cpp
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
@@ -78,6 +80,7 @@ set(HEADERS
     src/gui/MainWindow.h
     src/gui/panels/NavRail.h
     src/gui/panels/SidebarPanel.h
+    src/gui/panels/ContactsPanel.h
     src/gui/panels/CallPanel.h
     src/gui/panels/VideoPanel.h
     src/gui/panels/RttPanel.h
@@ -90,6 +93,7 @@ set(HEADERS
     src/gui/dialogs/SipProfileEditorDialog.h
     src/core/Logger.h
     src/core/AppSettings.h
+    src/core/ContactStore.h
     src/sip/SipManager.h
     src/sip/SipAccount.h
     src/sip/SipCall.h
