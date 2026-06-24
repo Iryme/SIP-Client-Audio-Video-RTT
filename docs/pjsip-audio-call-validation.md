@@ -32,6 +32,40 @@ Validated the full audio call flow through the real GUI application (`build-pjsi
 7. Click Hangup → Idle.
 8. Click Unregister → Unregistered. No crash. No PJSIP warning.
 
+### Task 23D — GUI Audio Validation Complete (2026-06-24, PASS)
+
+Full end-to-end GUI audio call confirmed working against the live Kamailio server at `10.2.0.180`.
+
+**Confirmed working:**
+- Register from GUI → Kamailio 200 OK, state turns green
+- Outbound call from GUI dial row → INVITE routed via outbound proxy → peer answers → call reaches Active
+- Audio heard in both directions
+- Hangup from GUI → BYE sent cleanly, call reaches Idle
+- Unregister from GUI → 200 OK, state returns to Unregistered
+- No crash, no stuck state machine
+
+**GUI validation flow (exact steps):**
+
+1. Launch `build\SIPClient.exe` from an x64 MSVC environment with PJSIP enabled.
+2. In the Accounts sidebar, click `+ Profile` and fill in:
+   - Username: your SIP username (e.g. `alice`)
+   - Domain: `sensor-x.local`
+   - Registrar: `10.2.0.180`
+   - Auth username: same as username (or the digest auth user if different)
+   - Password: stored in Windows Credential Manager on first save
+   - Transport: UDP
+   - Outbound proxy: `sip:10.2.0.180` — **required** to prevent `PJ_ERESOLVE` on INVITE
+3. Click Register → status label turns green (Registered).
+4. In the dial row (bottom of the call panel), type the peer's SIP URI, e.g. `paul` (auto-normalized to `sip:paul@sensor-x.local`) or a full URI.
+5. Click Call — INVITE is sent via the outbound proxy.
+6. Peer answers on their SIP client → call state reaches Active, level meters animate.
+7. Click Hangup → BYE sent, call state returns to Idle.
+8. Click Unregister → state returns to Unregistered.
+
+**Known limitation — audio device selector:**
+
+The Media panel lists audio input/output devices using Qt's `QMediaDevices` API. The selection is stored in application settings. However, PJSIP's audio bridge uses the WMME (Windows Multimedia) default device and does not read the Qt device selection at runtime. As a result, changing the microphone or speaker in the Media panel has no effect on the active call audio. The call always uses the Windows default audio device. Wiring the Qt device selection to PJSIP's `AudDevManager` is deferred to a future task.
+
 ### Task 22E — Account Deletion Race Fix (2026-06-24)
 
 **Issue:** PJSIP logged `Warning: deleting account 0 while call 0 is still active (forced)` when unregister immediately followed hangup.
