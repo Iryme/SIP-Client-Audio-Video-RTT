@@ -382,7 +382,8 @@ bool SipManager::registerActiveProfile()
                 if (m_activeCall->bindIncomingPjsipCall(
                         m_account ? m_account->pjAccountHandle() : nullptr,
                         callId,
-                        remoteUri)) {
+                        remoteUri,
+                        m_account ? m_account->takeEarlyPjCall(callId) : nullptr)) {
                     emit incomingCall(remoteUri);
                 } else {
                     destroyActiveCall();

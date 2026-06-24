@@ -38,6 +38,11 @@ public:
     // Returns nullptr in stub mode. Cast to pj::Account* inside HAVE_PJSIP guards.
     void *pjAccountHandle() const;
 
+    // Removes and returns the pre-created pj::Call* registered in onIncomingCall
+    // to prevent pjsua2's auto-reject. Caller takes ownership and must delete it
+    // AFTER deleting the real PjCall for that callId. Returns nullptr if not found.
+    void *takeEarlyPjCall(int callId);
+
 signals:
     void registrationStateChanged(RegistrationState state,
                                   const QString &statusText,

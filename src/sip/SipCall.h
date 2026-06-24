@@ -26,7 +26,8 @@ public:
     // Binds the call to the active PJSIP account or existing incoming INVITE.
     // No-op in stub builds; the handle is a pj::Account* behind HAVE_PJSIP.
     void setPjsipAccountHandle(void *accountHandle);
-    bool bindIncomingPjsipCall(void *accountHandle, int callId, const QString &remoteUri);
+    bool bindIncomingPjsipCall(void *accountHandle, int callId, const QString &remoteUri,
+                               void *earlyCallHandle = nullptr);
 
     // Answer an incoming call. Must be in IncomingRinging state.
     bool answer();

@@ -44,6 +44,17 @@ struct SipAccount::Impl
     QPointer<SipAccount> owner;
 
 #ifdef HAVE_PJSIP
+    // Minimal pj::Call subclass created in onIncomingCall to claim the user_data
+    // slot before returning from the callback. pjsua2 auto-rejects the call with
+    // 500 Internal Server Error if user_data is still null when onIncomingCall
+    // returns (see Endpoint::on_incoming_call in pjsua2/endpoint.cpp:956-959).
+    class EarlyCall final : public pj::Call {
+    public:
+        EarlyCall(pj::Account &acc, int callId) : pj::Call(acc, callId) {}
+        void onCallState(pj::OnCallStateParam &) override {}
+        void onCallMediaState(pj::OnCallMediaStateParam &) override {}
+    };
+
     class Account final : public pj::Account
     {
     public:
@@ -83,6 +94,26 @@ struct SipAccount::Impl
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP incoming INVITE: callId=%1 remote=%2")
                     .arg(callId).arg(uri));
+
+            // Create EarlyCall BEFORE returning from this callback.
+            // pjsua2 (endpoint.cpp:956) auto-rejects with 500 if user_data is null
+            // when onIncomingCall returns. EarlyCall claims the slot so the session
+            // survives until PjCall is created on the Qt main thread.
+            auto *early = new EarlyCall(*this, callId);
+            m_impl->earlyCalls.insert(callId, early);
+
+            // Send 180 Ringing now that user_data is set (call is "owned").
+            const pj_status_t ring_st = pjsua_call_answer(
+                static_cast<pjsua_call_id>(callId), PJSIP_SC_RINGING, nullptr, nullptr);
+            if (ring_st == PJ_SUCCESS) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("PJSIP 180 Ringing sent: callId=%1").arg(callId));
+            } else {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("PJSIP 180 Ringing failed: callId=%1 status=%2")
+                        .arg(callId).arg(ring_st));
+            }
+
             QMetaObject::invokeMethod(self, [self, uri, callId]() {
                 if (self)
                     emit self->incomingPjsipCallReceived(uri, callId);
@@ -140,6 +171,7 @@ struct SipAccount::Impl
     };
 
     Account *account{nullptr};
+    QMap<int, EarlyCall *> earlyCalls; // callId → EarlyCall*, keyed by PJSIP call_id
 #endif
 };
 
@@ -157,8 +189,21 @@ SipAccount::~SipAccount()
         m_impl->account->shutdown();
     delete m_impl->account;
     m_impl->account = nullptr;
+    for (auto *ec : qAsConst(m_impl->earlyCalls))
+        delete ec;
+    m_impl->earlyCalls.clear();
 #endif
     delete m_impl;
+}
+
+void *SipAccount::takeEarlyPjCall(int callId)
+{
+#ifdef HAVE_PJSIP
+    return m_impl ? m_impl->earlyCalls.take(callId) : nullptr;
+#else
+    Q_UNUSED(callId)
+    return nullptr;
+#endif
 }
 
 QString SipAccount::profileId() const

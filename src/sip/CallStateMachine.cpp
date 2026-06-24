@@ -142,7 +142,8 @@ bool CallStateMachine::isValidTransition(CallState from, CallState to)
         return to == CS::Connecting
             || to == CS::Active
             || to == CS::Idle           // rejected by local user
-            || to == CS::Disconnecting; // caller cancelled
+            || to == CS::Disconnecting  // caller cancelled
+            || to == CS::Failed;        // session terminated before answer
     case CS::Connecting:
         return to == CS::Active
             || to == CS::Failed;

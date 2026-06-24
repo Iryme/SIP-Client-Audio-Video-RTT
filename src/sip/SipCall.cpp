@@ -34,7 +34,15 @@ struct SipCall::Impl
             if (!m_impl || !m_impl->q)
                 return;
 
-            pj::CallInfo ci = getInfo();
+            pj::CallInfo ci;
+            try {
+                ci = getInfo();
+            } catch (const pj::Error &e) {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("onCallState: getInfo() threw: %1")
+                        .arg(QString::fromStdString(e.reason)));
+                return;
+            }
             CallState newState = CallState::Idle;
             QString   reason   = QString::fromStdString(ci.lastReason);
             int       code     = ci.lastStatusCode;
@@ -65,14 +73,27 @@ struct SipCall::Impl
             QMetaObject::invokeMethod(self, [self, newState, reason, code]() {
                 if (!self)
                     return;
-                if (newState == CallState::Idle
-                    && self->m_stateMachine.state() != CallState::Idle
-                    && self->m_stateMachine.state() != CallState::IncomingRinging) {
+                const CallState cur = self->m_stateMachine.state();
+                if (newState == CallState::Idle && cur != CallState::Idle
+                        && cur != CallState::IncomingRinging) {
                     self->m_stateMachine.tryTransition(CallState::Disconnecting,
                                                        reason.isEmpty()
                                                            ? QStringLiteral("Call disconnected")
                                                            : reason,
                                                        code);
+                }
+                // Caller cancelled an incoming call: route through Disconnecting so
+                // IncomingRinging → Idle is a valid path.
+                if (cur == CallState::IncomingRinging
+                        && (newState == CallState::Failed || newState == CallState::Idle)) {
+                    self->m_stateMachine.tryTransition(CallState::Disconnecting,
+                                                       reason.isEmpty()
+                                                           ? QStringLiteral("Caller cancelled")
+                                                           : reason,
+                                                       code);
+                    self->m_stateMachine.tryTransition(CallState::Idle,
+                                                       reason, code);
+                    return;
                 }
                 self->m_stateMachine.tryTransition(newState, reason, code);
             }, Qt::QueuedConnection);
@@ -106,9 +127,17 @@ struct SipCall::Impl
                         auto *aud = static_cast<pj::AudioMedia *>(getMedia(mi.index));
                         pj::AudDevManager &adm =
                             pj::Endpoint::instance().audDevManager();
-                        adm.getCaptureDevMedia().startTransmit(*aud);
-                        aud->startTransmit(adm.getPlaybackDevMedia());
-                        m_impl->callAudioMedia = aud;
+                        // onCallMediaState can fire multiple times (e.g. when a
+                        // text/RTT stream is added after the initial INVITE).
+                        // When PJSIP rebuilds the media session the old conf port
+                        // is already removed internally — do NOT call stopTransmit
+                        // on the old pointer (it would assert with slot=-1).
+                        // Just wire to the new media object if it changed.
+                        if (m_impl->callAudioMedia != aud) {
+                            adm.getCaptureDevMedia().startTransmit(*aud);
+                            aud->startTransmit(adm.getPlaybackDevMedia());
+                            m_impl->callAudioMedia = aud;
+                        }
                         audioBridgeWired = true;
                         const pjsua_call_id cid = static_cast<pjsua_call_id>(getId());
                         Logger::instance().info(LogCategory::Sip,
@@ -241,6 +270,8 @@ struct SipCall::Impl
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP RTP audio bridge disconnected: pjsipCallId=%1")
                     .arg(getId()));
+            // Do NOT call stopTransmit here: at DISCONNECTED time the conf port
+            // is already removed by PJSIP, so stopTransmit would assert slot=-1.
             m_impl->callAudioMedia = nullptr;
 
             QPointer<SipCall> self = m_impl->q;
@@ -273,6 +304,7 @@ struct SipCall::Impl
     };
 
     PjCall         *pjCall{nullptr};
+    pj::Call       *earlyCall{nullptr};       // EarlyCall from SipAccount; freed after pjCall
     void           *pjAccountHandle{nullptr}; // pj::Account* cast to void*
     pj::AudioMedia *callAudioMedia{nullptr};  // valid only while audio media is active
     pj::VideoMedia *callVideoMedia{nullptr};  // valid only while video media is active
@@ -322,6 +354,11 @@ SipCall::~SipCall()
         delete m_impl->pjCall;
         m_impl->pjCall = nullptr;
     }
+    // earlyCall must be deleted AFTER pjCall: pjCall's destructor sets user_data=null;
+    // if earlyCall were deleted first, its destructor would also set user_data=null,
+    // unregistering pjCall and silencing all remaining PJSIP callbacks.
+    delete m_impl->earlyCall;
+    m_impl->earlyCall = nullptr;
 #endif
     delete m_impl;
 }
@@ -386,7 +423,8 @@ void SipCall::setPjsipAccountHandle(void *accountHandle)
 #endif
 }
 
-bool SipCall::bindIncomingPjsipCall(void *accountHandle, int callId, const QString &remoteUri)
+bool SipCall::bindIncomingPjsipCall(void *accountHandle, int callId, const QString &remoteUri,
+                                    void *earlyCallHandle)
 {
 #ifdef HAVE_PJSIP
     if (!accountHandle || callId == PJSUA_INVALID_ID) {
@@ -404,7 +442,16 @@ bool SipCall::bindIncomingPjsipCall(void *accountHandle, int callId, const QStri
     try {
         auto *account = static_cast<pj::Account *>(accountHandle);
         m_impl->pjAccountHandle = accountHandle;
+        // EarlyCall was created in onIncomingCall to prevent pjsua2 auto-reject.
+        // Adopt it here — PjCall constructor will overwrite user_data to itself;
+        // earlyCall is kept alive and deleted AFTER pjCall (see ~SipCall and
+        // releasePjsipCall) because earlyCall's destructor would clear user_data.
+        m_impl->earlyCall = static_cast<pj::Call *>(earlyCallHandle);
+
         m_impl->pjCall = new Impl::PjCall(m_impl, *account, callId);
+        // PjCall constructor: pjsua_call_set_user_data(callId, pjCall) — overwrites
+        // EarlyCall's user_data slot. All subsequent PJSIP callbacks go to PjCall.
+
         m_remoteUri = remoteUri.trimmed().isEmpty()
             ? QStringLiteral("sip:unknown@unknown")
             : remoteUri.trimmed();
@@ -412,6 +459,8 @@ bool SipCall::bindIncomingPjsipCall(void *accountHandle, int callId, const QStri
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("PJSIP INVITE inbound bound: call=%1 pjsipCallId=%2 remote=%3")
                 .arg(m_callId).arg(callId).arg(m_remoteUri));
+
+        // 180 Ringing was already sent in onIncomingCall (after EarlyCall was created).
         return m_stateMachine.tryTransition(CallState::IncomingRinging,
                                             QStringLiteral("Incoming call from %1")
                                                 .arg(m_remoteUri));
@@ -663,6 +712,8 @@ void SipCall::releasePjsipCall()
         m_impl->pjCall = nullptr;
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("PJSIP call slot released: id=%1").arg(m_callId));
+        delete m_impl->earlyCall;
+        m_impl->earlyCall = nullptr;
     }
 #endif
 }
@@ -745,6 +796,8 @@ void SipCall::onLevelTimerFired()
     try {
         const pjsua_call_id cid = static_cast<pjsua_call_id>(m_impl->pjCall->getId());
         const pjsua_conf_port_id slot = pjsua_call_get_conf_port(cid);
+        if (slot < 0)
+            return; // conf port temporarily invalid (e.g. media re-negotiate)
         unsigned txLvl = 0, rxLvl = 0;
         pjsua_conf_get_signal_level(slot, &txLvl, &rxLvl);
         emit inputLevelChanged(static_cast<int>(txLvl * 100 / 255));
