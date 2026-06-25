@@ -27,7 +27,7 @@ private slots:
 private:
     void buildUi();
     void populateCombo(QComboBox *combo, const QList<MediaDevice> &devices,
-                       const QString &selectedId);
+                       const QString &selectedId, bool showDefault = false);
     void refreshAll();
 
     QComboBox   *m_micCombo{nullptr};

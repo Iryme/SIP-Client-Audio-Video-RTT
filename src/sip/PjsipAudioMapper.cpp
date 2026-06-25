@@ -3,6 +3,7 @@
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
+#include <pjmedia/audiodev.h>
 #endif
 
 // ---------------------------------------------------------------------------
@@ -17,7 +18,8 @@
 static int findDeviceIndex(const QString &displayName, bool isCapture)
 {
     if (displayName.isEmpty())
-        return -1;
+        return isCapture ? PJMEDIA_AUD_DEFAULT_CAPTURE_DEV
+                         : PJMEDIA_AUD_DEFAULT_PLAYBACK_DEV;
 
     try {
         pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();

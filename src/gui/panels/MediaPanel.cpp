@@ -109,12 +109,21 @@ void MediaPanel::buildUi()
 
 void MediaPanel::populateCombo(QComboBox *combo,
                                 const QList<MediaDevice> &devices,
-                                const QString &selectedId)
+                                const QString &selectedId,
+                                bool showDefault)
 {
     const bool blocked = combo->blockSignals(true);
     combo->clear();
 
-    if (devices.isEmpty()) {
+    int selectIdx = 0;
+
+    if (showDefault) {
+        combo->addItem(tr("Default (system)"), QString{});
+        if (selectedId.isEmpty())
+            selectIdx = 0;
+    }
+
+    if (devices.isEmpty() && !showDefault) {
         combo->addItem(tr("(no device available)"), QString{});
         combo->setEnabled(false);
         combo->blockSignals(blocked);
@@ -122,15 +131,14 @@ void MediaPanel::populateCombo(QComboBox *combo,
     }
 
     combo->setEnabled(true);
-    int selectIdx = 0;
     for (int i = 0; i < devices.size(); ++i) {
         const MediaDevice &d = devices[i];
         const QString label  = d.isDefault
             ? QStringLiteral("%1 (default)").arg(d.displayName)
             : d.displayName;
         combo->addItem(label, d.id);
-        if (d.id == selectedId)
-            selectIdx = i;
+        if (!selectedId.isEmpty() && d.id == selectedId)
+            selectIdx = combo->count() - 1;
     }
     combo->setCurrentIndex(selectIdx);
     combo->blockSignals(blocked);
@@ -139,9 +147,9 @@ void MediaPanel::populateCombo(QComboBox *combo,
 void MediaPanel::refreshAll()
 {
     populateCombo(m_micCombo,     m_manager->listMicrophones(),
-                  m_selectionModel->selectedMicrophone().id);
+                  m_selectionModel->selectedMicrophone().id, /*showDefault=*/true);
     populateCombo(m_speakerCombo, m_manager->listSpeakers(),
-                  m_selectionModel->selectedSpeaker().id);
+                  m_selectionModel->selectedSpeaker().id,    /*showDefault=*/true);
     populateCombo(m_cameraCombo,  m_manager->listCameras(),
                   m_selectionModel->selectedCamera().id);
 }
@@ -179,12 +187,12 @@ void MediaPanel::onRefreshClicked()
 // ---------------------------------------------------------------------------
 void MediaPanel::onMicrophoneSelectionChanged(const MediaDevice &device)
 {
-    populateCombo(m_micCombo, m_manager->listMicrophones(), device.id);
+    populateCombo(m_micCombo, m_manager->listMicrophones(), device.id, /*showDefault=*/true);
 }
 
 void MediaPanel::onSpeakerSelectionChanged(const MediaDevice &device)
 {
-    populateCombo(m_speakerCombo, m_manager->listSpeakers(), device.id);
+    populateCombo(m_speakerCombo, m_manager->listSpeakers(), device.id, /*showDefault=*/true);
 }
 
 void MediaPanel::onCameraSelectionChanged(const MediaDevice &device)
