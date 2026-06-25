@@ -127,7 +127,7 @@ CallPanel::CallPanel(QWidget *parent)
     devLayout->addWidget(spkDevLabel);
     devLayout->addWidget(m_spkSelector, 1);
 
-    m_deviceRow->setVisible(false);
+    m_deviceRow->setVisible(true);
     layout->addWidget(m_deviceRow);
 
     // --- Call control buttons ------------------------------------------------
@@ -250,16 +250,12 @@ CallPanel::CallPanel(QWidget *parent)
     connect(this, &CallPanel::hangupRequested,
             []{ SipManager::instance().hangupCall(); });
 
-    // Device combos → AudioMediaManager
+    // Device combos → AudioMediaManager (empty id = system default)
     connect(m_micSelector, &QComboBox::currentIndexChanged, this, [this](int idx) {
-        const QString id = m_micSelector->itemData(idx).toString();
-        if (!id.isEmpty())
-            AudioMediaManager::instance().setMicrophone(id);
+        AudioMediaManager::instance().setMicrophone(m_micSelector->itemData(idx).toString());
     });
     connect(m_spkSelector, &QComboBox::currentIndexChanged, this, [this](int idx) {
-        const QString id = m_spkSelector->itemData(idx).toString();
-        if (!id.isEmpty())
-            AudioMediaManager::instance().setSpeaker(id);
+        AudioMediaManager::instance().setSpeaker(m_spkSelector->itemData(idx).toString());
     });
 
     // SipManager call signals
@@ -322,6 +318,9 @@ CallPanel::CallPanel(QWidget *parent)
         }
     });
 
+    // Populate device combos once at construction so they're always visible.
+    populateDeviceCombos();
+
     // Initial idle state
     applyCallState(CallState::Idle);
 }
@@ -348,10 +347,12 @@ void CallPanel::populateDeviceCombos()
     m_spkSelector->blockSignals(true);
 
     m_micSelector->clear();
+    m_micSelector->addItem(tr("Default (system)"), QString{});
     for (const MediaDevice &d : MediaDeviceManager::instance().listMicrophones())
         m_micSelector->addItem(d.displayName, d.id);
 
     m_spkSelector->clear();
+    m_spkSelector->addItem(tr("Default (system)"), QString{});
     for (const MediaDevice &d : MediaDeviceManager::instance().listSpeakers())
         m_spkSelector->addItem(d.displayName, d.id);
 
@@ -406,10 +407,8 @@ void CallPanel::applyCallState(CallState state)
         // For Failed: leave the label for onCallFailed to fill with the specific reason.
     }
 
-    // Show device selectors only while a call is in progress.
-    m_deviceRow->setVisible(!isIdle && !isFailed);
-    if (m_deviceRow->isVisible())
-        populateDeviceCombos();
+    // Device selectors always visible (Jitsi-style).
+    m_deviceRow->setVisible(true);
 
     m_callState->setText(callStateDisplayText(state));
 

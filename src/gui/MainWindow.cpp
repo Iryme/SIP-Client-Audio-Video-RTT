@@ -8,6 +8,8 @@
 #include "panels/DiagnosticsPanel.h"
 #include "panels/MediaPanel.h"
 #include "widgets/AppStatusBar.h"
+#include <QDialog>
+#include <QVBoxLayout>
 #include "core/AppSettings.h"
 #include "core/Logger.h"
 #include "sip/SipManager.h"
@@ -20,7 +22,6 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QStackedWidget>
-#include <QTabWidget>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -85,9 +86,7 @@ void MainWindow::buildMenuBar()
 
     // View
     auto *menuView = mb->addMenu(tr("&View"));
-    menuView->addAction(tr("&Audio / Media Settings"), this, [this] {
-        onNavPageRequested(QStringLiteral("settings"));
-    });
+    menuView->addAction(tr("&Audio / Media Settings"), this, &MainWindow::showSettingsDialog);
     menuView->addSeparator();
     menuView->addAction(tr("&Full Screen"), this,
                         &QMainWindow::showFullScreen, QKeySequence::FullScreen);
@@ -162,7 +161,7 @@ void MainWindow::buildCentralWidget()
     m_sidebarStack->setCurrentIndex(0);
     m_horzSplitter->addWidget(m_sidebarStack);
 
-    // Center area: call header + video + info tabs
+    // Center area: call panel + video
     auto *centerWidget = new QWidget(m_horzSplitter);
     centerWidget->setMinimumWidth(420);
     auto *centerLayout = new QVBoxLayout(centerWidget);
@@ -174,16 +173,6 @@ void MainWindow::buildCentralWidget()
 
     m_videoPanel = new VideoPanel(centerWidget);
     centerLayout->addWidget(m_videoPanel, 1);
-
-    // Info tabs below video
-    m_infoTabs = new QTabWidget(centerWidget);
-    m_infoTabs->setMinimumHeight(220);
-    m_infoTabs->setMaximumHeight(320);
-    m_infoTabs->addTab(new QWidget(), tr("Call Info"));
-    m_mediaPanel = new MediaPanel(centerWidget);
-    m_infoTabs->addTab(m_mediaPanel, tr("Audio / Media"));
-    m_infoTabs->addTab(new QWidget(), tr("Statistics"));
-    centerLayout->addWidget(m_infoTabs);
 
     m_horzSplitter->addWidget(centerWidget);
 
@@ -211,6 +200,24 @@ void MainWindow::buildCentralWidget()
 }
 
 // ---------------------------------------------------------------------------
+// Settings dialog (lazy, reused across invocations)
+// ---------------------------------------------------------------------------
+void MainWindow::showSettingsDialog()
+{
+    if (!m_settingsDialog) {
+        m_settingsDialog = new QDialog(this);
+        m_settingsDialog->setWindowTitle(tr("Audio / Media Settings"));
+        m_settingsDialog->setMinimumSize(400, 300);
+        auto *dlgLayout = new QVBoxLayout(m_settingsDialog);
+        dlgLayout->setContentsMargins(8, 8, 8, 8);
+        dlgLayout->addWidget(new MediaPanel(m_settingsDialog));
+    }
+    m_settingsDialog->show();
+    m_settingsDialog->raise();
+    m_settingsDialog->activateWindow();
+}
+
+// ---------------------------------------------------------------------------
 // NavRail page handler
 // ---------------------------------------------------------------------------
 void MainWindow::onNavPageRequested(const QString &page)
@@ -223,8 +230,7 @@ void MainWindow::onNavPageRequested(const QString &page)
         // Don't switch sidebar — just focus the dial input in the call panel.
         m_callPanel->focusDialInput();
     } else if (page == QLatin1String("settings")) {
-        // Switch the info tab to Audio / Media.
-        m_infoTabs->setCurrentWidget(m_mediaPanel);
+        showSettingsDialog();
     }
     // "history" and "messages" buttons are disabled; no-op if somehow reached.
 }

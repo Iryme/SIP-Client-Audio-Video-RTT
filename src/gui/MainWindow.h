@@ -9,12 +9,11 @@ class CallPanel;
 class VideoPanel;
 class RttPanel;
 class DiagnosticsPanel;
-class MediaPanel;
 class AppStatusBar;
 class QAction;
+class QDialog;
 class QSplitter;
 class QStackedWidget;
-class QTabWidget;
 class QLabel;
 
 class MainWindow : public QMainWindow
@@ -32,6 +31,7 @@ protected:
 
 private slots:
     void onNavPageRequested(const QString &page);
+    void showSettingsDialog();
 
 private:
     void buildMenuBar();
@@ -49,9 +49,8 @@ private:
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};
     DiagnosticsPanel *m_diagnostics{nullptr};
-    MediaPanel       *m_mediaPanel{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
-    QTabWidget       *m_infoTabs{nullptr};
+    QDialog          *m_settingsDialog{nullptr};
 
     // Menu actions that need to be stored
     QAction *m_actNewCall{nullptr};
