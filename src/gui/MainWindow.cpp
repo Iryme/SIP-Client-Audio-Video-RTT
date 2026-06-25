@@ -177,7 +177,8 @@ void MainWindow::buildCentralWidget()
 
     // Info tabs below video
     m_infoTabs = new QTabWidget(centerWidget);
-    m_infoTabs->setFixedHeight(200);
+    m_infoTabs->setMinimumHeight(220);
+    m_infoTabs->setMaximumHeight(320);
     m_infoTabs->addTab(new QWidget(), tr("Call Info"));
     m_mediaPanel = new MediaPanel(centerWidget);
     m_infoTabs->addTab(m_mediaPanel, tr("Audio / Media"));
