@@ -142,11 +142,32 @@ struct SipCall::Impl
                         }
                         audioBridgeWired = true;
                         const pjsua_call_id cid = static_cast<pjsua_call_id>(getId());
-                        Logger::instance().info(LogCategory::Sip,
-                            QStringLiteral("PJSIP RTP audio bridge connected: pjsipCallId=%1 confSlot=%2 mediaIndex=%3")
-                                .arg(getId())
-                                .arg(pjsua_call_get_conf_port(cid))
-                                .arg(mi.index));
+                        try {
+                            pj::AudDevManager &admLog = pj::Endpoint::instance().audDevManager();
+                            const int capIdx = admLog.getCaptureDev();
+                            const int plbIdx = admLog.getPlaybackDev();
+                            QString capName = QStringLiteral("(default)");
+                            QString plbName = QStringLiteral("(default)");
+                            if (capIdx >= 0) {
+                                try { capName = QString::fromStdString(admLog.getDevInfo(capIdx).name); } catch (...) {}
+                            }
+                            if (plbIdx >= 0) {
+                                try { plbName = QString::fromStdString(admLog.getDevInfo(plbIdx).name); } catch (...) {}
+                            }
+                            Logger::instance().info(LogCategory::Sip,
+                                QStringLiteral("PJSIP RTP audio bridge connected: pjsipCallId=%1 confSlot=%2 mediaIndex=%3 capDev=[%4]\"%5\" plbDev=[%6]\"%7\"")
+                                    .arg(getId())
+                                    .arg(pjsua_call_get_conf_port(cid))
+                                    .arg(mi.index)
+                                    .arg(capIdx).arg(capName)
+                                    .arg(plbIdx).arg(plbName));
+                        } catch (...) {
+                            Logger::instance().info(LogCategory::Sip,
+                                QStringLiteral("PJSIP RTP audio bridge connected: pjsipCallId=%1 confSlot=%2 mediaIndex=%3")
+                                    .arg(getId())
+                                    .arg(pjsua_call_get_conf_port(cid))
+                                    .arg(mi.index));
+                        }
                         // Log negotiated audio codec from SDP.
                         try {
                             pjsua_stream_info si;
@@ -321,7 +342,9 @@ struct SipCall::Impl
     // Must be called on the Qt main thread. Idempotent.
     void stopLocalPreview()
     {
-        if (videoCapDev < 0)
+        // PJMEDIA_VID_DEFAULT_CAPTURE_DEV = -1 is valid; only reject truly
+        // invalid values (PJMEDIA_VID_INVALID_DEV = -3, render default = -2).
+        if (videoCapDev < PJMEDIA_VID_DEFAULT_CAPTURE_DEV)
             return;
         const pjmedia_vid_dev_index capDev =
             static_cast<pjmedia_vid_dev_index>(videoCapDev);
@@ -331,7 +354,7 @@ struct SipCall::Impl
                 QStringLiteral("Local preview stopped: capDev=%1 status=%2")
                     .arg(videoCapDev).arg(st));
         }
-        videoCapDev        = -1;
+        videoCapDev        = PJMEDIA_VID_INVALID_DEV;
         videoIncomingWinId = PJSUA_INVALID_ID;
     }
 
@@ -341,7 +364,7 @@ struct SipCall::Impl
     pj::AudioMedia     *callAudioMedia{nullptr};      // valid only while audio media is active
     pj::VideoMedia     *callVideoMedia{nullptr};      // valid only while video media is active
     pjsua_vid_win_id    videoIncomingWinId{PJSUA_INVALID_ID}; // incoming video window id
-    int                 videoCapDev{-1};              // capture device index for local preview
+    int                 videoCapDev{PJMEDIA_VID_INVALID_DEV}; // capture device; -1=default, >=0=specific
 #endif
 };
 
@@ -815,7 +838,7 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
     }
 
     // --- Local preview --------------------------------------------------------
-    if (m_impl->videoCapDev >= 0 && localPreview != 0) {
+    if (m_impl->videoCapDev >= PJMEDIA_VID_DEFAULT_CAPTURE_DEV && localPreview != 0) {
         pjsua_vid_win_id previewWinId = pjsua_vid_preview_get_win(
             static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev));
 
