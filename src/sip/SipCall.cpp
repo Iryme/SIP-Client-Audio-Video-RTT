@@ -244,8 +244,8 @@ struct SipCall::Impl
                     emit self->localVideoStarted();
                     emit self->remoteVideoStarted();
                 } else if (self->m_localVideoAvailable || self->m_remoteVideoAvailable) {
-                    self->m_impl->videoIncomingWinId = PJSUA_INVALID_ID;
-                    self->m_impl->videoCapDev        = -1;
+                    // Video stream became inactive (re-negotiation removed it).
+                    self->m_impl->stopLocalPreview(); // also resets videoIncomingWinId/videoCapDev
                     self->m_localVideoAvailable  = false;
                     self->m_remoteVideoAvailable = false;
                     emit self->localVideoStopped();
@@ -301,6 +301,9 @@ struct SipCall::Impl
             QMetaObject::invokeMethod(self, [self]() {
                 if (!self) return;
                 if (self->m_localVideoAvailable || self->m_remoteVideoAvailable) {
+                    // Stop the local preview (camera) before signalling disconnect.
+                    // Without this the capture device stays active after hangup.
+                    self->m_impl->stopLocalPreview();
                     self->m_localVideoAvailable  = false;
                     self->m_remoteVideoAvailable = false;
                     emit self->localVideoStopped();
@@ -313,6 +316,24 @@ struct SipCall::Impl
     private:
         Impl *m_impl;
     };
+
+    // Stop the local preview window (if running) and reset video state.
+    // Must be called on the Qt main thread. Idempotent.
+    void stopLocalPreview()
+    {
+        if (videoCapDev < 0)
+            return;
+        const pjmedia_vid_dev_index capDev =
+            static_cast<pjmedia_vid_dev_index>(videoCapDev);
+        if (pjsua_vid_preview_get_win(capDev) != PJSUA_INVALID_ID) {
+            const pj_status_t st = pjsua_vid_preview_stop(capDev);
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Local preview stopped: capDev=%1 status=%2")
+                    .arg(videoCapDev).arg(st));
+        }
+        videoCapDev        = -1;
+        videoIncomingWinId = PJSUA_INVALID_ID;
+    }
 
     PjCall             *pjCall{nullptr};
     pj::Call           *earlyCall{nullptr};           // EarlyCall from SipAccount; freed after pjCall
@@ -728,6 +749,8 @@ void SipCall::releasePjsipCall()
         delete m_impl->earlyCall;
         m_impl->earlyCall = nullptr;
     }
+    // Safety net: stop preview if stopVideoBridge callback hasn't fired yet.
+    m_impl->stopLocalPreview();
 #endif
 }
 

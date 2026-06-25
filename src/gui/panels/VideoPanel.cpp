@@ -207,33 +207,38 @@ void VideoPanel::repositionOverlays()
 void VideoPanel::resizeEmbeddedVideoWindows()
 {
 #ifdef Q_OS_WIN
-    // Resize any PJSIP child HWNDs that were embedded via SetParent.
-    // Enumerate the direct children of our widget HWND and fit them.
     HWND parentHwnd = reinterpret_cast<HWND>(static_cast<quintptr>(winId()));
     if (!parentHwnd)
         return;
     RECT rc{};
     GetClientRect(parentHwnd, &rc);
+
+    // m_localPreview has WA_NativeWindow so it owns an HWND that is a direct
+    // child of this VideoPanel. Skip it — Qt positions it via repositionOverlays.
+    // Any other child HWND is an embedded PJSIP video window and should fill
+    // the entire panel area.
+    const HWND localPreviewHwnd = m_localPreview
+        ? reinterpret_cast<HWND>(static_cast<quintptr>(m_localPreview->winId()))
+        : nullptr;
+
     HWND child = GetWindow(parentHwnd, GW_CHILD);
     while (child) {
-        MoveWindow(child, 0, 0, rc.right, rc.bottom, TRUE);
+        if (child != localPreviewHwnd) {
+            MoveWindow(child, 0, 0, rc.right, rc.bottom, TRUE);
+            Logger::instance().debug(LogCategory::Media,
+                QStringLiteral("Remote video HWND resized to %1x%2")
+                    .arg(rc.right).arg(rc.bottom));
+        }
         child = GetNextWindow(child, GW_HWNDNEXT);
-        // Only resize direct children that are not Qt widgets
-        // (Qt overlays are positioned by repositionOverlays, not here).
-        break; // one PJSIP video window expected; stop after first
     }
 
-    // Resize local preview child too
-    if (m_localPreview) {
-        HWND previewParent =
-            reinterpret_cast<HWND>(static_cast<quintptr>(m_localPreview->winId()));
-        if (previewParent) {
-            RECT prc{};
-            GetClientRect(previewParent, &prc);
-            HWND pchild = GetWindow(previewParent, GW_CHILD);
-            if (pchild)
-                MoveWindow(pchild, 0, 0, prc.right, prc.bottom, TRUE);
-        }
+    // Resize the PJSIP preview HWND embedded inside m_localPreview.
+    if (localPreviewHwnd) {
+        RECT prc{};
+        GetClientRect(localPreviewHwnd, &prc);
+        HWND pchild = GetWindow(localPreviewHwnd, GW_CHILD);
+        if (pchild)
+            MoveWindow(pchild, 0, 0, prc.right, prc.bottom, TRUE);
     }
 #endif
 }
