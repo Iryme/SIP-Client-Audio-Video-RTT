@@ -792,6 +792,26 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
             .arg(m_impl->videoCapDev));
 
     // --- Remote incoming video ------------------------------------------------
+    // Re-fetch from live call info if the stored winId is stale (PJSIP assigns
+    // the incoming render window lazily; early onCallMediaState callbacks return -1).
+    if (m_impl->videoIncomingWinId == PJSUA_INVALID_ID && m_impl->pjCall) {
+        try {
+            pj::CallInfo ci = m_impl->pjCall->getInfo();
+            for (const auto &mi : ci.media) {
+                if (mi.type == PJMEDIA_TYPE_VIDEO
+                    && mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                    && mi.videoIncomingWindowId != PJSUA_INVALID_ID) {
+                    m_impl->videoIncomingWinId =
+                        static_cast<pjsua_vid_win_id>(mi.videoIncomingWindowId);
+                    Logger::instance().info(LogCategory::Media,
+                        QStringLiteral("Remote video winId re-fetched from live call: %1")
+                            .arg(m_impl->videoIncomingWinId));
+                    break;
+                }
+            }
+        } catch (...) {}
+    }
+
     if (m_impl->videoIncomingWinId != PJSUA_INVALID_ID && remoteWidget != 0) {
         try {
             pj::VideoWindow vw(m_impl->videoIncomingWinId);
@@ -879,6 +899,19 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                 Logger::instance().info(LogCategory::Media,
                     QStringLiteral("Local preview PJSIP hwnd=0x%1")
                         .arg(reinterpret_cast<quintptr>(pjPreviewHwnd), 0, 16));
+
+                if (!pjPreviewHwnd && qtPreviewHwnd) {
+                    // HWND is null: preview was auto-started by PJSIP with show=PJ_FALSE
+                    // (DShow/virtual-camera drivers defer Win32 window allocation).
+                    // Calling set_show forces the HWND to be allocated immediately.
+                    pjsua_vid_win_set_show(previewWinId, PJ_TRUE);
+                    try {
+                        pjPreviewHwnd = static_cast<HWND>(pvw.getInfo().winHandle.handle.window);
+                        Logger::instance().info(LogCategory::Media,
+                            QStringLiteral("Local preview PJSIP hwnd after forced show: 0x%1")
+                                .arg(reinterpret_cast<quintptr>(pjPreviewHwnd), 0, 16));
+                    } catch (...) {}
+                }
 
                 if (pjPreviewHwnd && qtPreviewHwnd) {
                     // Hide immediately before reparenting to avoid a visible

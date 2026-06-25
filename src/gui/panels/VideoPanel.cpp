@@ -117,6 +117,15 @@ VideoPanel::VideoPanel(QWidget *parent)
         repositionOverlays();
     });
 
+    // Retry timer: re-attach PJSIP video windows every 2 s while video is active.
+    // PJSIP often returns videoIncomingWindowId=-1 on the first media callback;
+    // the window ID becomes valid only after one or more re-negotiations.
+    m_videoRetryTimer.setInterval(2000);
+    connect(&m_videoRetryTimer, &QTimer::timeout, this, [this]() {
+        if (m_videoActive)
+            VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
+    });
+
     // VideoMediaManager → this
     connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMediaConnected,
             this, &VideoPanel::onVideoMediaConnected);
@@ -347,10 +356,12 @@ void VideoPanel::onVideoMediaConnected()
             .arg(static_cast<quintptr>(localHwnd), 0, 16));
 
     VideoMediaManager::instance().attachVideoToWidgets(remoteHwnd, localHwnd);
+    m_videoRetryTimer.start();
 }
 
 void VideoPanel::onVideoMediaDisconnected()
 {
+    m_videoRetryTimer.stop();
     m_videoActive      = false;
     m_localVideoAvail  = false;
     m_remoteVideoAvail = false;

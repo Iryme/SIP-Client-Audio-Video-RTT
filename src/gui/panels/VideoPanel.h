@@ -1,4 +1,5 @@
 #pragma once
+#include <QTimer>
 #include <QWidget>
 
 class QLabel;
@@ -61,8 +62,13 @@ private:
     QPushButton *m_btnSwap{nullptr};
 
     // Current video state
-    bool m_videoActive{false};
-    bool m_localVideoAvail{false};
-    bool m_remoteVideoAvail{false};
-    bool m_videoMuted{false};
+    bool   m_videoActive{false};
+    bool   m_localVideoAvail{false};
+    bool   m_remoteVideoAvail{false};
+    bool   m_videoMuted{false};
+
+    // Retries video window attachment every 2 s while a call is active.
+    // Needed because PJSIP creates the remote render HWND lazily and
+    // the first onCallMediaState callback often has videoIncomingWindowId=-1.
+    QTimer m_videoRetryTimer;
 };
