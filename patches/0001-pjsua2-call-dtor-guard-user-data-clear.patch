@@ -1,0 +1,14 @@
+--- a/.deps/pjproject/pjsip/src/pjsua2/call.cpp
++++ b/.deps/pjproject/pjsip/src/pjsua2/call.cpp
+@@ -525,8 +525,13 @@ Call::~Call()
+-    /* Remove reference to this instance from PJSUA library */
+-    if (id != PJSUA_INVALID_ID)
+-        pjsua_call_set_user_data(id, NULL);
++    /* Remove reference to this instance from PJSUA library.
++     * Guard: only clear user_data if it still points to this object.
++     * pjsua recycles call slots; if a new incoming call has already claimed
++     * this slot (setting user_data to a new EarlyCall/PjCall), clearing it
++     * unconditionally would cause the new call to be auto-rejected with 500
++     * by pjsua2's endpoint.cpp on_incoming_call user_data check. */
++    if (id != PJSUA_INVALID_ID && pjsua_call_get_user_data(id) == this)
++        pjsua_call_set_user_data(id, NULL);
