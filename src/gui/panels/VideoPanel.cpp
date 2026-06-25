@@ -374,6 +374,13 @@ void VideoPanel::onRemoteVideoStarted()
 {
     m_remoteVideoAvail = true;
     applyVideoState();
+    // Re-attach on every media re-negotiation. PJSIP creates the incoming
+    // render HWND lazily (may be PJSUA_INVALID_ID on the first callback and
+    // become valid only after a subsequent UPDATE/re-INVITE). attachVideoToWidgets
+    // is idempotent: it skips remote if winId==-1, and skips preview if already
+    // embedded (SetParent on an already-parented child is a no-op).
+    if (m_videoActive)
+        VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
 }
 
 void VideoPanel::onRemoteVideoStopped()

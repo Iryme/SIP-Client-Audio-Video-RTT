@@ -845,7 +845,10 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
         if (previewWinId == PJSUA_INVALID_ID) {
             pjsua_vid_preview_param pvp;
             pjsua_vid_preview_param_default(&pvp);
-            pvp.show = PJ_FALSE;
+            // PJ_TRUE is required to make PJSIP allocate the Win32 HWND immediately;
+            // PJ_FALSE results in lazy/null window handle on DShow/virtual cameras.
+            // We hide the window synchronously before any frame is rendered.
+            pvp.show = PJ_TRUE;
             const pj_status_t st = pjsua_vid_preview_start(
                 static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev), &pvp);
             if (st == PJ_SUCCESS) {
@@ -878,6 +881,10 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                         .arg(reinterpret_cast<quintptr>(pjPreviewHwnd), 0, 16));
 
                 if (pjPreviewHwnd && qtPreviewHwnd) {
+                    // Hide immediately before reparenting to avoid a visible
+                    // popup flash (preview was started with pvp.show=PJ_TRUE
+                    // to force HWND allocation; we take over the window here).
+                    ShowWindow(pjPreviewHwnd, SW_HIDE);
                     LONG style = GetWindowLong(pjPreviewHwnd, GWL_STYLE);
                     style = (style & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME))
                             | WS_CHILD | WS_VISIBLE;
