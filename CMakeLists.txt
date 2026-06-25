@@ -76,6 +76,7 @@ set(SOURCES
     src/media/MediaDeviceManager.cpp
     src/media/MediaDeviceSelectionModel.cpp
     src/media/QtMediaDeviceBackend.cpp
+    src/media/PjsipGdiRenderer.cpp
 )
 
 set(HEADERS
@@ -114,11 +115,12 @@ set(HEADERS
     src/security/MemoryCredentialBackend.h
     src/media/AudioMediaManager.h
     src/media/VideoMediaManager.h
+    src/media/MediaDeviceManager.h
+    src/media/MediaDeviceSelectionModel.h
     src/media/MediaDevice.h
     src/media/IMediaDeviceBackend.h
     src/media/QtMediaDeviceBackend.h
-    src/media/MediaDeviceManager.h
-    src/media/MediaDeviceSelectionModel.h
+    src/media/PjsipGdiRenderer.h
 )
 
 if(WIN32)

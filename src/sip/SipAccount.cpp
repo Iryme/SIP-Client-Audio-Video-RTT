@@ -7,6 +7,9 @@
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
+#if defined(_WIN32)
+#include "media/PjsipGdiRenderer.h"
+#endif
 #endif
 
 QString registrationStateName(RegistrationState state)
@@ -242,10 +245,12 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
 
 #if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
         config.videoConfig.autoTransmitOutgoing = true;
-        // Keep incoming video window hidden until we embed it into the Qt widget
-        // via attachVideoWindows / SetParent. autoShowIncoming=true would create
-        // a floating OS popup that we can't control.
+        // Keep incoming video window hidden; we paint via our GDI renderer.
         config.videoConfig.autoShowIncoming = false;
+#if defined(_WIN32)
+        if (PjsipGdiRenderer::deviceIndex() != PJMEDIA_VID_INVALID_DEV)
+            config.videoConfig.defaultRenderDevice = PjsipGdiRenderer::deviceIndex();
+#endif
 #endif
 
         Logger::instance().info(LogCategory::Sip,

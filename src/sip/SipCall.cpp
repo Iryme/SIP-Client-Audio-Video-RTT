@@ -10,6 +10,11 @@
 #include <pjsua-lib/pjsua.h>
 #endif
 
+#if defined(HAVE_PJSIP) && defined(_WIN32)
+#include "media/PjsipGdiRenderer.h"
+#include <windows.h>
+#endif
+
 // ---------------------------------------------------------------------------
 // Impl — pimpl holding pjsua2 Call subclass when PJSIP is available.
 // In stub mode, Impl is an empty placeholder.
@@ -779,7 +784,7 @@ void SipCall::releasePjsipCall()
 
 void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
 {
-#if defined(HAVE_PJSIP) && defined(Q_OS_WIN)
+#if defined(HAVE_PJSIP) && defined(_WIN32)
     if (!m_impl)
         return;
 
@@ -791,9 +796,18 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
             .arg(m_impl->videoIncomingWinId)
             .arg(m_impl->videoCapDev));
 
-    // --- Remote incoming video ------------------------------------------------
-    // Re-fetch from live call info if the stored winId is stale (PJSIP assigns
-    // the incoming render window lazily; early onCallMediaState callbacks return -1).
+    // Helper: build a pjmedia_vid_dev_hwnd pointing to a Win32 HWND.
+    auto makeWinHwnd = [](HWND hwnd) -> pjmedia_vid_dev_hwnd {
+        pjmedia_vid_dev_hwnd h{};
+        h.type          = PJMEDIA_VID_DEV_HWND_TYPE_WINDOWS;
+        h.info.win.hwnd = hwnd;
+        return h;
+    };
+
+    // --- Remote incoming video -----------------------------------------------
+    // Re-fetch the window ID from live call info when the stored ID is still
+    // PJSUA_INVALID_ID (-1): PJSIP assigns the incoming render window lazily
+    // and the first onCallMediaState callback often returns -1.
     if (m_impl->videoIncomingWinId == PJSUA_INVALID_ID && m_impl->pjCall) {
         try {
             pj::CallInfo ci = m_impl->pjCall->getInfo();
@@ -813,42 +827,17 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
     }
 
     if (m_impl->videoIncomingWinId != PJSUA_INVALID_ID && remoteWidget != 0) {
-        try {
-            pj::VideoWindow vw(m_impl->videoIncomingWinId);
-            pj::VideoWindowInfo info = vw.getInfo();
-            HWND pjHwnd  = static_cast<HWND>(info.winHandle.handle.window);
-            HWND qtHwnd  = reinterpret_cast<HWND>(static_cast<quintptr>(remoteWidget));
-
+        HWND qtHwnd = reinterpret_cast<HWND>(static_cast<quintptr>(remoteWidget));
+        pjmedia_vid_dev_hwnd h = makeWinHwnd(qtHwnd);
+        pj_status_t st = pjsua_vid_win_set_win(m_impl->videoIncomingWinId, &h);
+        if (st == PJ_SUCCESS) {
             Logger::instance().info(LogCategory::Media,
-                QStringLiteral("Remote video PJSIP hwnd=0x%1 isNative=%2")
-                    .arg(reinterpret_cast<quintptr>(pjHwnd), 0, 16)
-                    .arg(info.isNative));
-
-            if (pjHwnd && qtHwnd) {
-                // Reparent the PJSIP video window into our Qt remote-video widget.
-                // Change window style from popup to child so it behaves correctly.
-                LONG style = GetWindowLong(pjHwnd, GWL_STYLE);
-                style = (style & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME))
-                        | WS_CHILD | WS_VISIBLE;
-                SetWindowLong(pjHwnd, GWL_STYLE, style);
-                SetParent(pjHwnd, qtHwnd);
-
-                RECT rc{};
-                GetClientRect(qtHwnd, &rc);
-                MoveWindow(pjHwnd, 0, 0, rc.right, rc.bottom, TRUE);
-                ShowWindow(pjHwnd, SW_SHOW);
-
-                Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Remote video embedded into widget: %1x%2")
-                        .arg(rc.right).arg(rc.bottom));
-            } else {
-                Logger::instance().warn(LogCategory::Media,
-                    QStringLiteral("Remote video attach skipped: pjHwnd or qtHwnd is null"));
-            }
-        } catch (const pj::Error &e) {
+                QStringLiteral("Remote video GDI renderer pointed at Qt widget: winId=%1")
+                    .arg(m_impl->videoIncomingWinId));
+        } else {
             Logger::instance().warn(LogCategory::Media,
-                QStringLiteral("attachVideoWindows remote failed: %1")
-                    .arg(QString::fromStdString(e.reason)));
+                QStringLiteral("Remote video set_win failed: winId=%1 status=%2")
+                    .arg(m_impl->videoIncomingWinId).arg(st));
         }
     } else {
         Logger::instance().warn(LogCategory::Media,
@@ -857,25 +846,29 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                 .arg(static_cast<quintptr>(remoteWidget)));
     }
 
-    // --- Local preview --------------------------------------------------------
+    // --- Local preview -------------------------------------------------------
     if (m_impl->videoCapDev >= PJMEDIA_VID_DEFAULT_CAPTURE_DEV && localPreview != 0) {
-        pjsua_vid_win_id previewWinId = pjsua_vid_preview_get_win(
-            static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev));
+        const pjmedia_vid_dev_index capDev =
+            static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev);
+        HWND qtPreviewHwnd = reinterpret_cast<HWND>(static_cast<quintptr>(localPreview));
+
+        pjsua_vid_win_id previewWinId = pjsua_vid_preview_get_win(capDev);
 
         if (previewWinId == PJSUA_INVALID_ID) {
+            // Start preview with our GDI renderer and point it at the Qt widget.
             pjsua_vid_preview_param pvp;
             pjsua_vid_preview_param_default(&pvp);
-            // PJ_TRUE is required to make PJSIP allocate the Win32 HWND immediately;
-            // PJ_FALSE results in lazy/null window handle on DShow/virtual cameras.
-            // We hide the window synchronously before any frame is rendered.
-            pvp.show = PJ_TRUE;
-            const pj_status_t st = pjsua_vid_preview_start(
-                static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev), &pvp);
+            pvp.show    = PJ_FALSE;
+            pvp.rend_id = (PjsipGdiRenderer::deviceIndex() != PJMEDIA_VID_INVALID_DEV)
+                              ? PjsipGdiRenderer::deviceIndex()
+                              : PJMEDIA_VID_DEFAULT_RENDER_DEV;
+            pvp.wnd = makeWinHwnd(qtPreviewHwnd); // delivered via OUTPUT_WINDOW cap
+            const pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
             if (st == PJ_SUCCESS) {
-                previewWinId = pjsua_vid_preview_get_win(
-                    static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev));
+                previewWinId = pjsua_vid_preview_get_win(capDev);
                 Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Local preview started: capDev=%1 previewWinId=%2")
+                    QStringLiteral("Local preview started with GDI renderer: "
+                                   "capDev=%1 previewWinId=%2")
                         .arg(m_impl->videoCapDev).arg(previewWinId));
             } else {
                 Logger::instance().warn(LogCategory::Media,
@@ -883,68 +876,38 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                         .arg(m_impl->videoCapDev).arg(st));
             }
         } else {
-            Logger::instance().info(LogCategory::Media,
-                QStringLiteral("Local preview already running: capDev=%1 previewWinId=%2")
-                    .arg(m_impl->videoCapDev).arg(previewWinId));
-        }
-
-        if (previewWinId != PJSUA_INVALID_ID) {
-            try {
-                pj::VideoWindow pvw(previewWinId);
-                pj::VideoWindowInfo pinfo = pvw.getInfo();
-                HWND pjPreviewHwnd = static_cast<HWND>(pinfo.winHandle.handle.window);
-                HWND qtPreviewHwnd =
-                    reinterpret_cast<HWND>(static_cast<quintptr>(localPreview));
-
+            // Preview already running — redirect its render target to our widget.
+            pjmedia_vid_dev_hwnd h = makeWinHwnd(qtPreviewHwnd);
+            pj_status_t st = pjsua_vid_win_set_win(previewWinId, &h);
+            if (st == PJ_SUCCESS) {
                 Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Local preview PJSIP hwnd=0x%1")
-                        .arg(reinterpret_cast<quintptr>(pjPreviewHwnd), 0, 16));
+                    QStringLiteral("Local preview GDI renderer pointed at Qt widget: "
+                                   "capDev=%1 previewWinId=%2")
+                        .arg(m_impl->videoCapDev).arg(previewWinId));
+            } else {
+                // The preview was started with a non-GDI renderer (e.g. Null).
+                // Stop it and restart with the GDI renderer.
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Local preview renderer not GDI (status=%1); "
+                                   "restarting with GDI renderer").arg(st));
+                pjsua_vid_preview_stop(capDev);
+                previewWinId = PJSUA_INVALID_ID;
 
-                if (!pjPreviewHwnd && qtPreviewHwnd) {
-                    // HWND is null: preview was auto-started by PJSIP with show=PJ_FALSE
-                    // (DShow/virtual-camera drivers defer Win32 window allocation).
-                    // Calling set_show forces the HWND to be allocated immediately.
-                    pjsua_vid_win_set_show(previewWinId, PJ_TRUE);
-                    try {
-                        pjPreviewHwnd = static_cast<HWND>(pvw.getInfo().winHandle.handle.window);
-                        Logger::instance().info(LogCategory::Media,
-                            QStringLiteral("Local preview PJSIP hwnd after forced show: 0x%1")
-                                .arg(reinterpret_cast<quintptr>(pjPreviewHwnd), 0, 16));
-                    } catch (...) {}
-                }
-
-                if (pjPreviewHwnd && qtPreviewHwnd) {
-                    // Hide immediately before reparenting to avoid a visible
-                    // popup flash (preview was started with pvp.show=PJ_TRUE
-                    // to force HWND allocation; we take over the window here).
-                    ShowWindow(pjPreviewHwnd, SW_HIDE);
-                    LONG style = GetWindowLong(pjPreviewHwnd, GWL_STYLE);
-                    style = (style & ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME))
-                            | WS_CHILD | WS_VISIBLE;
-                    SetWindowLong(pjPreviewHwnd, GWL_STYLE, style);
-                    SetParent(pjPreviewHwnd, qtPreviewHwnd);
-
-                    RECT rc{};
-                    GetClientRect(qtPreviewHwnd, &rc);
-                    MoveWindow(pjPreviewHwnd, 0, 0, rc.right, rc.bottom, TRUE);
-                    ShowWindow(pjPreviewHwnd, SW_SHOW);
-
+                pjsua_vid_preview_param pvp;
+                pjsua_vid_preview_param_default(&pvp);
+                pvp.show    = PJ_FALSE;
+                pvp.rend_id = (PjsipGdiRenderer::deviceIndex() != PJMEDIA_VID_INVALID_DEV)
+                                  ? PjsipGdiRenderer::deviceIndex()
+                                  : PJMEDIA_VID_DEFAULT_RENDER_DEV;
+                pvp.wnd = makeWinHwnd(qtPreviewHwnd);
+                if (pjsua_vid_preview_start(capDev, &pvp) == PJ_SUCCESS) {
+                    previewWinId = pjsua_vid_preview_get_win(capDev);
                     Logger::instance().info(LogCategory::Media,
-                        QStringLiteral("Local preview embedded into widget: %1x%2")
-                            .arg(rc.right).arg(rc.bottom));
-                } else {
-                    Logger::instance().warn(LogCategory::Media,
-                        QStringLiteral("Local preview attach skipped: hwnd null"));
+                        QStringLiteral("Local preview restarted with GDI renderer: "
+                                       "capDev=%1 previewWinId=%2")
+                            .arg(m_impl->videoCapDev).arg(previewWinId));
                 }
-            } catch (const pj::Error &e) {
-                Logger::instance().warn(LogCategory::Media,
-                    QStringLiteral("attachVideoWindows local preview failed: %1")
-                        .arg(QString::fromStdString(e.reason)));
             }
-        } else {
-            Logger::instance().warn(LogCategory::Media,
-                QStringLiteral("Local preview window not available: capDev=%1")
-                    .arg(m_impl->videoCapDev));
         }
     } else {
         Logger::instance().info(LogCategory::Media,

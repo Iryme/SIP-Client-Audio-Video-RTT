@@ -255,30 +255,25 @@ void VideoPanel::resizeEmbeddedVideoWindows()
 void VideoPanel::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
-    QPainter p(this);
 
-    if (!m_videoActive) {
-        // Idle — dark background with placeholder crosshair
-        p.fillRect(rect(), QColor(0x0d, 0x11, 0x1a));
-        p.setPen(QColor(0x2a, 0x35, 0x50));
-        p.drawLine(width() / 2, 0, width() / 2, height());
-        p.drawLine(0, height() / 2, width(), height() / 2);
-        p.setPen(QColor(0x3a, 0x45, 0x70));
-        p.setFont(QFont("Sans", 12));
-        p.drawText(rect(), Qt::AlignCenter, tr("No video — waiting for call"));
+    if (m_videoActive) {
+        // The GDI renderer writes frames directly into this HWND via
+        // StretchDIBits on PJSIP's media thread.  Paint only a dark
+        // background on the first expose; subsequent GDI frames overwrite it.
+        QPainter p(this);
+        p.fillRect(rect(), QColor(0x0a, 0x0a, 0x0a));
         return;
     }
 
-    // Video active — slightly lighter tint so the placeholder reads as "live"
-    const QColor bg = m_videoMuted ? QColor(0x18, 0x10, 0x10) : QColor(0x10, 0x14, 0x20);
-    p.fillRect(rect(), bg);
-
-    // Indicate which side is "remote" vs "local"
-    const QString mainLabel = m_swapped ? tr("Local Video") : tr("Remote Video");
-    p.setPen(QColor(0x3a, 0x4a, 0x70));
-    p.setFont(QFont("Sans", 11));
-    p.drawText(rect(), Qt::AlignCenter,
-               m_videoMuted ? tr("Video Muted") : mainLabel);
+    QPainter p(this);
+    // Idle — dark background with placeholder crosshair
+    p.fillRect(rect(), QColor(0x0d, 0x11, 0x1a));
+    p.setPen(QColor(0x2a, 0x35, 0x50));
+    p.drawLine(width() / 2, 0, width() / 2, height());
+    p.drawLine(0, height() / 2, width(), height() / 2);
+    p.setPen(QColor(0x3a, 0x45, 0x70));
+    p.setFont(QFont("Sans", 12));
+    p.drawText(rect(), Qt::AlignCenter, tr("No video — waiting for call"));
 }
 
 // ---------------------------------------------------------------------------
@@ -296,7 +291,9 @@ void VideoPanel::applyVideoState()
         m_signalIndicator->setText(tr("● VIDEO"));
         m_signalIndicator->setStyleSheet(
             "background: rgba(0,0,0,140); color: #50e050; padding: 4px 8px; border-radius: 4px;");
-        m_localPreview->setText(m_localVideoAvail ? tr("Local\nPreview") : tr("Camera\nOff"));
+        // Clear label text: the GDI renderer writes camera frames directly into
+        // the local-preview widget HWND; text would overdraw on Qt repaints.
+        m_localPreview->setText(QString{});
     } else {
         m_signalIndicator->setText(tr("● NO VIDEO"));
         m_signalIndicator->setStyleSheet(

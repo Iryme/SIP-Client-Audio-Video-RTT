@@ -20,6 +20,10 @@
 #include <QHash>
 #endif
 
+#if defined(HAVE_PJSIP) && defined(_WIN32)
+#include "media/PjsipGdiRenderer.h"
+#endif
+
 #ifdef HAVE_PJSIP
 
 struct SipManager::PjEndpoint {
@@ -38,6 +42,21 @@ static bool initPjsip(SipManager::PjEndpoint *&out, QString &errOut)
         cfg.logConfig.consoleLevel = 3;
         out->ep.libInit(cfg);
         out->ep.libStart();
+
+#if defined(_WIN32)
+        {
+            pj_status_t st = PjsipGdiRenderer::registerFactory();
+            if (st == PJ_SUCCESS) {
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Qt GDI video renderer registered: device index %1")
+                        .arg(PjsipGdiRenderer::deviceIndex()));
+            } else {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Qt GDI video renderer registration failed: status=%1").arg(st));
+            }
+        }
+#endif
+
         return true;
     } catch (const pj::Error &e) {
         errOut = QString::fromStdString(e.reason);
