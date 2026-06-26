@@ -460,6 +460,8 @@ if(CALL_SOURCES_EXTRA_LIBS)
 endif()
 
 if(ENABLE_PJSIP AND PJSIP_FOUND)
+    set(_PJSIP_TEST_BIN_DIR "${CMAKE_SOURCE_DIR}/.deps/pjsip-msvc-install/bin")
+    set(_PJSIP_TEST_THIRD_PARTY_DIR "${_PJSIP_TEST_BIN_DIR}/pjproject/third_party")
     foreach(_pjsip_test_target IN ITEMS
         test_registration_state_machine
         test_sip_manager
@@ -473,6 +475,22 @@ if(ENABLE_PJSIP AND PJSIP_FOUND)
     )
         if(TARGET ${_pjsip_test_target})
             target_link_libraries(${_pjsip_test_target} PRIVATE PJSIP::pjsua2)
+            target_compile_definitions(${_pjsip_test_target} PRIVATE PJMEDIA_HAS_VIDEO=1)
+            target_link_libraries(${_pjsip_test_target} PRIVATE
+                "${_PJSIP_TEST_BIN_DIR}/pjlib.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/resample.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/g7221.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/gsm.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/ilbc.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/speex.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/srtp.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/webrtc.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/webrtc_aec3.lib"
+                "${_PJSIP_TEST_THIRD_PARTY_DIR}/yuv.lib"
+            )
+            if(TARGET Pj::pjlib)
+                target_link_libraries(${_pjsip_test_target} PRIVATE Pj::pjlib)
+            endif()
         endif()
     endforeach()
 endif()
