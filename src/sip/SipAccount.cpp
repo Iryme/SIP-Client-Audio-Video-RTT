@@ -10,10 +10,13 @@
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
+#include <pjsua-lib/pjsua.h>
 #if defined(_WIN32)
 #include "media/PjsipGdiRenderer.h"
 #endif
 #endif
+
+#include "rtt/RttConfig.h"
 
 #if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
 static QString normalizeDeviceName(const QString &value)
@@ -395,6 +398,19 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
                 QStringLiteral("No PJSIP video capture device detected; outgoing video disabled, incoming video still allowed"));
         }
 #endif
+
+        // RTT / T.140 text media configuration (RFC 4103 + RFC 2198 RED).
+        // redundancyLevel controls how many previous T.140 packets are
+        // retransmitted with each PDU. PJSIP default is already
+        // PJSUA_TXT_DEFAULT_REDUNDANCY_LEVEL=2, but we set it explicitly so
+        // the intent is clear and logged. The negotiated level may be lower if
+        // the remote peer SDP does not advertise red/90000.
+        config.textConfig.redundancyLevel = kRttRedLevelDefault;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP RTT text config: redundancyLevel=%1 (RED RFC 4103/2198; "
+                           "max=%2; negotiated level subject to SDP answer)")
+                .arg(config.textConfig.redundancyLevel)
+                .arg(kRttRedLevelMax));
 
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("PJSIP REGISTER create account: idUri=%1 registrar=%2 transportId=%3 authUser=%4 proxy=%5")

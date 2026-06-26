@@ -4,6 +4,7 @@
 
 #include "rtt/RttSession.h"
 #include "rtt/RttTextUtils.h"
+#include "rtt/RttConfig.h"
 #include "sip/SipCall.h"
 #include "core/Logger.h"
 
@@ -308,6 +309,40 @@ private slots:
         QString buf = QStringLiteral("Hi");
         buf = rttRxProcess(buf, QString(QChar(0x0D)));
         QCOMPARE(buf, QStringLiteral("Hi\r"));
+    }
+
+    // -----------------------------------------------------------------------
+    // RttConfig constants (RFC 4103 / RFC 2198 RED levels)
+    // -----------------------------------------------------------------------
+
+    // 27. Default RED level must be 2 (RFC 4103 recommendation)
+    void test_rttConfig_redLevelDefault()
+    {
+        QCOMPARE(kRttRedLevelDefault, 2);
+    }
+
+    // 28. Disabled level must be 0
+    void test_rttConfig_redLevelDisabled()
+    {
+        QCOMPARE(kRttRedLevelDisabled, 0);
+    }
+
+    // 29. Max level is 2 (PJMEDIA_TXT_STREAM_MAX_RED_LEVELS)
+    void test_rttConfig_redLevelMax()
+    {
+        QCOMPARE(kRttRedLevelMax, 2);
+    }
+
+    // 30. Default must not exceed max
+    void test_rttConfig_defaultNotAboveMax()
+    {
+        QVERIFY(kRttRedLevelDefault <= kRttRedLevelMax);
+    }
+
+    // 31. Disabled must be strictly below default
+    void test_rttConfig_disabledBelowDefault()
+    {
+        QVERIFY(kRttRedLevelDisabled < kRttRedLevelDefault);
     }
 };
 

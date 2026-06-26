@@ -38,8 +38,11 @@ constexpr PriorityEntry kVideoDefaults[] = {
     { nullptr,   0 }
 };
 
-// RTT / T.140 — model only; PJSIP has no native T.140 codec support.
-// Listed here so callers can reason about the codec model without PJSIP.
+// RTT / T.140 — listed here for the codec model only.
+// PJSIP handles T.140 and RED natively via the text media stream
+// (m=text in SDP); they are NOT enumerated by codecEnum2() / videoCodecEnum2().
+// Redundancy level is configured via AccountTextConfig.redundancyLevel (see
+// SipAccount.cpp and src/rtt/RttConfig.h).
 constexpr PriorityEntry kRttDefaults[] = {
     { "red/90000/1",  240 },
     { "t140/1000/1",  230 },
@@ -141,8 +144,11 @@ QList<CodecEntry> CodecManager::videoCodecs() const { return m_videoCodecs; }
 
 QList<CodecEntry> CodecManager::rttCodecs() const
 {
-    // T.140 and RED are not PJSIP codecs — model only.
-    // Presence here does not imply any PJSIP-level support.
+    // T.140 and RED are not audio/video codecs and are not enumerated by
+    // PJSIP's codecEnum2()/videoCodecEnum2(). Returned here as a model so
+    // callers can display codec information consistently.
+    // Actual SDP negotiation uses pj::AccountConfig.textConfig.redundancyLevel
+    // (see SipAccount.cpp + src/rtt/RttConfig.h).
     return {
         { QStringLiteral("red/90000/1"),  SipMediaType::Text, 240, false },
         { QStringLiteral("t140/1000/1"),  SipMediaType::Text, 230, false },
@@ -205,10 +211,10 @@ void CodecManager::logCodecMatrix() const
                            "INVITE will NOT include a video m-line"));
     }
 
-    // --- RTT/Text (model only) ---
+    // --- RTT/Text (model — actual negotiation is via pj::AccountTextConfig) ---
     Logger::instance().info(LogCategory::Media,
-        QStringLiteral("CodecManager: RTT/text codecs (model only — "
-                       "not negotiated via PJSIP in this build):"));
+        QStringLiteral("CodecManager: RTT/text codecs (model; PJSIP negotiates "
+                       "red/t140 via AccountTextConfig, not codecEnum2):"));
     for (const auto &e : rttCodecs()) {
         Logger::instance().info(LogCategory::Media,
             QStringLiteral("  MODEL  %1 priority=%2")

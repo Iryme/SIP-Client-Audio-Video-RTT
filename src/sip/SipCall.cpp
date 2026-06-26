@@ -367,6 +367,36 @@ struct SipCall::Impl
                             QStringLiteral("PJSIP RTT text stream active: pjsipCallId=%1 "
                                            "mediaIndex=%2 (RFC 4103 / T.140)")
                                 .arg(getId()).arg(mi.index));
+                        // Log negotiated text codec (red/t140) and whether RED
+                        // was successfully negotiated with the remote peer.
+                        try {
+                            pjsua_stream_info si;
+                            pj_bzero(&si, sizeof(si));
+                            const pjsua_call_id cid =
+                                static_cast<pjsua_call_id>(getId());
+                            if (pjsua_call_get_stream_info(cid,
+                                    static_cast<unsigned>(mi.index), &si) == PJ_SUCCESS
+                                && si.type == PJMEDIA_TYPE_TEXT) {
+                                const pjmedia_codec_info &fmt = si.info.txt.fmt;
+                                const QString encName = fmt.encoding_name.slen > 0
+                                    ? QString::fromLatin1(
+                                          fmt.encoding_name.ptr,
+                                          static_cast<int>(fmt.encoding_name.slen))
+                                    : QStringLiteral("(unknown)");
+                                const bool redNegotiated = encName.compare(
+                                    QStringLiteral("red"),
+                                    Qt::CaseInsensitive) == 0;
+                                Logger::instance().info(LogCategory::Media,
+                                    QStringLiteral("Negotiated text codec: %1/%2  pt=%3  "
+                                                   "RED=%4")
+                                        .arg(encName)
+                                        .arg(fmt.clock_rate)
+                                        .arg(fmt.pt)
+                                        .arg(redNegotiated
+                                             ? QStringLiteral("yes (RFC 4103 / RFC 2198)")
+                                             : QStringLiteral("no (plain T.140 only)")));
+                            }
+                        } catch (...) {}
                     } else {
                         Logger::instance().info(LogCategory::Sip,
                             QStringLiteral("PJSIP RTT text stream not active: pjsipCallId=%1 "
