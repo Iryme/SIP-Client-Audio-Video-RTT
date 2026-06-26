@@ -47,20 +47,111 @@ if(Pj_FOUND AND TARGET Pj::pjsua2)
         get_filename_component(_PJSIP_CONFIG_PREFIX "${Pj_DIR}/../../.." ABSOLUTE)
     endif()
 
+    find_library(_PJSIP_PJLIB_LIBRARY
+        NAMES pjlib
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin"
+    )
+    find_library(_PJSIP_G7221_LIBRARY
+        NAMES g7221
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_GSM_LIBRARY
+        NAMES gsm
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_ILBC_LIBRARY
+        NAMES ilbc
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_SPEEX_LIBRARY
+        NAMES speex
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_SRTP_LIBRARY
+        NAMES srtp
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_WEBRTC_LIBRARY
+        NAMES webrtc
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_WEBRTC_AEC3_LIBRARY
+        NAMES webrtc_aec3
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_YUV_LIBRARY
+        NAMES yuv
+        HINTS
+            "${_PJSIP_CONFIG_PREFIX}/bin/pjproject/third_party"
+    )
+    find_library(_PJSIP_VPX_LIBRARY
+        NAMES vpx libvpx
+        HINTS
+            "${CMAKE_SOURCE_DIR}/.deps/vcpkg/installed/x64-windows-static/lib"
+            "${CMAKE_SOURCE_DIR}/.deps/vcpkg/installed/x64-windows/lib"
+            "${_PJSIP_CONFIG_PREFIX}/../vcpkg/installed/x64-windows-static/lib"
+            "${_PJSIP_CONFIG_PREFIX}/../vcpkg/installed/x64-windows/lib"
+            ${_PJSIP_SEARCH_HINT}/lib
+            ${_PJSIP_SEARCH_HINT}/bin
+    )
+
     set(PJSIP_FOUND TRUE)
     set(PJSIP_INCLUDE_DIRS "${_PJSIP_CONFIG_PREFIX}/include")
     set(PJSIP_LIBRARIES Pj::pjsua2)
+    foreach(_extra_lib IN ITEMS
+            _PJSIP_PJLIB_LIBRARY
+            _PJSIP_G7221_LIBRARY
+            _PJSIP_GSM_LIBRARY
+            _PJSIP_ILBC_LIBRARY
+            _PJSIP_SPEEX_LIBRARY
+            _PJSIP_SRTP_LIBRARY
+            _PJSIP_WEBRTC_LIBRARY
+            _PJSIP_WEBRTC_AEC3_LIBRARY
+            _PJSIP_YUV_LIBRARY)
+        if(${_extra_lib})
+            list(APPEND PJSIP_LIBRARIES "${${_extra_lib}}")
+        endif()
+    endforeach()
+    if(_PJSIP_VPX_LIBRARY)
+        list(APPEND PJSIP_LIBRARIES "${_PJSIP_VPX_LIBRARY}")
+    endif()
 
     if(NOT TARGET PJSIP::pjsua2)
         add_library(PJSIP::pjsua2 INTERFACE IMPORTED)
-        # Include Pj::pjmedia and Pj::pjmedia-videodev as PUBLIC so their
-        # INTERFACE_COMPILE_DEFINITIONS (PJMEDIA_HAS_VIDEO, etc.) propagate
-        # to the app.  Pj::pjsua2 marks them LINK_ONLY which stops propagation.
-        set_target_properties(PJSIP::pjsua2 PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${PJSIP_INCLUDE_DIRS}"
-            INTERFACE_LINK_LIBRARIES "Pj::pjsua2;Pj::pjmedia;Pj::pjmedia-videodev;Pj::pjmedia-audiodev"
-        )
     endif()
+
+    # Include Pj::pjmedia and Pj::pjmedia-videodev as PUBLIC so their
+    # INTERFACE_COMPILE_DEFINITIONS (PJMEDIA_HAS_VIDEO, etc.) propagate
+    # to the app. Pj::pjsua2 marks them LINK_ONLY which stops propagation.
+    set(_pjsip_public_links
+        "Pj::pjlib;Pj::pjsua2;Pj::pjmedia;Pj::pjmedia-videodev;Pj::pjmedia-audiodev;Pj::pjlib-util;Pj::pjnath;Pj::pjsip;Pj::pjsip-simple;Pj::pjsip-ua;Pj::pjsua-lib")
+    foreach(_extra_lib IN ITEMS
+            _PJSIP_PJLIB_LIBRARY
+            _PJSIP_G7221_LIBRARY
+            _PJSIP_GSM_LIBRARY
+            _PJSIP_ILBC_LIBRARY
+            _PJSIP_SPEEX_LIBRARY
+            _PJSIP_SRTP_LIBRARY
+            _PJSIP_WEBRTC_LIBRARY
+            _PJSIP_WEBRTC_AEC3_LIBRARY
+            _PJSIP_YUV_LIBRARY
+            _PJSIP_VPX_LIBRARY)
+        if(${_extra_lib})
+            list(APPEND _pjsip_public_links "${${_extra_lib}}")
+        endif()
+    endforeach()
+    set_target_properties(PJSIP::pjsua2 PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${PJSIP_INCLUDE_DIRS}"
+        INTERFACE_LINK_LIBRARIES "${_pjsip_public_links}"
+    )
 
     return()
 endif()
@@ -118,6 +209,22 @@ foreach(_lib IN LISTS _PJSIP_REQUIRED_LIBS)
     endif()
     mark_as_advanced(_PJSIP_LIB_${_lib})
 endforeach()
+
+find_library(_PJSIP_VPX_LIBRARY
+    NAMES vpx libvpx
+    HINTS
+        "${CMAKE_SOURCE_DIR}/.deps/vcpkg/installed/x64-windows-static/lib"
+        "${CMAKE_SOURCE_DIR}/.deps/vcpkg/installed/x64-windows/lib"
+        "${_PJSIP_SEARCH_HINT}/lib"
+        "${_PJSIP_SEARCH_HINT}/bin"
+        ${_PJSIP_PC_LIBRARY_DIRS}
+    PATHS
+        "C:/vcpkg/installed/x64-windows-static/lib"
+        "C:/vcpkg/installed/x64-windows/lib"
+)
+if(_PJSIP_VPX_LIBRARY)
+    list(APPEND PJSIP_LIBRARIES "${_PJSIP_VPX_LIBRARY}")
+endif()
 
 # --- Set PJSIP_FOUND ---
 include(FindPackageHandleStandardArgs)

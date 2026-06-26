@@ -2,6 +2,10 @@
 #include <QTimer>
 #include <QWidget>
 
+class QCamera;
+class QMediaCaptureSession;
+class QVideoFrame;
+class QVideoSink;
 class QLabel;
 class QComboBox;
 class QPushButton;
@@ -38,11 +42,15 @@ private slots:
     void onRemoteVideoStopped();
     void onVideoMutedChanged(bool muted);
     void onCallStateChanged();
+    void onIdlePreviewFrame(const QVideoFrame &frame);
 
 private:
     void repositionOverlays();
     void populateCameraCombo();
     void applyVideoState();
+    void startIdlePreview();
+    void stopIdlePreview();
+    void refreshIdlePreview();
     // Re-fit the embedded PJSIP video HWND to fill its parent widget area.
     // Called on resize when video is active.
     void resizeEmbeddedVideoWindows();
@@ -66,6 +74,14 @@ private:
     bool   m_localVideoAvail{false};
     bool   m_remoteVideoAvail{false};
     bool   m_videoMuted{false};
+    bool   m_idlePreviewRunning{false};
+    int    m_idlePreviewCapDev{-3};
+    bool   m_noVideoDeviceAvailable{false};
+
+    // Qt camera stack for idle local preview (used when no call is active).
+    QCamera              *m_previewCamera{nullptr};
+    QMediaCaptureSession *m_previewSession{nullptr};
+    QVideoSink           *m_previewSink{nullptr};
 
     // Retries video window attachment every 2 s while a call is active.
     // Needed because PJSIP creates the remote render HWND lazily and

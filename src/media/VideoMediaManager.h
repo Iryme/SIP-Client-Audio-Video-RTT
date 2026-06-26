@@ -61,6 +61,7 @@ signals:
     void localVideoStopped();
     void remoteVideoStarted();
     void remoteVideoStopped();
+    void cameraChanged(const QString &deviceId);
 
 private:
     VideoMediaManager();

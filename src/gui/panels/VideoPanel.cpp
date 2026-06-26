@@ -1,24 +1,60 @@
 #include "VideoPanel.h"
 
+#include <QCamera>
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMediaCaptureSession>
+#include <QMediaDevices>
 #include <QPainter>
+#include <QPixmap>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
+#include <QVideoFrame>
+#include <QVideoSink>
 #include <QWidget>
+
+#include "core/Logger.h"
+#include "core/AppSettings.h"
+#include "media/MediaDeviceManager.h"
+#include "media/MediaDeviceSelectionModel.h"
+#include "media/VideoMediaManager.h"
+#include "sip/SipManager.h"
+
+#ifdef HAVE_PJSIP
+#include <pjsua2.hpp>
+#include <pjsua-lib/pjsua.h>
+#include <pj/errno.h>
+#endif
+
+#if defined(HAVE_PJSIP) && defined(_WIN32)
+#include "media/PjsipGdiRenderer.h"
+#endif
+
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+static QString pjsipStatusText(pj_status_t st)
+{
+    char buf[PJ_ERR_MSG_SIZE] = {};
+    pj_strerror(st, buf, sizeof(buf));
+    return QString::fromLatin1(buf);
+}
+#endif
 
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
 #endif
 
-#include "core/Logger.h"
-#include "media/MediaDeviceManager.h"
-#include "media/MediaDeviceSelectionModel.h"
-#include "media/VideoMediaManager.h"
-#include "sip/SipManager.h"
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO && defined(_WIN32)
+static pjmedia_vid_dev_index preferredPreviewRenderDevice()
+{
+    const pjmedia_vid_dev_index gdiRenderDev = PjsipGdiRenderer::deviceIndex();
+    if (gdiRenderDev != PJMEDIA_VID_INVALID_DEV)
+        return gdiRenderDev;
+    return PJMEDIA_VID_DEFAULT_RENDER_DEV;
+}
+#endif
 
 VideoPanel::VideoPanel(QWidget *parent)
     : QWidget(parent)
@@ -104,6 +140,7 @@ VideoPanel::VideoPanel(QWidget *parent)
         const QString id = m_cameraSelector->itemData(idx).toString();
         if (!id.isEmpty())
             VideoMediaManager::instance().setCamera(id);
+        refreshIdlePreview();
     });
 
     // Video mute button → VideoMediaManager
@@ -141,6 +178,23 @@ VideoPanel::VideoPanel(QWidget *parent)
             this, &VideoPanel::onRemoteVideoStopped);
     connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMutedChanged,
             this, &VideoPanel::onVideoMutedChanged);
+    connect(&VideoMediaManager::instance(), &VideoMediaManager::cameraChanged,
+            this, [this](const QString &deviceId) {
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("VideoPanel: cameraChanged received, refreshing preview for '%1'")
+                .arg(deviceId));
+        refreshIdlePreview();
+    });
+
+    connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
+            this, [this]() {
+        populateCameraCombo();
+        refreshIdlePreview();
+    });
+    connect(&SipManager::instance(), &SipManager::initialized,
+            this, [this]() { startIdlePreview(); });
+    connect(&SipManager::instance(), &SipManager::shutdownComplete,
+            this, [this]() { stopIdlePreview(); });
 
     // SipManager call state → update remote label text
     connect(&SipManager::instance(), &SipManager::callConnected,
@@ -157,6 +211,9 @@ VideoPanel::VideoPanel(QWidget *parent)
     });
 
     applyVideoState();
+    QTimer::singleShot(0, this, [this]() {
+        startIdlePreview();
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -256,16 +313,20 @@ void VideoPanel::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
 
+    QPainter p(this);
+
     if (m_videoActive) {
-        // The GDI renderer writes frames directly into this HWND via
-        // StretchDIBits on PJSIP's media thread.  Paint only a dark
-        // background on the first expose; subsequent GDI frames overwrite it.
-        QPainter p(this);
-        p.fillRect(rect(), QColor(0x0a, 0x0a, 0x0a));
+        // Frames are delivered from the PJSIP media thread via QMetaObject::invokeMethod
+        // and stored in the "_pjFrame" property.  Draw the latest one; fall back to
+        // black if no frame has arrived yet.
+        const QImage frame = property("_pjFrame").value<QImage>();
+        if (!frame.isNull())
+            p.drawImage(rect(), frame);
+        else
+            p.fillRect(rect(), QColor(0x0a, 0x0a, 0x0a));
         return;
     }
 
-    QPainter p(this);
     // Idle — dark background with placeholder crosshair
     p.fillRect(rect(), QColor(0x0d, 0x11, 0x1a));
     p.setPen(QColor(0x2a, 0x35, 0x50));
@@ -287,13 +348,20 @@ void VideoPanel::applyVideoState()
     m_controlOverlay->setVisible(inCall);
     m_btnSwap->setVisible(inCall);
 
-    if (m_videoActive) {
+    if (m_videoActive || m_idlePreviewRunning) {
         m_signalIndicator->setText(tr("● VIDEO"));
         m_signalIndicator->setStyleSheet(
             "background: rgba(0,0,0,140); color: #50e050; padding: 4px 8px; border-radius: 4px;");
-        // Clear label text: the GDI renderer writes camera frames directly into
-        // the local-preview widget HWND; text would overdraw on Qt repaints.
-        m_localPreview->setText(QString{});
+        // For the PJSIP/GDI path (videoActive), clear label text so it doesn't
+        // overdraw GDI frames. For the Qt-camera idle preview path, leave the
+        // pixmap alone — setText would clear it since they're mutually exclusive.
+        if (m_videoActive && !m_idlePreviewRunning)
+            m_localPreview->setText(QString{});
+    } else if (m_noVideoDeviceAvailable) {
+        m_signalIndicator->setText(tr("● NO VIDEO"));
+        m_signalIndicator->setStyleSheet(
+            "background: rgba(0,0,0,140); color: #d0a040; padding: 4px 8px; border-radius: 4px;");
+        m_localPreview->setText(tr("No video\ndevice available"));
     } else {
         m_signalIndicator->setText(tr("● NO VIDEO"));
         m_signalIndicator->setStyleSheet(
@@ -331,6 +399,103 @@ void VideoPanel::populateCameraCombo()
     }
 }
 
+void VideoPanel::startIdlePreview()
+{
+    if (m_idlePreviewRunning || m_videoActive)
+        return;
+    if (!m_localPreview)
+        return;
+
+    // Find the Qt camera device matching the user's selection.
+    MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
+    const MediaDevice cam = sel.selectedCamera();
+
+    QCameraDevice qtDev;
+    const QList<QCameraDevice> inputs = QMediaDevices::videoInputs();
+    for (const QCameraDevice &d : inputs) {
+        if (!cam.isNull()
+            && (d.description().contains(cam.displayName, Qt::CaseInsensitive)
+                || cam.displayName.contains(d.description(), Qt::CaseInsensitive))) {
+            qtDev = d;
+            break;
+        }
+    }
+    if (qtDev.isNull() && !inputs.isEmpty())
+        qtDev = inputs.first();
+
+    if (qtDev.isNull()) {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("Idle Qt preview: no camera device found"));
+        m_noVideoDeviceAvailable = true;
+        applyVideoState();
+        return;
+    }
+
+    m_previewCamera  = new QCamera(qtDev);
+    m_previewSession = new QMediaCaptureSession();
+    m_previewSink    = new QVideoSink();
+
+    m_previewSession->setCamera(m_previewCamera);
+    m_previewSession->setVideoSink(m_previewSink);
+
+    connect(m_previewSink, &QVideoSink::videoFrameChanged,
+            this, &VideoPanel::onIdlePreviewFrame, Qt::QueuedConnection);
+
+    m_previewCamera->start();
+    m_idlePreviewRunning   = true;
+    m_noVideoDeviceAvailable = false;
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Idle Qt preview started: camera='%1'")
+            .arg(qtDev.description()));
+    applyVideoState();
+}
+
+void VideoPanel::stopIdlePreview()
+{
+    if (!m_idlePreviewRunning && !m_previewCamera)
+        return;
+
+    if (m_previewCamera) {
+        m_previewCamera->stop();
+        delete m_previewCamera;
+        m_previewCamera = nullptr;
+    }
+    delete m_previewSession;
+    m_previewSession = nullptr;
+    delete m_previewSink;
+    m_previewSink = nullptr;
+
+    m_idlePreviewRunning = false;
+    m_idlePreviewCapDev  = -3;
+
+    m_localPreview->setPixmap(QPixmap());
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Idle Qt preview stopped"));
+    applyVideoState();
+}
+
+void VideoPanel::refreshIdlePreview()
+{
+    if (m_videoActive)
+        return;
+    stopIdlePreview();
+    startIdlePreview();
+}
+
+void VideoPanel::onIdlePreviewFrame(const QVideoFrame &frame)
+{
+    if (!m_idlePreviewRunning || !m_localPreview || !frame.isValid())
+        return;
+    const QImage img = frame.toImage()
+                             .scaled(m_localPreview->size(),
+                                     Qt::KeepAspectRatio,
+                                     Qt::SmoothTransformation);
+    if (!img.isNull())
+        m_localPreview->setPixmap(QPixmap::fromImage(img));
+}
+
 // ---------------------------------------------------------------------------
 // Slots
 // ---------------------------------------------------------------------------
@@ -338,6 +503,10 @@ void VideoPanel::populateCameraCombo()
 void VideoPanel::onVideoMediaConnected()
 {
     m_videoActive = true;
+    m_noVideoDeviceAvailable = false;
+    // Stop Qt Camera: PJSIP's DirectShow capture locks the camera device.
+    // PJSIP renders local frames to m_localPreview via our GDI renderer.
+    stopIdlePreview();
     populateCameraCombo();
     applyVideoState();
 
@@ -363,6 +532,7 @@ void VideoPanel::onVideoMediaDisconnected()
     m_localVideoAvail  = false;
     m_remoteVideoAvail = false;
     m_swapped          = false;
+    startIdlePreview();
     applyVideoState();
 }
 

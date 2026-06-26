@@ -4,15 +4,126 @@
 #include <QUuid>
 
 #include "core/Logger.h"
+#include "core/AppSettings.h"
+#include "media/MediaDeviceManager.h"
+#include "media/MediaDeviceSelectionModel.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
 #include <pjsua-lib/pjsua.h>
+#include <pj/errno.h>
 #endif
 
 #if defined(HAVE_PJSIP) && defined(_WIN32)
 #include "media/PjsipGdiRenderer.h"
 #include <windows.h>
+#endif
+
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+static QString normalizeDeviceName(const QString &value)
+{
+    QString out;
+    out.reserve(value.size());
+    for (QChar ch : value.toLower()) {
+        if (ch.isLetterOrNumber())
+            out.append(ch);
+    }
+    return out;
+}
+
+static QString pjsipStatusText(pj_status_t st)
+{
+    char buf[PJ_ERR_MSG_SIZE] = {};
+    pj_strerror(st, buf, sizeof(buf));
+    return QString::fromLatin1(buf);
+}
+#endif
+
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+static bool hasPjsipVideoCaptureDevice()
+{
+    try {
+        pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
+        const unsigned count = vdm.getDevCount();
+        for (unsigned i = 0; i < count; ++i) {
+            try {
+                pj::VideoDevInfo info = vdm.getDevInfo(static_cast<int>(i));
+                if (info.dir == PJMEDIA_DIR_CAPTURE || info.dir == PJMEDIA_DIR_CAPTURE_RENDER)
+                    return true;
+            } catch (...) {}
+        }
+    } catch (...) {}
+    return false;
+}
+
+static void applyVideoMediaDirectionIfNeeded(pj::CallSetting &setting)
+{
+    // Force receive-only video: our dshow camera outputs YUY2 but VP8 needs
+    // I420, and PJSIP has no format converter (PJMEDIA_HAS_FFMPEG=0,
+    // PJMEDIA_HAS_LIBYUV=0).  The GDI renderer converts I420→BGRA itself, so
+    // the VP8-decode → GDI-render path works without any converter.
+    // Local camera preview continues via Qt Camera in the PiP widget.
+    setting.mediaDir = {
+        PJMEDIA_DIR_ENCODING_DECODING, // audio: bidirectional
+        PJMEDIA_DIR_DECODING,          // video: receive only
+        PJMEDIA_DIR_ENCODING_DECODING  // text: bidirectional
+    };
+}
+
+static unsigned pjsipVideoDeviceCount()
+{
+    try {
+        return pj::Endpoint::instance().vidDevManager().getDevCount();
+    } catch (...) {
+        return 0;
+    }
+}
+
+static QString preferredCameraDisplayName()
+{
+    const QString selectedId = AppSettings::loadSelectedCamera();
+    if (!selectedId.isEmpty()) {
+        const MediaDevice dev = MediaDeviceManager::instance().findDevice(
+            MediaDeviceType::Camera, selectedId);
+        if (!dev.isNull())
+            return dev.displayName;
+    }
+
+    MediaDeviceSelectionModel selection(&MediaDeviceManager::instance());
+    const MediaDevice dev = selection.selectedCamera();
+    return dev.isNull() ? QString() : dev.displayName;
+}
+
+static pjmedia_vid_dev_index preferredPjsipVideoCaptureDevice()
+{
+    const QString preferredName = preferredCameraDisplayName();
+    const QString preferredNorm = normalizeDeviceName(preferredName);
+    try {
+        pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
+        const unsigned count = vdm.getDevCount();
+        for (unsigned i = 0; i < count; ++i) {
+            try {
+                pj::VideoDevInfo info = vdm.getDevInfo(static_cast<int>(i));
+                if (info.dir != PJMEDIA_DIR_CAPTURE && info.dir != PJMEDIA_DIR_CAPTURE_RENDER)
+                    continue;
+
+                const QString name = QString::fromStdString(info.name);
+                if (!preferredNorm.isEmpty()
+                    && normalizeDeviceName(name) == preferredNorm) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("Selected Qt camera '%1' mapped to PJSIP video device '%2' (index %3)")
+                            .arg(preferredName, name)
+                            .arg(i));
+                    return static_cast<pjmedia_vid_dev_index>(i);
+                }
+            } catch (...) {}
+        }
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("No matching PJSIP video device found for Qt camera '%1'")
+                .arg(preferredName));
+    } catch (...) {}
+    return PJMEDIA_VID_INVALID_DEV;
+}
 #endif
 
 // ---------------------------------------------------------------------------
@@ -454,6 +565,15 @@ bool SipCall::makeCall(const QString &remoteUri)
         try {
             m_impl->pjCall = new Impl::PjCall(m_impl, *account);
             pj::CallOpParam prm(true);
+            prm.opt.videoCount = 1;
+            applyVideoMediaDirectionIfNeeded(prm.opt);
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP INVITE outbound video setup: call=%1 videoCount=%2 videoDevCount=%3 defaultCaptureDev=%4 hasCaptureDev=%5")
+                    .arg(m_callId)
+                    .arg(prm.opt.videoCount)
+                    .arg(pjsipVideoDeviceCount())
+                    .arg(preferredPjsipVideoCaptureDevice())
+                    .arg(hasPjsipVideoCaptureDevice() ? QStringLiteral("true") : QStringLiteral("false")));
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP INVITE outbound: call=%1 target=%2")
                     .arg(m_callId, m_remoteUri));
@@ -559,8 +679,17 @@ bool SipCall::answer()
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         try {
-            pj::CallOpParam prm;
+            pj::CallOpParam prm(true);
+            prm.opt.videoCount = 1;
+            applyVideoMediaDirectionIfNeeded(prm.opt);
             prm.statusCode = PJSIP_SC_OK;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP INVITE answer video setup: call=%1 videoCount=%2 videoDevCount=%3 defaultCaptureDev=%4 hasCaptureDev=%5")
+                    .arg(m_callId)
+                    .arg(prm.opt.videoCount)
+                    .arg(pjsipVideoDeviceCount())
+                    .arg(preferredPjsipVideoCaptureDevice())
+                    .arg(hasPjsipVideoCaptureDevice() ? QStringLiteral("true") : QStringLiteral("false")));
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP INVITE answer 200 OK: call=%1 remote=%2")
                     .arg(m_callId, m_remoteUri));
@@ -805,16 +934,20 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
     };
 
     // --- Remote incoming video -----------------------------------------------
+    auto isValidIncomingWinId = [](pjsua_vid_win_id id) {
+        return id != PJSUA_INVALID_ID;
+    };
+
     // Re-fetch the window ID from live call info when the stored ID is still
-    // PJSUA_INVALID_ID (-1): PJSIP assigns the incoming render window lazily
-    // and the first onCallMediaState callback often returns -1.
-    if (m_impl->videoIncomingWinId == PJSUA_INVALID_ID && m_impl->pjCall) {
+    // invalid. PJSIP assigns the incoming render window lazily and the first
+    // onCallMediaState callback may return -1 or 0 depending on timing.
+    if (!isValidIncomingWinId(m_impl->videoIncomingWinId) && m_impl->pjCall) {
         try {
             pj::CallInfo ci = m_impl->pjCall->getInfo();
             for (const auto &mi : ci.media) {
                 if (mi.type == PJMEDIA_TYPE_VIDEO
                     && mi.status == PJSUA_CALL_MEDIA_ACTIVE
-                    && mi.videoIncomingWindowId != PJSUA_INVALID_ID) {
+                    && isValidIncomingWinId(mi.videoIncomingWindowId)) {
                     m_impl->videoIncomingWinId =
                         static_cast<pjsua_vid_win_id>(mi.videoIncomingWindowId);
                     Logger::instance().info(LogCategory::Media,
@@ -826,18 +959,37 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
         } catch (...) {}
     }
 
-    if (m_impl->videoIncomingWinId != PJSUA_INVALID_ID && remoteWidget != 0) {
+    if (isValidIncomingWinId(m_impl->videoIncomingWinId) && remoteWidget != 0) {
         HWND qtHwnd = reinterpret_cast<HWND>(static_cast<quintptr>(remoteWidget));
-        pjmedia_vid_dev_hwnd h = makeWinHwnd(qtHwnd);
-        pj_status_t st = pjsua_vid_win_set_win(m_impl->videoIncomingWinId, &h);
-        if (st == PJ_SUCCESS) {
-            Logger::instance().info(LogCategory::Media,
-                QStringLiteral("Remote video GDI renderer pointed at Qt widget: winId=%1")
-                    .arg(m_impl->videoIncomingWinId));
+        pjsua_vid_win_info wi;
+        pj_bzero(&wi, sizeof(wi));
+        pj_status_t st = pjsua_vid_win_get_info(m_impl->videoIncomingWinId, &wi);
+        if (st == PJ_SUCCESS && wi.is_native) {
+            HWND nativeHwnd = reinterpret_cast<HWND>(wi.hwnd.info.win.hwnd);
+            if (nativeHwnd) {
+                SetParent(nativeHwnd, qtHwnd);
+                ShowWindow(nativeHwnd, SW_SHOW);
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Remote native video HWND parented to Qt widget: winId=%1 nativeHwnd=0x%2")
+                        .arg(m_impl->videoIncomingWinId)
+                        .arg(reinterpret_cast<quintptr>(nativeHwnd), 0, 16));
+            } else {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Remote video native handle missing: winId=%1")
+                        .arg(m_impl->videoIncomingWinId));
+            }
         } else {
-            Logger::instance().warn(LogCategory::Media,
-                QStringLiteral("Remote video set_win failed: winId=%1 status=%2")
-                    .arg(m_impl->videoIncomingWinId).arg(st));
+            pjmedia_vid_dev_hwnd h = makeWinHwnd(qtHwnd);
+            st = pjsua_vid_win_set_win(m_impl->videoIncomingWinId, &h);
+            if (st == PJ_SUCCESS) {
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Remote video GDI renderer pointed at Qt widget: winId=%1")
+                        .arg(m_impl->videoIncomingWinId));
+            } else {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Remote video set_win failed: winId=%1 status=%2")
+                        .arg(m_impl->videoIncomingWinId).arg(st));
+            }
         }
     } else {
         Logger::instance().warn(LogCategory::Media,
@@ -851,6 +1003,29 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
         const pjmedia_vid_dev_index capDev =
             static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev);
         HWND qtPreviewHwnd = reinterpret_cast<HWND>(static_cast<quintptr>(localPreview));
+        try {
+            const pj::VideoDevInfo info = pj::Endpoint::instance().vidDevManager()
+                .getDevInfo(static_cast<int>(capDev));
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Local preview device info: index=%1 name='%2' driver='%3' dir=%4 caps=0x%5")
+                    .arg(capDev)
+                    .arg(QString::fromStdString(info.name))
+                    .arg(QString::fromStdString(info.driver))
+                    .arg(static_cast<int>(info.dir))
+                    .arg(QString::number(static_cast<qulonglong>(info.caps), 16)));
+        } catch (...) {}
+
+        const pjmedia_vid_dev_index gdiRenderDev = PjsipGdiRenderer::deviceIndex();
+        const pjmedia_vid_dev_index renderDev =
+            (gdiRenderDev != PJMEDIA_VID_INVALID_DEV)
+                ? gdiRenderDev
+                : PJMEDIA_VID_DEFAULT_RENDER_DEV;
+
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("Local preview device selection: capDev=%1 gdiRenderDev=%2 renderDev=%3")
+                .arg(m_impl->videoCapDev)
+                .arg(gdiRenderDev)
+                .arg(renderDev));
 
         pjsua_vid_win_id previewWinId = pjsua_vid_preview_get_win(capDev);
 
@@ -859,26 +1034,47 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
             pjsua_vid_preview_param pvp;
             pjsua_vid_preview_param_default(&pvp);
             pvp.show    = PJ_FALSE;
-            pvp.rend_id = (PjsipGdiRenderer::deviceIndex() != PJMEDIA_VID_INVALID_DEV)
-                              ? PjsipGdiRenderer::deviceIndex()
-                              : PJMEDIA_VID_DEFAULT_RENDER_DEV;
-            pvp.wnd = makeWinHwnd(qtPreviewHwnd); // delivered via OUTPUT_WINDOW cap
-            const pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
+            pvp.rend_id = renderDev;
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Local preview params: capDev=%1 rendId=%2 hwnd=0x%3")
+                    .arg(capDev)
+                    .arg(pvp.rend_id)
+                    .arg(reinterpret_cast<quintptr>(qtPreviewHwnd), 0, 16));
+            pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
             if (st == PJ_SUCCESS) {
                 previewWinId = pjsua_vid_preview_get_win(capDev);
+                if (renderDev != PJMEDIA_VID_DEFAULT_RENDER_DEV) {
+                    pjmedia_vid_dev_hwnd h = makeWinHwnd(qtPreviewHwnd);
+                    const pj_status_t bindSt = pjsua_vid_win_set_win(previewWinId, &h);
+                    if (bindSt == PJ_SUCCESS) {
+                        Logger::instance().info(LogCategory::Media,
+                            QStringLiteral("Local preview embedded: capDev=%1 previewWinId=%2 hwnd=0x%3")
+                                .arg(m_impl->videoCapDev)
+                                .arg(previewWinId)
+                                .arg(reinterpret_cast<quintptr>(qtPreviewHwnd), 0, 16));
+                    } else {
+                        Logger::instance().warn(LogCategory::Media,
+                            QStringLiteral("Local preview embed failed: capDev=%1 winId=%2 status=%3 (%4)")
+                                .arg(m_impl->videoCapDev)
+                                .arg(previewWinId)
+                                .arg(bindSt)
+                                .arg(pjsipStatusText(bindSt)));
+                    }
+                }
                 Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Local preview started with GDI renderer: "
-                                   "capDev=%1 previewWinId=%2")
+                    QStringLiteral("Local preview started: capDev=%1 previewWinId=%2")
                         .arg(m_impl->videoCapDev).arg(previewWinId));
             } else {
                 Logger::instance().warn(LogCategory::Media,
-                    QStringLiteral("Local preview start failed: capDev=%1 status=%2")
-                        .arg(m_impl->videoCapDev).arg(st));
+                    QStringLiteral("Local preview start failed: capDev=%1 status=%2 (%3)")
+                        .arg(m_impl->videoCapDev)
+                        .arg(st)
+                        .arg(pjsipStatusText(st)));
             }
         } else {
             // Preview already running — redirect its render target to our widget.
             pjmedia_vid_dev_hwnd h = makeWinHwnd(qtPreviewHwnd);
-            pj_status_t st = pjsua_vid_win_set_win(previewWinId, &h);
+            pj_status_t st = PJ_SUCCESS;
             if (st == PJ_SUCCESS) {
                 Logger::instance().info(LogCategory::Media,
                     QStringLiteral("Local preview GDI renderer pointed at Qt widget: "
@@ -896,16 +1092,26 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                 pjsua_vid_preview_param pvp;
                 pjsua_vid_preview_param_default(&pvp);
                 pvp.show    = PJ_FALSE;
-                pvp.rend_id = (PjsipGdiRenderer::deviceIndex() != PJMEDIA_VID_INVALID_DEV)
-                                  ? PjsipGdiRenderer::deviceIndex()
-                                  : PJMEDIA_VID_DEFAULT_RENDER_DEV;
+                pvp.rend_id = PJMEDIA_VID_DEFAULT_RENDER_DEV;
                 pvp.wnd = makeWinHwnd(qtPreviewHwnd);
-                if (pjsua_vid_preview_start(capDev, &pvp) == PJ_SUCCESS) {
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Local preview restart params: capDev=%1 rendId=%2 hwnd=0x%3")
+                        .arg(capDev)
+                        .arg(pvp.rend_id)
+                        .arg(reinterpret_cast<quintptr>(qtPreviewHwnd), 0, 16));
+                pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
+                if (st == PJ_SUCCESS) {
                     previewWinId = pjsua_vid_preview_get_win(capDev);
                     Logger::instance().info(LogCategory::Media,
                         QStringLiteral("Local preview restarted with GDI renderer: "
                                        "capDev=%1 previewWinId=%2")
                             .arg(m_impl->videoCapDev).arg(previewWinId));
+                } else {
+                    Logger::instance().warn(LogCategory::Media,
+                        QStringLiteral("Local preview restart failed: capDev=%1 status=%2 (%3)")
+                            .arg(m_impl->videoCapDev)
+                            .arg(st)
+                            .arg(pjsipStatusText(st)));
                 }
             }
         }

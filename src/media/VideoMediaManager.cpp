@@ -129,6 +129,7 @@ void VideoMediaManager::setCamera(const QString &deviceId)
     // Persist via a local selection model instance (same QSettings keys as MediaPanel).
     MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
     sel.selectCamera(deviceId);
+    emit cameraChanged(deviceId);
 
     if (m_videoActive) {
         // PJSIP video device re-initialisation not yet implemented.

@@ -2,6 +2,7 @@
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
+#include "media/VideoMediaManager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -26,6 +27,10 @@ MediaPanel::MediaPanel(QWidget *parent)
             this, &MediaPanel::onSpeakerSelectionChanged);
     connect(m_selectionModel, &MediaDeviceSelectionModel::cameraSelectionChanged,
             this, &MediaPanel::onCameraSelectionChanged);
+    connect(m_selectionModel, &MediaDeviceSelectionModel::cameraSelectionChanged,
+            this, [](const MediaDevice &dev) {
+                VideoMediaManager::instance().setCamera(dev.id);
+            });
 
     // Forward device selections to AudioMediaManager so SipManager can wire them
     // to the PJSIP AudDevManager.

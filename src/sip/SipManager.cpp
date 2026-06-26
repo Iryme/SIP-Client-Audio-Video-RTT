@@ -83,6 +83,9 @@ static void logVideoDevices()
 #if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("PJSIP video support: ENABLED (PJMEDIA_HAS_VIDEO=1)"));
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Qt GDI renderer device index: %1")
+            .arg(PjsipGdiRenderer::deviceIndex()));
     try {
         pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
         const unsigned count = vdm.getDevCount();

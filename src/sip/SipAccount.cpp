@@ -4,12 +4,129 @@
 #include <QPointer>
 
 #include "core/Logger.h"
+#include "core/AppSettings.h"
+#include "media/MediaDeviceManager.h"
+#include "media/MediaDeviceSelectionModel.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
 #if defined(_WIN32)
 #include "media/PjsipGdiRenderer.h"
 #endif
+#endif
+
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+static QString normalizeDeviceName(const QString &value)
+{
+    QString out;
+    out.reserve(value.size());
+    for (QChar ch : value.toLower()) {
+        if (ch.isLetterOrNumber())
+            out.append(ch);
+    }
+    return out;
+}
+
+static bool hasPjsipVideoCaptureDevice()
+{
+    try {
+        pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
+        const unsigned count = vdm.getDevCount();
+        for (unsigned i = 0; i < count; ++i) {
+            try {
+                pj::VideoDevInfo info = vdm.getDevInfo(static_cast<int>(i));
+                if (info.dir == PJMEDIA_DIR_CAPTURE || info.dir == PJMEDIA_DIR_CAPTURE_RENDER)
+                    return true;
+            } catch (...) {}
+        }
+    } catch (...) {}
+    return false;
+}
+static pjmedia_vid_dev_index firstPjsipVideoCaptureDevice()
+{
+    try {
+        pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
+        const unsigned count = vdm.getDevCount();
+        pjmedia_vid_dev_index fallback = PJMEDIA_VID_INVALID_DEV;
+        for (unsigned i = 0; i < count; ++i) {
+            try {
+                pj::VideoDevInfo info = vdm.getDevInfo(static_cast<int>(i));
+                if (info.dir != PJMEDIA_DIR_CAPTURE && info.dir != PJMEDIA_DIR_CAPTURE_RENDER)
+                    continue;
+
+                const QString name = QString::fromStdString(info.name);
+                const QString lowerName = name.toLower();
+                if (lowerName.contains(QStringLiteral("obs virtual camera")))
+                    return static_cast<pjmedia_vid_dev_index>(i);
+                if (lowerName.contains(QStringLiteral("colorbar generator")))
+                    return static_cast<pjmedia_vid_dev_index>(i);
+                if (lowerName.contains(QStringLiteral("colorbar-active")))
+                    return static_cast<pjmedia_vid_dev_index>(i);
+
+                if (fallback == PJMEDIA_VID_INVALID_DEV)
+                    fallback = static_cast<pjmedia_vid_dev_index>(i);
+            } catch (...) {}
+        }
+        if (fallback != PJMEDIA_VID_INVALID_DEV)
+            return fallback;
+    } catch (...) {}
+    return PJMEDIA_VID_INVALID_DEV;
+}
+
+static QString preferredCameraDisplayName()
+{
+    const QString selectedId = AppSettings::loadSelectedCamera();
+    if (!selectedId.isEmpty()) {
+        const MediaDevice dev = MediaDeviceManager::instance().findDevice(
+            MediaDeviceType::Camera, selectedId);
+        if (!dev.isNull())
+            return dev.displayName;
+    }
+
+    MediaDeviceSelectionModel selection(&MediaDeviceManager::instance());
+    const MediaDevice dev = selection.selectedCamera();
+    return dev.isNull() ? QString() : dev.displayName;
+}
+
+static pjmedia_vid_dev_index preferredPjsipVideoCaptureDevice()
+{
+    const QString preferredName = preferredCameraDisplayName();
+    const QString preferredNorm = normalizeDeviceName(preferredName);
+    try {
+        pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
+        const unsigned count = vdm.getDevCount();
+        for (unsigned i = 0; i < count; ++i) {
+            try {
+                pj::VideoDevInfo info = vdm.getDevInfo(static_cast<int>(i));
+                if (info.dir != PJMEDIA_DIR_CAPTURE && info.dir != PJMEDIA_DIR_CAPTURE_RENDER)
+                    continue;
+
+                const QString name = QString::fromStdString(info.name);
+                if (!preferredNorm.isEmpty()
+                    && normalizeDeviceName(name) == preferredNorm) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("Selected Qt camera '%1' mapped to PJSIP video device '%2' (index %3)")
+                            .arg(preferredName, name)
+                            .arg(i));
+                    return static_cast<pjmedia_vid_dev_index>(i);
+                }
+            } catch (...) {}
+        }
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("No matching PJSIP video device found for Qt camera '%1'")
+                .arg(preferredName));
+    } catch (...) {}
+    return PJMEDIA_VID_INVALID_DEV;
+}
+
+static unsigned pjsipVideoDeviceCount()
+{
+    try {
+        return pj::Endpoint::instance().vidDevManager().getDevCount();
+    } catch (...) {
+        return 0;
+    }
+}
 #endif
 
 QString registrationStateName(RegistrationState state)
@@ -244,13 +361,39 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
 
 
 #if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
-        config.videoConfig.autoTransmitOutgoing = true;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP video devices available before account create: count=%1")
+                .arg(pjsipVideoDeviceCount()));
+        const bool hasCaptureDev = hasPjsipVideoCaptureDevice();
+        const pjmedia_vid_dev_index defaultCaptureDev = preferredPjsipVideoCaptureDevice();
+        if (defaultCaptureDev != PJMEDIA_VID_INVALID_DEV) {
+            config.videoConfig.defaultCaptureDevice = defaultCaptureDev;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP video default capture device set to index %1")
+                    .arg(defaultCaptureDev));
+        } else {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("No PJSIP video capture device could be selected; using default capture device"));
+        }
+        config.videoConfig.autoTransmitOutgoing = hasCaptureDev;
         // Keep incoming video window hidden; we paint via our GDI renderer.
         config.videoConfig.autoShowIncoming = false;
 #if defined(_WIN32)
-        if (PjsipGdiRenderer::deviceIndex() != PJMEDIA_VID_INVALID_DEV)
-            config.videoConfig.defaultRenderDevice = PjsipGdiRenderer::deviceIndex();
+        const pjmedia_vid_dev_index gdiRenderDev = PjsipGdiRenderer::deviceIndex();
+        if (gdiRenderDev != PJMEDIA_VID_INVALID_DEV) {
+            config.videoConfig.defaultRenderDevice = gdiRenderDev;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP video default render device set to Qt GDI renderer: %1")
+                    .arg(gdiRenderDev));
+        } else {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Qt GDI renderer not available yet; using default render device"));
+        }
 #endif
+        if (!hasCaptureDev) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("No PJSIP video capture device detected; outgoing video disabled, incoming video still allowed"));
+        }
 #endif
 
         Logger::instance().info(LogCategory::Sip,
