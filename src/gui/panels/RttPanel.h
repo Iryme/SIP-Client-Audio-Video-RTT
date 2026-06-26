@@ -26,9 +26,16 @@ private slots:
     void onRttSend();
     void onLmpeSend();
     void onRttStateChanged(RttState state);
+    // Fires on every QLineEdit textChanged — computes T.140 delta and sends.
+    void onRttInputChanged(const QString &newText);
 
 private:
     void updateInputState();
+    // Process one T.140 received block into m_remoteBuffer and update widgets.
+    void processRemoteText(const QString &incoming);
+    // Flush m_remoteBuffer to transcript and clear the live-typing area.
+    void flushRemoteBuffer();
+    void resetRttBuffers();
 
     // RTT tab
     QLabel      *m_rttState{nullptr};
@@ -45,4 +52,9 @@ private:
     QPushButton *m_lmpeSend{nullptr};
 
     RttSession  *m_rttSession{nullptr};
+
+    // TX: tracks what has already been sent so delta can be computed.
+    QString m_prevLocalText;
+    // RX: accumulates received T.140 characters for the current remote line.
+    QString m_remoteBuffer;
 };

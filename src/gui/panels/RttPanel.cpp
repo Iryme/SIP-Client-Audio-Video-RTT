@@ -9,6 +9,8 @@
 #include <QListWidget>
 #include <QFrame>
 #include "sip/SipManager.h"
+#include "rtt/RttTextUtils.h"
+#include "core/Logger.h"
 
 RttPanel::RttPanel(QWidget *parent)
     : QWidget(parent)
@@ -77,6 +79,8 @@ RttPanel::RttPanel(QWidget *parent)
 
     connect(m_rttSend,  &QPushButton::clicked, this, &RttPanel::onRttSend);
     connect(m_rttInput, &QLineEdit::returnPressed, this, &RttPanel::onRttSend);
+    // Live typing: fires on every character change.
+    connect(m_rttInput, &QLineEdit::textChanged, this, &RttPanel::onRttInputChanged);
     connect(m_rttClear, &QPushButton::clicked, m_rttTranscript, &QTextEdit::clear);
 
     tabs->addTab(rttTab, tr("RTT"));
@@ -115,7 +119,10 @@ RttPanel::RttPanel(QWidget *parent)
 
     tabs->addTab(lmpeTab, tr("LMPE"));
 
-    // Wire to SipManager RTT signals for live state updates.
+    // Wire to SipManager for call-level events (state updates, call ended).
+    // Remote text is handled exclusively via RttSession::remoteTextReceived to
+    // avoid double-display (SipManager::rttTextReceived is a pass-through from
+    // the same source).
     connect(&SipManager::instance(), &SipManager::rttMediaConnected, this, [this]() {
         if (m_rttSession)
             onRttStateChanged(m_rttSession->state());
@@ -124,12 +131,9 @@ RttPanel::RttPanel(QWidget *parent)
         if (m_rttSession)
             onRttStateChanged(m_rttSession->state());
     });
-    connect(&SipManager::instance(), &SipManager::rttTextReceived, this, [this](const QString &text) {
-        m_rttRemoteLive->setPlainText(text);
-        m_rttTranscript->append(tr("Remote: %1").arg(text));
-    });
-    connect(&SipManager::instance(), &SipManager::callDisconnected, this, [this](const QString &, const QString &, int) {
-        m_rttRemoteLive->clear();
+    connect(&SipManager::instance(), &SipManager::callDisconnected,
+            this, [this](const QString &, const QString &, int) {
+        resetRttBuffers();
         updateInputState();
     });
 }
@@ -140,13 +144,13 @@ void RttPanel::setRttSession(RttSession *session)
         m_rttSession->disconnect(this);
     }
     m_rttSession = session;
+    resetRttBuffers();
     if (m_rttSession) {
         connect(m_rttSession, &RttSession::rttStateChanged,
                 this, &RttPanel::onRttStateChanged);
         connect(m_rttSession, &RttSession::remoteTextReceived,
                 this, [this](const QString &text) {
-            m_rttRemoteLive->setPlainText(text);
-            m_rttTranscript->append(tr("Remote: %1").arg(text));
+            processRemoteText(text);
         });
         onRttStateChanged(m_rttSession->state());
     } else {
@@ -154,19 +158,49 @@ void RttPanel::setRttSession(RttSession *session)
     }
 }
 
+// Called on every QLineEdit textChanged. Computes the T.140 delta between
+// the previously sent text and the current field value, and sends it when
+// RTT is Active. Suppressed automatically when we programmatically clear
+// the field in onRttSend() because m_prevLocalText is reset to "" first.
+void RttPanel::onRttInputChanged(const QString &newText)
+{
+    const QString delta = rttTxDelta(m_prevLocalText, newText);
+    m_prevLocalText = newText;
+
+    if (delta.isEmpty())
+        return;
+
+    if (!m_rttSession || !m_rttSession->isActive()) {
+        Logger::instance().debug(LogCategory::Sip,
+            QStringLiteral("RTT TX delta ignored — session not active (delta len=%1)")
+                .arg(delta.length()));
+        return;
+    }
+
+    Logger::instance().debug(LogCategory::Sip,
+        QStringLiteral("RTT TX delta: len=%1").arg(delta.length()));
+    m_rttSession->sendText(delta);
+}
+
 void RttPanel::onRttSend()
 {
-    const QString text = m_rttInput->text().trimmed();
+    const QString text = m_rttInput->text();
     if (text.isEmpty())
         return;
-    m_rttTranscript->append(tr("You: %1").arg(text));
+
+    // Send a T.140 CR to signal end of this paragraph to the remote peer.
+    if (m_rttSession && m_rttSession->isActive())
+        m_rttSession->sendText(QStringLiteral("\r"));
+
+    // Add to local transcript.
+    m_rttTranscript->append(tr("You: %1").arg(text.trimmed()));
+
+    // Reset prevLocalText BEFORE clearing the field so that the textChanged
+    // signal fires with newText="" and delta = rttTxDelta("","") = "" → no BS
+    // characters are sent to the remote peer.
+    m_prevLocalText.clear();
     m_rttInput->clear();
 
-    if (m_rttSession && m_rttSession->isActive()) {
-        m_rttSession->sendText(text);
-    } else {
-        SipManager::instance().sendRttText(text);
-    }
     emit rttMessageSent(text);
 }
 
@@ -186,6 +220,7 @@ void RttPanel::onRttStateChanged(RttState state)
     switch (state) {
     case RttState::Disabled:
         stateText = tr("RTT: Not negotiated");
+        resetRttBuffers();
         break;
     case RttState::Offered:
         stateText = tr("RTT: Offered (awaiting negotiation)");
@@ -194,6 +229,9 @@ void RttPanel::onRttStateChanged(RttState state)
         stateText = tr("RTT: Negotiated");
         break;
     case RttState::Active:
+        // Sync m_prevLocalText to the current field content so that no delta
+        // is sent for text that may have been typed before RTT became active.
+        m_prevLocalText = m_rttInput->text();
         stateText = tr("RTT: Active");
         break;
     case RttState::Failed:
@@ -210,6 +248,55 @@ void RttPanel::updateInputState()
     m_rttInput->setEnabled(active);
     m_rttSend->setEnabled(active);
     m_rttInput->setPlaceholderText(
-        active ? tr("Type RTT message...")
+        active ? tr("Type RTT message (sent character by character)...")
                : tr("RTT not negotiated — input disabled"));
+}
+
+// Processes one T.140 received block and updates the live-typing display.
+// BS (U+0008) removes the last accumulated character.
+// CR (U+000D) or LF (U+000A) flushes the current buffer to the transcript.
+// All other codepoints are appended to the live buffer.
+void RttPanel::processRemoteText(const QString &incoming)
+{
+    Logger::instance().debug(LogCategory::Sip,
+        QStringLiteral("RTT RX: incoming len=%1").arg(incoming.length()));
+
+    bool prevWasCR = false;
+    for (const QChar ch : incoming) {
+        const ushort u = ch.unicode();
+        if (u == 0x08) {                        // BS — remove last char
+            if (!m_remoteBuffer.isEmpty())
+                m_remoteBuffer.chop(1);
+            prevWasCR = false;
+        } else if (u == 0x0D) {                 // CR — flush to transcript
+            flushRemoteBuffer();
+            prevWasCR = true;
+        } else if (u == 0x0A) {                 // LF — flush only if standalone
+            if (!prevWasCR)
+                flushRemoteBuffer();
+            prevWasCR = false;
+        } else {
+            m_remoteBuffer.append(ch);
+            prevWasCR = false;
+        }
+    }
+
+    m_rttRemoteLive->setPlainText(m_remoteBuffer);
+}
+
+void RttPanel::flushRemoteBuffer()
+{
+    if (!m_remoteBuffer.isEmpty()) {
+        m_rttTranscript->append(tr("Remote: %1").arg(m_remoteBuffer));
+        m_remoteBuffer.clear();
+        m_rttRemoteLive->clear();
+    }
+}
+
+void RttPanel::resetRttBuffers()
+{
+    m_prevLocalText.clear();
+    m_remoteBuffer.clear();
+    if (m_rttRemoteLive)
+        m_rttRemoteLive->clear();
 }
