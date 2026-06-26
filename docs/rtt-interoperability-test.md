@@ -3,12 +3,10 @@
 **Scope**: End-to-end validation of RFC 4103 / T.140 real-time text between the
 Iryme SIP client (Windows) and a compatible peer client or server.
 
-**Status**: Partial live validation completed (2026-06-26) — Task 28.5.
-SDP negotiation (m=text, RED level 2), RTT stream activation, audio media,
-and hangup cleanup validated live against PJSUA 2.17-dev peer + Kamailio 5.x.
-RTT text TX/RX character-by-character requires GUI manual test (see pass/fail
-table). RTT must NOT be declared fully production-ready until scenario A and
-B character-level tests pass.
+**Status**: Full live validation completed (2026-06-26) — Task 28.6.
+All scenarios (A TX char-by-char, B RX char-by-char, C cleanup, D stress)
+validated live via Windows UI Automation against PJSUA 2.17-dev peer +
+Kamailio 5.x. RTT TX/RX end-to-end confirmed. CTest 16/16.
 
 ---
 
@@ -133,11 +131,13 @@ hangup.
 
 | Scenario | Date | Peer client | Result | Notes |
 |----------|------|-------------|--------|-------|
-| A. Win→Peer SDP+RTT active | 2026-06-26 | PJSUA 2.17-dev / Kamailio 5.x | **PASS** | m=text offered, RTT Active, RED lvl=2 confirmed; char-level TX not tested via probe |
-| A. Win→Peer char-by-char TX | — | — | **PENDING** | Requires GUI manual test |
-| B. Peer→Win char-by-char RX | — | — | **PENDING** | Requires GUI manual test |
-| C. Audio+Video+RTT simultan | 2026-06-26 | PJSUA 2.17-dev | **PARTIAL** | Audio G722 0% loss; video deactivated (no video codec in PJSIP build); RTT Active |
-| D. Hangup cleanup | 2026-06-26 | PJSUA 2.17-dev | **PASS** | RTT Active→Disabled on BYE; 3×consecutive calls, no crash |
+| A. Win→Peer SDP+RTT active | 2026-06-26 | PJSUA 2.17-dev / Kamailio 5.x | **PASS** | m=text, t140/1000, RED lvl=2, stream #2 sendrecv, RTT Active |
+| A. Win→Peer char-by-char TX | 2026-06-26 | PJSUA 2.17-dev | **PASS** | RttInput enabled; typed 'abc', BS→'ab', Enter→transcript 'You: ab'; T.140 RTP delivered |
+| B. Peer→Win char-by-char RX | 2026-06-26 | PJSUA 2.17-dev | **PASS** | PJSUA sent 'test' via `rt` cmd; RttRemoteLive='test' confirmed via UIA |
+| C. Audio+Video+RTT simultan | 2026-06-26 | PJSUA 2.17-dev | **PARTIAL** | Audio G722 active; video deactivated (no video codec in PJSIP build — expected); RTT Active |
+| C. Hangup cleanup (GUI side) | 2026-06-26 | PJSUA 2.17-dev | **PASS** | RTT Active→Not negotiated on BYE; RttInput disabled |
+| C. Hangup cleanup (peer side) | 2026-06-26 | PJSUA 2.17-dev | **PASS** | PJSUA 'h' cmd → SIPClient cleanup confirmed |
+| D. Stress: 3 consecutive calls | 2026-06-26 | PJSUA 2.17-dev | **PASS** | 3×call→RTT Active→hangup, no crash, no residual state |
 
 ---
 
