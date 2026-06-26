@@ -1,0 +1,308 @@
+# ETSI / NG112 Architecture
+
+**Task:** 34 — ETSI / NG112 Architecture Skeleton
+**Date:** 2026-06-26
+**Branch:** `feature/project-handoff-002`
+**Status:** Skeleton only — no real emergency calls, no geolocation, no PSAP routing
+
+---
+
+## 1. Scope
+
+This document describes the architecture of the ETSI NG112 / NG-eCall extension
+to the Iryme SIP client. The extension is designed to be:
+
+- **Additive** — zero modifications to the existing SIP, audio, video, or RTT paths.
+- **Cleanly separated** — all NG112 code lives in `src/emergency/`, isolated from
+  the softphone modules in `src/sip/`, `src/media/`, `src/rtt/`, `src/gui/`.
+- **Incrementally deliverable** — each subsequent task (35–38) adds a single
+  well-defined capability without rewriting what came before.
+
+Standards in scope:
+- **ETSI TS 103 479** — NG-eCall over IMS (data part)
+- **ETSI TS 103 480** — NG112 end-to-end architecture
+- **ETSI TS 103 698** — NG112 caller location
+- **RFC 5031** — A Uniform Resource Name (URN) for Emergency and Other Well-Known Services
+- **RFC 4119** — PIDF-LO (Presence Information Data Format Location Object)
+- **RFC 7852** — Additional Data Related to an Emergency Call
+- **RFC 6442** — Location Conveyance for the Session Initiation Protocol
+
+---
+
+## 2. Current Architecture (pre-Task 34)
+
+```
+MainWindow
+├── SidebarPanel
+├── CallPanel ──── SipManager ──── SipCall ──── CallStateMachine
+│                  │               │             AudioMediaManager
+│                  │               │             VideoMediaManager
+│                  │               └─── RttSession ──── RttPanel
+│                  └── SipAccount (pjsua2)
+├── VideoPanel
+├── RttPanel
+├── MediaPanel
+└── DiagnosticsPanel
+```
+
+Key invariants that must be preserved:
+- `SipManager::makeCall(uri)` — initiates a standard outgoing call
+- `SipCall` — manages one call slot; no emergency-specific fields
+- `RttSession` — RFC 4103 T.140 only; no ETSI data multiplexing
+- No geolocation, no URN routing, no PSAP-specific headers in any existing class
+
+---
+
+## 3. What We Reuse
+
+| Existing component | Reuse in NG112 |
+|---|---|
+| `SipManager::makeCall()` | Task 36: will call this with a PSAP SIP URI after preparation |
+| `SipCall` | No change — the emergency INVITE uses the same SIP call slot |
+| `RttSession` / `RttPanel` | RFC 4103 is the baseline text medium for NG112 as well |
+| `AudioMediaManager` | Audio stream unmodified |
+| `CredentialStore` | PSAP credentials (if needed) stored via same mechanism |
+| `SipProfile.emergencyServiceUri` | Already persisted in `SipProfile`; used as routing hint |
+
+---
+
+## 4. New Components (Task 34 skeleton)
+
+All new code lives in `src/emergency/`. No existing file is modified.
+
+### 4.1 EmergencyCallProfile
+
+**File:** `src/emergency/EmergencyCallProfile.h` / `.cpp`
+
+Pure data struct + validation. No PJSIP dependency.
+
+| Field | Type | Description |
+|---|---|---|
+| `serviceUrn` | `QString` | RFC 5031 URN, e.g. `urn:service:sos` |
+| `routingTarget` | `QString` | PSAP SIP URI (placeholder) |
+| `callerDisplayName` | `QString` | From display name in INVITE |
+| `pidfLo` | `QString` | PIDF-LO XML body (populated by location provider) |
+| `additionalDataUris` | `QStringList` | RFC 7852 URIs (reserved) |
+
+Validation rules:
+- `serviceUrn` must be non-empty and start with `urn:service:`
+- `routingTarget` must be non-empty
+
+Factory: `EmergencyCallProfile::makeSos(routingTarget, displayName)`
+
+---
+
+### 4.2 EmergencyCallStateMachine
+
+**File:** `src/emergency/EmergencyCallStateMachine.h` / `.cpp`
+
+8-state machine. Independent of PJSIP.
+
+```
+Idle
+ └─→ Preparing
+      ├─→ LocationPending
+      │    └─→ ReadyToDial
+      │         └─→ Dialing        (Task 36)
+      │              └─→ Active    (Task 36)
+      │                   └─→ Ended
+      ├─→ ReadyToDial (when location not available — skipped)
+      └─→ Failed ──→ Idle (reset)
+```
+
+Signal: `stateChanged(newState, oldState, reason)`
+Signal: `transitionRejected(requested, current)`
+
+---
+
+### 4.3 EmergencyLocationProvider
+
+**File:** `src/emergency/EmergencyLocationProvider.h` / `.cpp`
+
+Abstract interface. Two statuses in Task 34:
+
+| Status | Meaning |
+|---|---|
+| `NotImplemented` | No provider wired — geolocation not available (Task 34 default) |
+| `Unavailable` | Provider exists but location cannot be obtained |
+
+**NullLocationProvider** — default implementation. Always `NotImplemented`.
+`requestLocation()` emits `locationStatusChanged(NotImplemented)` immediately.
+
+Future providers (Task 37):
+- `GpsLocationProvider` — queries Windows Location API
+- `ManualLocationProvider` — user-entered coordinates in settings dialog
+
+---
+
+### 4.4 EmergencyCallController
+
+**File:** `src/emergency/EmergencyCallController.h` / `.cpp`
+
+Orchestrates preparation. Owns neither SipManager nor location provider.
+
+Responsibilities in Task 34:
+1. Validate `EmergencyCallProfile` via `isValid()`
+2. Drive `EmergencyCallStateMachine`
+3. Request location from `EmergencyLocationProvider`
+4. If location unavailable: skip to `ReadyToDial`
+5. Emit `readyToDial(profile)` — consumer (Task 36) will call `SipManager::makeCall()`
+
+What it does NOT do in Task 34:
+- Does NOT call `SipManager::makeCall()`
+- Does NOT inject SIP headers
+- Does NOT add PIDF-LO to SDP or SIP body
+- Does NOT interact with PJSIP in any way
+
+---
+
+## 5. Conceptual Emergency Call Flow
+
+```
+[Emergency Button]
+       │
+       ▼
+EmergencyCallController::prepare()
+       │
+       ├── EmergencyCallProfile::isValid()  ──→ preparationFailed() if invalid
+       │
+       ├── SM: Idle → Preparing
+       │
+       ├── EmergencyLocationProvider::requestLocation()
+       │       │
+       │       ├── [Location available]  → SM: Preparing → LocationPending → ReadyToDial
+       │       │                            profile.pidfLo populated
+       │       │
+       │       └── [Not available]       → SM: Preparing → ReadyToDial (no PIDF-LO)
+       │
+       ├── emit readyToDial(profile)
+       │
+       ▼  [Task 36 takes over here]
+SipManager::makeCall(profile.routingTarget)
+       │
+       ├── SIP INVITE with:
+       │     Route: urn:service:sos (geolocation header, RFC 6442)   [Task 35]
+       │     Geolocation: <cid:...>                                   [Task 37]
+       │     Content-Type: multipart/mixed                            [Task 38]
+       │     Body part 1: application/pidf+xml (PIDF-LO)             [Task 37]
+       │     Body part 2: application/EmergencyCallData.* (RFC 7852) [Task 38]
+       │
+       ▼
+      PSAP
+       │
+       ▼
+SipCall Active (audio + RTT) ──→ hangup ──→ EmergencyCallController cleanup
+```
+
+---
+
+## 6. SIP Header Placeholders (Future Use)
+
+The following structures are reserved for future injection into SIP INVITEs.
+**None are injected in Task 34.**
+
+### Service URN (RFC 5031)
+```
+Request-URI: sip:112@psap.example.com
+```
+Alternative routing via `Route: <urn:service:sos>` depends on NG112 proxy support.
+
+### Geolocation Header (RFC 6442)
+```
+Geolocation: <cid:target123@atlanta.example.com>
+Geolocation-Routing: yes
+```
+
+### PIDF-LO body (RFC 4119)
+```xml
+<?xml version="1.0"?>
+<presence xmlns="urn:ietf:params:xml:ns:pidf"
+          entity="pres:alice@example.com">
+  <tuple id="sg89ae">
+    <status><basic>open</basic></status>
+  </tuple>
+  <device id="pc122">
+    <geopriv>
+      <location-info>
+        <Point xmlns="http://www.opengis.net/gml" srsName="urn:ogc:def:crs:EPSG::4326">
+          <pos>47.6062 -122.3321</pos>
+        </Point>
+      </location-info>
+      <usage-rules/>
+    </geopriv>
+  </device>
+</presence>
+```
+
+### Additional Data (RFC 7852)
+```
+Call-Info: <https://example.com/callerdata/abc123>;purpose=EmergencyCallData.ProviderInfo
+```
+
+---
+
+## 7. Integration Points with Existing Softphone
+
+No existing file is modified in Task 34. Future integration points:
+
+| Where | What | Task |
+|---|---|---|
+| `SipManager::makeCall()` | Called by controller after `readyToDial` | 36 |
+| `SipCall` (PJSIP path) | Add custom SIP headers to INVITE | 35 |
+| `SipAccount::onRegState()` | Emergency re-registration after network change | 35 |
+| `SipProfile::emergencyServiceUri` | Already exists; routing target for NG112 | 36 |
+| `RttPanel` / `RttSession` | Used as-is — NG112 requires RFC 4103 text | unchanged |
+
+---
+
+## 8. Build Integration
+
+The `src/emergency/` module compiles independently:
+- No PJSIP headers — no `HAVE_PJSIP` guard needed
+- No Qt Widgets dependency — `Qt6::Core` only
+- Tests use `QTEST_GUILESS_MAIN` — no display required
+
+To add to the main `SIPClient` target, append to `CMakeLists.txt` (Task 36):
+```cmake
+target_sources(SIPClient PRIVATE
+    src/emergency/EmergencyCallProfile.cpp
+    src/emergency/EmergencyCallStateMachine.cpp
+    src/emergency/EmergencyLocationProvider.cpp
+    src/emergency/EmergencyCallController.cpp
+)
+```
+
+Currently the module is only compiled by the 3 new CTest suites:
+- `test_emergency_state_machine` (11 tests)
+- `test_emergency_profile` (10 tests)
+- `test_emergency_location_provider` (10 tests)
+
+---
+
+## 9. Roadmap
+
+### Task 35 — SIP INVITE Headers for Emergency Calls
+- Add `EmergencyInviteBuilder` — generates custom SIP headers for emergency INVITE
+- Service URN routing (RFC 5031)
+- `P-Preferred-Identity` header for caller ID
+- Integration with `SipCall` PJSIP path (custom header injection)
+- No real PSAP connection required yet; validate with Wireshark/Kamailio
+
+### Task 36 — Emergency Call Controller → SipManager Integration
+- `EmergencyCallController::readyToDial` connected to `SipManager::makeCall()`
+- GUI: Emergency button in `CallPanel` (disabled by default, enabled by SipProfile flag)
+- Profile routing: `SipProfile::emergencyServiceUri` → `routingTarget`
+- Full SM lifecycle: Dialing, Active, Ended states implemented
+
+### Task 37 — Location Provider
+- `GpsLocationProvider` — Windows Location API (COM)
+- `ManualLocationProvider` — PIDF-LO from user-entered coordinates
+- PIDF-LO XML generation (`EmergencyLocationProvider::pidfLo()`)
+- Location injected into `EmergencyCallProfile.pidfLo` before `readyToDial`
+
+### Task 38 — Multipart INVITE Body (ETSI TS 103 479 / RFC 7852)
+- `multipart/mixed` body builder
+- Part 1: `application/pidf+xml` (PIDF-LO from Task 37)
+- Part 2: `application/EmergencyCallData.ProviderInfo+xml` (RFC 7852)
+- Integration with PJSIP body injection API
+- Validation against ETSI TS 103 479 conformance checklist

@@ -477,6 +477,65 @@ if(ENABLE_PJSIP AND PJSIP_FOUND)
     endforeach()
 endif()
 
+# ---- Emergency module sources (no PJSIP dependency) --------------------
+set(EMERGENCY_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocationProvider.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallController.cpp
+)
+
+# ---- test_emergency_state_machine --------------------------------------
+qt_add_executable(test_emergency_state_machine
+    test_emergency_state_machine.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallStateMachine.cpp
+)
+
+target_include_directories(test_emergency_state_machine PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_state_machine PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_state_machine COMMAND test_emergency_state_machine)
+
+# ---- test_emergency_profile --------------------------------------------
+qt_add_executable(test_emergency_profile
+    test_emergency_profile.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+)
+
+target_include_directories(test_emergency_profile PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_profile PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_profile COMMAND test_emergency_profile)
+
+# ---- test_emergency_location_provider ----------------------------------
+qt_add_executable(test_emergency_location_provider
+    test_emergency_location_provider.cpp
+    ${EMERGENCY_SOURCES}
+)
+
+target_include_directories(test_emergency_location_provider PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_location_provider PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_location_provider COMMAND test_emergency_location_provider)
+
 if(BUILD_LIVE_VALIDATION_TOOLS)
     if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
         message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")

@@ -1,8 +1,8 @@
 # Project Status
 
 Last updated: 2026-06-26
-Current task count: 28 of N (Tasks 1–28.6 complete)
-Active branch: `feature/project-handoff-002` HEAD `96ee7b4`
+Current task count: 34 of N (Tasks 1–28.6 + Task 34 complete)
+Active branch: `feature/project-handoff-002`
 
 ---
 
@@ -20,7 +20,8 @@ Active branch: `feature/project-handoff-002` HEAD `96ee7b4`
 | Video (codec, DirectShow, window embed, renderer) | 25–27 | COMPLETE — live validated |
 | RTT RFC 4103 / T.140 (TX, RX, RED, GUI) | 28.1–28.6 | COMPLETE — live validated |
 | Project Handoff 003 | 003 | COMPLETE |
-| ETSI / NG112 | 34+ | NOT STARTED |
+| ETSI / NG112 Architecture Skeleton | 34 | COMPLETE — skeleton only, no real calls |
+| ETSI / NG112 SIP headers + integration | 35–38 | NOT STARTED |
 
 ---
 
@@ -61,6 +62,7 @@ Active branch: `feature/project-handoff-002` HEAD `96ee7b4`
 | 28.4 | RTT SDP negotiation probe validation | feature/project-handoff-002 | COMPLETE — live validated |
 | 28.5 | RTT stream activation + audio + hangup cleanup validation | feature/project-handoff-002 | COMPLETE — live validated |
 | 28.6 | RTT GUI end-to-end TX/RX validation (UIA automation) | feature/project-handoff-002 | COMPLETE — live validated |
+| 34 | ETSI / NG112 Architecture Skeleton — emergency module, SM, profile, location interface | feature/project-handoff-002 | COMPLETE — skeleton only |
 
 ---
 
@@ -109,10 +111,14 @@ Active branch: `feature/project-handoff-002` HEAD `96ee7b4`
 | Audio calls (live) | COMPLETE | G.722 + G.711, level meters, device selection — live validated |
 | Video calls (live) | COMPLETE | VP8, DirectShow, SetParent render — live validated |
 | RTT RFC 4103 (live) | COMPLETE | TX/RX char-by-char, RED lv2, cleanup — live validated |
+| EmergencyCallProfile | SKELETON | Validation + factory. No SIP, no PJSIP. |
+| EmergencyCallStateMachine | SKELETON | 8-state SM. Independent of PJSIP. |
+| EmergencyLocationProvider | SKELETON | Abstract interface + NullLocationProvider (NotImplemented) |
+| EmergencyCallController | SKELETON | Orchestration. Emits readyToDial. No real call yet. |
 | LMPE messaging | NOT STARTED | |
-| ETSI TS 103 479 | NOT STARTED | |
-| ETSI TS 103 480 | NOT STARTED | |
-| ETSI TS 103 698 | NOT STARTED | |
+| ETSI TS 103 479 | NOT STARTED | Blocked on Task 35–38 |
+| ETSI TS 103 480 | NOT STARTED | Blocked on Task 35–38 |
+| ETSI TS 103 698 | NOT STARTED | Blocked on Task 37 (location provider) |
 | Incoming call notification | NOT STARTED | |
 | Call history | NOT STARTED | |
 | Network recovery | NOT STARTED | |
@@ -121,7 +127,7 @@ Active branch: `feature/project-handoff-002` HEAD `96ee7b4`
 
 ---
 
-## Known Limitations (current, post-Task-28.6)
+## Known Limitations (current, post-Task-34)
 
 - No automatic registration on startup or profile selection.
 - Network-change recovery not implemented.
