@@ -3,9 +3,12 @@
 **Scope**: End-to-end validation of RFC 4103 / T.140 real-time text between the
 Iryme SIP client (Windows) and a compatible peer client or server.
 
-**Status**: Test procedure defined. Live validation **not yet completed** — no
-compatible peer RTT client was available at the time of writing. RTT must NOT be
-declared production-ready until at least one scenario below passes.
+**Status**: Partial live validation completed (2026-06-26) — Task 28.5.
+SDP negotiation (m=text, RED level 2), RTT stream activation, audio media,
+and hangup cleanup validated live against PJSUA 2.17-dev peer + Kamailio 5.x.
+RTT text TX/RX character-by-character requires GUI manual test (see pass/fail
+table). RTT must NOT be declared fully production-ready until scenario A and
+B character-level tests pass.
 
 ---
 
@@ -18,7 +21,7 @@ declared production-ready until at least one scenario below passes.
   filtering rules affect `text` media.
 
 ### Windows client (Iryme)
-- Branch `feature/project-handoff-002`, commit ≥ `4ee356f`.
+- Branch `feature/project-handoff-002`, commit ≥ `bf9bae9`.
 - Built in Release or Debug with `HAVE_PJSIP` defined.
 - RTT panel visible in the call UI.
 - Log level set to Debug (Settings → Log Level) so SDP and text stream lines
@@ -130,10 +133,11 @@ hangup.
 
 | Scenario | Date | Peer client | Result | Notes |
 |----------|------|-------------|--------|-------|
-| A. Win→Peer typing | — | — | **PENDING** | — |
-| B. Peer→Win typing | — | — | **PENDING** | — |
-| C. Audio+Video+RTT | — | — | **PENDING** | — |
-| D. Hangup cleanup  | — | — | **PENDING** | — |
+| A. Win→Peer SDP+RTT active | 2026-06-26 | PJSUA 2.17-dev / Kamailio 5.x | **PASS** | m=text offered, RTT Active, RED lvl=2 confirmed; char-level TX not tested via probe |
+| A. Win→Peer char-by-char TX | — | — | **PENDING** | Requires GUI manual test |
+| B. Peer→Win char-by-char RX | — | — | **PENDING** | Requires GUI manual test |
+| C. Audio+Video+RTT simultan | 2026-06-26 | PJSUA 2.17-dev | **PARTIAL** | Audio G722 0% loss; video deactivated (no video codec in PJSIP build); RTT Active |
+| D. Hangup cleanup | 2026-06-26 | PJSUA 2.17-dev | **PASS** | RTT Active→Disabled on BYE; 3×consecutive calls, no crash |
 
 ---
 
