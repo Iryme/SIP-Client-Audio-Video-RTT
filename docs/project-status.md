@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-26
-Current task count: 34 of N (Tasks 1–28.6 + Task 34 complete)
+Current task count: 36 of N (Tasks 1–28.6 + Task 34 + Task 35 (build fix) + Task 36 complete)
 Active branch: `feature/project-handoff-002`
 
 ---
@@ -21,7 +21,9 @@ Active branch: `feature/project-handoff-002`
 | RTT RFC 4103 / T.140 (TX, RX, RED, GUI) | 28.1–28.6 | COMPLETE — live validated |
 | Project Handoff 003 | 003 | COMPLETE |
 | ETSI / NG112 Architecture Skeleton | 34 | COMPLETE — skeleton only, no real calls |
-| ETSI / NG112 SIP headers + integration | 35–38 | NOT STARTED |
+| Green build recovery (PJMEDIA_HAS_VIDEO fix) | 35 | COMPLETE — 20/20 CTest PASS |
+| ETSI / NG112 Emergency SIP INVITE Builder | 36 | COMPLETE — declarative builder, no real call |
+| ETSI / NG112 Location + real call integration | 37–38 | NOT STARTED |
 
 ---
 
@@ -63,6 +65,8 @@ Active branch: `feature/project-handoff-002`
 | 28.5 | RTT stream activation + audio + hangup cleanup validation | feature/project-handoff-002 | COMPLETE — live validated |
 | 28.6 | RTT GUI end-to-end TX/RX validation (UIA automation) | feature/project-handoff-002 | COMPLETE — live validated |
 | 34 | ETSI / NG112 Architecture Skeleton — emergency module, SM, profile, location interface | feature/project-handoff-002 | COMPLETE — skeleton only |
+| 35 | Green Build Recovery — PJMEDIA_HAS_VIDEO + pjlib linkage for PJSIP test targets | feature/project-handoff-002 | COMPLETE — 20/20 CTest PASS |
+| 36 | Emergency SIP INVITE Builder — EmergencyInviteBuilder, EmergencyInvite, validation | feature/project-handoff-002 | COMPLETE — declarative builder, no real call |
 
 ---
 
@@ -115,9 +119,11 @@ Active branch: `feature/project-handoff-002`
 | EmergencyCallStateMachine | SKELETON | 8-state SM. Independent of PJSIP. |
 | EmergencyLocationProvider | SKELETON | Abstract interface + NullLocationProvider (NotImplemented) |
 | EmergencyCallController | SKELETON | Orchestration. Emits readyToDial. No real call yet. |
+| EmergencyInviteBuilder | COMPLETE | Declarative INVITE builder. No PJSIP. 15 tests pass. |
+| EmergencyInvite | COMPLETE | Pure data struct. requestUri, headers, mediaPolicy, location flags. |
 | LMPE messaging | NOT STARTED | |
-| ETSI TS 103 479 | NOT STARTED | Blocked on Task 35–38 |
-| ETSI TS 103 480 | NOT STARTED | Blocked on Task 35–38 |
+| ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |
+| ETSI TS 103 480 | NOT STARTED | Blocked on Task 37–38 |
 | ETSI TS 103 698 | NOT STARTED | Blocked on Task 37 (location provider) |
 | Incoming call notification | NOT STARTED | |
 | Call history | NOT STARTED | |

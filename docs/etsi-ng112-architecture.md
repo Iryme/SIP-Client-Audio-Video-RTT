@@ -279,20 +279,87 @@ Currently the module is only compiled by the 3 new CTest suites:
 
 ---
 
-## 9. Roadmap
+## 9. Emergency SIP INVITE Builder (Task 36)
 
-### Task 35 — SIP INVITE Headers for Emergency Calls
-- Add `EmergencyInviteBuilder` — generates custom SIP headers for emergency INVITE
-- Service URN routing (RFC 5031)
-- `P-Preferred-Identity` header for caller ID
-- Integration with `SipCall` PJSIP path (custom header injection)
-- No real PSAP connection required yet; validate with Wireshark/Kamailio
+**Status:** Complete — declarative builder implemented, no real INVITE sent.
 
-### Task 36 — Emergency Call Controller → SipManager Integration
-- `EmergencyCallController::readyToDial` connected to `SipManager::makeCall()`
-- GUI: Emergency button in `CallPanel` (disabled by default, enabled by SipProfile flag)
-- Profile routing: `SipProfile::emergencyServiceUri` → `routingTarget`
-- Full SM lifecycle: Dialing, Active, Ended states implemented
+### 9.1 What it produces
+
+`EmergencyInviteBuilder` takes an `EmergencyCallProfile` and optional configuration
+and returns an `EmergencyInvite` — a pure data struct with no PJSIP dependency.
+
+| Field | Content |
+|---|---|
+| `requestUri` | PSAP SIP URI from `EmergencyCallProfile::routingTarget` |
+| `routeTarget` | Same as `requestUri` (separate field reserved for proxy route) |
+| `serviceUrn` | RFC 5031 URN from `EmergencyCallProfile::serviceUrn` |
+| `headers` | Deterministic ordered list (Accept, Supported, Geolocation if available) |
+| `contentType` | Empty placeholder — populated in Task 38 (PIDF-LO / multipart) |
+| `body` | Empty placeholder — populated in Task 38 |
+| `mediaPolicy` | `requireAudio=true`, `requireRtt=true`, `allowVideo=false` (defaults) |
+| `hasLocation` | Set by `setLocationAvailable()` on the builder |
+| `locationRequired` | Set by `setLocationRequired()` on the builder |
+
+### 9.2 What it does NOT produce
+
+- No real PJSIP INVITE is sent.
+- No PIDF-LO XML is generated (Task 38).
+- No multipart body is assembled (Task 38).
+- No PSAP routing decision is made (Task 38 / proxy config).
+- No `P-Preferred-Identity` or `P-Asserted-Identity` headers (Task 37).
+- No network I/O of any kind.
+
+### 9.3 Validation rules
+
+`EmergencyInviteBuilder::validate(invite)` returns errors and warnings:
+
+**Hard errors (isValid() = false):**
+- `serviceUrn` empty or not starting with `urn:service:`
+- `requestUri` (routing target) empty
+- `mediaPolicy.requireAudio = false`
+- `mediaPolicy.requireRtt = false`
+- `locationRequired = true` and `hasLocation = false`
+
+**Warnings (isValid() = true):**
+- `mediaPolicy.allowVideo = false`
+- `hasLocation = false` and `locationRequired = false`
+
+### 9.4 Generated headers
+
+| Header | Condition |
+|---|---|
+| `Accept: application/sdp` | Always |
+| `Supported: geolocation` | Always (RFC 6442 support indicator) |
+| `Geolocation: <placeholder-cid@ng112>` | Only when `hasLocation=true` |
+| `Geolocation-Routing: yes` | Only when `hasLocation=true` |
+
+Header order is deterministic — same input always produces the same list.
+
+### 9.5 Future integration with SipCall/SipManager
+
+In a future task, `EmergencyCallController` will:
+1. Call `EmergencyInviteBuilder(profile).build()` after `readyToDial` fires.
+2. Pass `EmergencyInvite::requestUri` to `SipManager::makeCall()`.
+3. Inject `EmergencyInvite::headers` into the PJSIP INVITE via `pjsua2::CallOpParam`.
+
+No existing `SipCall`, `SipManager`, or `SipAccount` code needs to change until that
+integration task.
+
+### 9.6 What remains for subsequent tasks
+
+| Item | Task |
+|---|---|
+| PIDF-LO XML generation (`EmergencyCallProfile::pidfLo` populated) | Task 37 |
+| `GpsLocationProvider` / `ManualLocationProvider` | Task 37 |
+| Multipart INVITE body builder (`multipart/mixed`) | Task 38 |
+| PJSIP header injection into real INVITE | Task 38 |
+| `EmergencyCallController` → `SipManager::makeCall()` wiring | Task 38 |
+| GUI Emergency button | Task 38 |
+| PSAP routing via outbound proxy or `Route:` header | Task 38 |
+
+---
+
+## 10. Roadmap
 
 ### Task 37 — Location Provider
 - `GpsLocationProvider` — Windows Location API (COM)
@@ -300,9 +367,9 @@ Currently the module is only compiled by the 3 new CTest suites:
 - PIDF-LO XML generation (`EmergencyLocationProvider::pidfLo()`)
 - Location injected into `EmergencyCallProfile.pidfLo` before `readyToDial`
 
-### Task 38 — Multipart INVITE Body (ETSI TS 103 479 / RFC 7852)
-- `multipart/mixed` body builder
-- Part 1: `application/pidf+xml` (PIDF-LO from Task 37)
-- Part 2: `application/EmergencyCallData.ProviderInfo+xml` (RFC 7852)
-- Integration with PJSIP body injection API
+### Task 38 — Multipart INVITE Body + Real Emergency Call (ETSI TS 103 479 / RFC 7852)
+- `EmergencyCallController::readyToDial` connected to `SipManager::makeCall()`
+- `multipart/mixed` body builder (PIDF-LO + RFC 7852 additional data)
+- PJSIP header injection via `pjsua2::CallOpParam`
+- GUI: Emergency button in `CallPanel`
 - Validation against ETSI TS 103 479 conformance checklist

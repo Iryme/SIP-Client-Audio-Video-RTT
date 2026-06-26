@@ -554,6 +554,24 @@ target_link_libraries(test_emergency_location_provider PRIVATE
 
 add_test(NAME test_emergency_location_provider COMMAND test_emergency_location_provider)
 
+# ---- test_emergency_invite_builder -------------------------------------
+qt_add_executable(test_emergency_invite_builder
+    test_emergency_invite_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyInviteBuilder.cpp
+)
+
+target_include_directories(test_emergency_invite_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_invite_builder PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_invite_builder COMMAND test_emergency_invite_builder)
+
 if(BUILD_LIVE_VALIDATION_TOOLS)
     if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
         message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")
