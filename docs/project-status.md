@@ -1,203 +1,146 @@
 # Project Status
 
-Last updated: 2026-06-23
-Current task count: 21 of N
+Last updated: 2026-06-26
+Current task count: 28 of N (Tasks 1–28.6 complete)
+Active branch: `feature/project-handoff-002` HEAD `96ee7b4`
+
+---
+
+## Phase Summary
+
+| Phase | Tasks | Status |
+|---|---|---|
+| Foundation (skeleton, GUI, settings, profiles, credentials, media devices, PJSIP build) | 1–10 | COMPLETE |
+| Project Handoff 001 | 11 | COMPLETE |
+| SIP Registration (SM, retry, expiry, profile switch) | 12–16 | COMPLETE — live validated |
+| Call State Machine + Audio + Video + SIP Diagnostics | 17–20 | COMPLETE — live validated |
+| Project Handoff 002 | 21 | COMPLETE |
+| Real PJSIP Validation (registration + audio calls) | 22–23 | COMPLETE — live validated |
+| Audio Device Selection (GUI) | 24 | COMPLETE — live validated |
+| Video (codec, DirectShow, window embed, renderer) | 25–27 | COMPLETE — live validated |
+| RTT RFC 4103 / T.140 (TX, RX, RED, GUI) | 28.1–28.6 | COMPLETE — live validated |
+| Project Handoff 003 | 003 | COMPLETE |
+| ETSI / NG112 | 34+ | NOT STARTED |
+
+---
 
 ## Completed Tasks
 
 | # | Task | Branch | Status |
 |---|---|---|---|
-| 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | IMPLEMENTED |
-| 2 | GUI layout specification | feature/gui-layout-spec | IMPLEMENTED ON SEPARATE BRANCH |
-| 3 | Diagnostics logger | feature/diagnostics-logger | IMPLEMENTED ON SEPARATE BRANCH |
-| 4 | Diagnostics GUI console | feature/diagnostics-gui-console | IMPLEMENTED ON SEPARATE BRANCH |
-| 5 | Persistent application settings | feature/persistent-settings | IMPLEMENTED ON SEPARATE BRANCH |
-| 6 | SIP profile model, persistence, GUI placeholders | feature/sip-profile-manager | IMPLEMENTED |
-| 7 | Secure credential storage (CredentialStore, Windows Credential Manager) | feature/secure-credential-storage | IMPLEMENTED |
-| 8 | SIP Profile Editor Dialog — Add/Edit/Delete with CredentialStore integration | feature/sip-profile-editor | IMPLEMENTED |
-| 9 | Media device enumeration — MediaDeviceManager, MediaPanel, persistence, fallback | feature/media-device-enumeration | IMPLEMENTED |
-| 10 | PJSIP build integration — FindPJSIP.cmake, ENABLE_PJSIP option, SipManager lifecycle skeleton | feature/pjsip-build-integration | IMPLEMENTED |
-| 11 | Project Handoff 001 — formal project snapshot and continuation prompt | feature/project-handoff-001 | IMPLEMENTED |
-| 12 | SIP Register / Unregister — active profile, secure credential lookup, pjsua2 callbacks, GUI status | feature/sip-registration | IMPLEMENTED |
-| 13 | Registration State Machine — explicit 5-state SM, transition guards, watchdog timeout, button disable | feature/registration-state-machine | IMPLEMENTED |
-| 14 | Registration Retry/Backoff — RegistrationRetryPolicy, exponential backoff, retryScheduled signal | feature/registration-retry-backoff | IMPLEMENTED |
-| 15 | Registration Expiry & Auto Re-REGISTER — RegistrationRefreshConfig, refresh timer, refresh failure → retry | feature/registration-expiry-refresh | IMPLEMENTED |
-| 16 | Profile Switch Sequencing — switchActiveProfile(), pending-switch guard, UNREGISTER old before registering new | feature/profile-switch-sequencing | IMPLEMENTED |
-| 17 | SIP Call State Machine — CallStateMachine (9 states), SipCall API, SipManager call control, CallPanel wiring | feature/call-state-machine | IMPLEMENTED |
-| 18 | Audio Media Integration — AudioMediaManager, mute/unmute, level meters, device selection, PJSIP bridge wiring | feature/audio-media | IMPLEMENTED |
-| 19 | Video Media Integration — VideoMediaManager, video mute, camera selection, VideoPanel overlays, PJSIP bridge wiring | feature/video-media | IMPLEMENTED |
-| 20 | SIP Diagnostics & SIP Ladder — SipMessageTrace model, SipTraceLogger, SipLadderWidget, DiagnosticsPanel SIP tab, export Text/JSON | feature/sip-diagnostics-ladder | IMPLEMENTED |
-| 21 | Project Handoff 002 — formal project snapshot after Tasks 12-20 | feature/project-handoff-002 | IMPLEMENTED |
+| 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | COMPLETE |
+| 2 | GUI layout specification | feature/gui-layout-spec | COMPLETE (separate lineage) |
+| 3 | Diagnostics logger | feature/diagnostics-logger | COMPLETE (separate lineage, not merged) |
+| 4 | Diagnostics GUI console | feature/diagnostics-gui-console | COMPLETE (separate lineage, not merged) |
+| 5 | Persistent application settings | feature/persistent-settings | COMPLETE (separate lineage, not merged) |
+| 6 | SIP profile model, persistence, GUI | feature/sip-profile-manager | COMPLETE |
+| 7 | Secure credential storage (CredentialStore, Windows CM) | feature/secure-credential-storage | COMPLETE |
+| 8 | SIP Profile Editor Dialog — Add/Edit/Delete | feature/sip-profile-editor | COMPLETE |
+| 9 | Media device enumeration — MediaDeviceManager, MediaPanel | feature/media-device-enumeration | COMPLETE |
+| 10 | PJSIP build integration — FindPJSIP.cmake, SipManager skeleton | feature/pjsip-build-integration | COMPLETE |
+| 11 | Project Handoff 001 | feature/project-handoff-001 | COMPLETE |
+| 12 | SIP Register / Unregister — PJSIP, callbacks, GUI status | feature/sip-registration | COMPLETE |
+| 13 | Registration State Machine — 5-state SM, watchdog, guards | feature/registration-state-machine | COMPLETE |
+| 14 | Registration Retry / Backoff — RegistrationRetryPolicy, exponential backoff | feature/registration-retry-backoff | COMPLETE |
+| 15 | Registration Expiry & Auto Re-REGISTER — RegistrationRefreshConfig | feature/registration-expiry-refresh | COMPLETE |
+| 16 | Profile Switch Sequencing — switchActiveProfile(), pending-switch guard | feature/profile-switch-sequencing | COMPLETE |
+| 17 | SIP Call State Machine — CallStateMachine (9 states), SipCall, CallPanel | feature/call-state-machine | COMPLETE |
+| 18 | Audio Media Integration — AudioMediaManager, mute, level meters, PJSIP bridge | feature/audio-media | COMPLETE |
+| 19 | Video Media Integration — VideoMediaManager, VideoPanel, PJSIP bridge scaffold | feature/video-media | COMPLETE |
+| 20 | SIP Diagnostics & Ladder — SipTraceLogger, SipLadderWidget, DiagnosticsPanel | feature/sip-diagnostics-ladder | COMPLETE |
+| 21 | Project Handoff 002 | feature/project-handoff-002 | COMPLETE |
+| 22 | Real PJSIP Integration Validation — registration + audio calls + fixes | feature/project-handoff-002 | COMPLETE — live validated |
+| 23 | GUI Live Audio Call — dial row, URI normalization, hangup hardening | feature/project-handoff-002 | COMPLETE — live validated |
+| 24 | Audio Device Selection — GUI combo → PJSIP AudDevManager | feature/project-handoff-002 | COMPLETE — live validated |
+| 25 | Video codec + DirectShow + window embed (SetParent/MoveWindow) | feature/project-handoff-002 | COMPLETE — live validated |
+| 26 | CodecManager — codec matrix, priorities, negotiation logging | feature/project-handoff-002 | COMPLETE |
+| 27 | PjsipGdiRenderer — custom PJMEDIA GDI factory, preview stop fix, resize fix | feature/project-handoff-002 | COMPLETE — live validated |
+| 28.1 | RTT foundation — RttSession, SDP m=text, PJSIP text stream detection | feature/project-handoff-002 | COMPLETE |
+| 28.2 | RTT TX/RX — char-by-char delta TX, T.140 RX accumulation, RttPanel wiring | feature/project-handoff-002 | COMPLETE |
+| 28.3 | RTT RED — redundancyLevel=2, AccountConfig, interop test doc | feature/project-handoff-002 | COMPLETE |
+| 28.4 | RTT SDP negotiation probe validation | feature/project-handoff-002 | COMPLETE — live validated |
+| 28.5 | RTT stream activation + audio + hangup cleanup validation | feature/project-handoff-002 | COMPLETE — live validated |
+| 28.6 | RTT GUI end-to-end TX/RX validation (UIA automation) | feature/project-handoff-002 | COMPLETE — live validated |
 
-> **Branch lineage warning:** the repository has no `main` branch, and Tasks 2-5
-> are not ancestors of the active Tasks 6-10 lineage. The active code uses the
-> simpler `Logger`, `DiagnosticsPanel`, and `AppSettings` implementations. See
-> `docs/project-handoff/handoff-001.md` before reconciling these branches.
+---
 
 ## Module Status
 
 | Module | Status | Notes |
 |---|---|---|
-| CMake build system | IMPLEMENTED | Qt6, C++17 |
-| Dark GUI theme (QSS) | IMPLEMENTED | Full dark theme |
-| Main window layout | IMPLEMENTED | Splitter-based, stable |
-| Navigation rail | IMPLEMENTED | Placeholder icons |
-| Account/contact sidebar | IMPLEMENTED | Profile selector + account card |
-| Call panel + controls | IMPLEMENTED | Wired signals, no SIP |
-| Video panel | IMPLEMENTED | Placeholder paintEvent |
-| RTT panel | IMPLEMENTED | Placeholder UI |
-| LMPE panel | IMPLEMENTED | Placeholder UI |
-| Diagnostics/log panel | IMPLEMENTED | Fully functional |
-| Status bar | IMPLEMENTED | Live SIP registration state; call/media statistics remain placeholders |
-| Logger (core) | IMPLEMENTED | Levels, categories, signals |
-| AppSettings | IMPLEMENTED | QSettings wrapper |
-| SipProfile model | IMPLEMENTED | All fields, URI derivation |
-| SipProfileManager | IMPLEMENTED | CRUD, validation, persistence, active selection, credential helpers |
-| CredentialStore | IMPLEMENTED | Windows Credential Manager backend; MemoryCredentialBackend for tests |
-| MediaDevice model | IMPLEMENTED | id, displayName, type, isDefault, isAvailable |
-| MediaDeviceManager | IMPLEMENTED | Qt Multimedia backed; pluggable IMediaDeviceBackend |
-| MediaDeviceSelectionModel | IMPLEMENTED | Persistence + fallback to default |
-| MediaPanel | IMPLEMENTED | Microphone/Speaker/Camera combos + Refresh button in Media tab |
-| SipManager | IMPLEMENTED | Lifecycle + register/unregister + switchActiveProfile() sequencing; stub + PJSIP branches |
-| RegistrationStateMachine | IMPLEMENTED | 5-state explicit SM; transition table; watchdog timeout; diagnostics; Registered→RegistrationFailed for refresh failure |
-| RegistrationRetryPolicy | IMPLEMENTED | isRetryable(code), delayForAttempt(n) exponential backoff |
-| RegistrationRefreshConfig | IMPLEMENTED | delayMsForExpiry(expiry): 80% ratio / 30s margin; overrideDelayMs for tests |
-| SipAccount | IMPLEMENTED | pjsua2 account creation, REGISTER/UNREGISTER, queued callbacks; refreshRegistration(); registrationExpiryReceived signal |
-| SipCall | IMPLEMENTED | makeCall/answer/reject/hangup/hold/resume; owns CallStateMachine; setMuted/isMuted; audioMediaConnected/Disconnected signals; level timer (PJSIP); stub + PJSIP paths |
-| CallStateMachine | IMPLEMENTED | 9-state explicit SM; transition table; watchdog timeout (OutgoingInit/Disconnecting); diagnostics |
-| AudioMediaManager | IMPLEMENTED | attachCall/detachCall lifecycle; setMuted; setMicrophone/Speaker (persisted); inputLevel/outputLevel forwarding; Qt-only (no pjsua2.hpp) |
-| VideoMediaManager | IMPLEMENTED | attachCall/detachCall lifecycle; setVideoMuted; setCamera (persisted); local/remote availability signals; Qt-only (no pjsua2.hpp) |
-| SipMessageTrace | IMPLEMENTED | POD struct: direction, method, statusCode, statusText, from/to URI, Call-ID, CSeq, rawSip (credentials redacted) |
-| SipTraceLogger | IMPLEMENTED | singleton; logMessage (redact+store+signal); clear; exportToText/exportToJson; Qt-only |
-| SipLadderWidget | IMPLEMENTED | paintEvent ladder with entity columns, arrows, color coding, CSeq/Call-ID annotation; auto-scroll in QScrollArea |
-| cmake/FindPJSIP.cmake | IMPLEMENTED | Searches PJSIP_DIR, pkg-config, system paths |
-| SIP registration | IMPLEMENTED | Manual register/unregister; exponential retry on transient failures; auto-refresh before expiry; deterministic profile-switch sequencing |
-| SIP call control | IMPLEMENTED | makeCall/answer/reject/hangup/hold/resume; 9-state SM; stub (test-only) + PJSIP scaffolding |
-| Audio calls | SCAFFOLDED | AudioMediaManager + PJSIP bridge wiring complete; untested without live PJSIP installation |
-| Video calls | SCAFFOLDED | VideoMediaManager + PJSIP bridge wiring complete; VideoPanel overlays + swap/mute controls; rendering to widget deferred |
-| RFC 4103 RTT | NOT STARTED | |
+| CMake build system | COMPLETE | Qt6, C++17, ENABLE_PJSIP, BUILD_TESTS |
+| Dark GUI theme (QSS) | COMPLETE | Full dark theme |
+| Main window layout | COMPLETE | Splitter-based, stable |
+| Navigation rail | COMPLETE | Tab-based, wired |
+| Account/contact sidebar | COMPLETE | Profile selector + account card + register buttons |
+| Call panel + controls | COMPLETE | Dial row, mute, level meters, device selectors |
+| Video panel | COMPLETE | SetParent/MoveWindow, overlays, mute, swap, camera selector |
+| RTT panel | COMPLETE | Live typing, transcript, LMPE placeholder tab |
+| LMPE panel | PLACEHOLDER | UI only — no LMPE logic |
+| Diagnostics/log panel | COMPLETE | SIP Ladder tab + Log tab |
+| Status bar | COMPLETE | Live SIP state + call state |
+| Logger (core) | COMPLETE | Levels, categories, thread-safe signals |
+| AppSettings | COMPLETE | QSettings wrapper |
+| SipProfile model | COMPLETE | All fields, URI derivation |
+| SipProfileManager | COMPLETE | CRUD, validation, persistence, credential helpers |
+| CredentialStore | COMPLETE | Windows Credential Manager; MemoryBackend for tests |
+| MediaDeviceManager | COMPLETE | Qt Multimedia backed; IMediaDeviceBackend |
+| MediaDeviceSelectionModel | COMPLETE | Persistence + fallback to default |
+| MediaPanel | COMPLETE | Mic/Speaker/Camera combos + Refresh |
+| SipManager | COMPLETE | Full lifecycle; registration; call control; RTT session |
+| RegistrationStateMachine | COMPLETE | 5-state SM, watchdog, transition guards |
+| RegistrationRetryPolicy | COMPLETE | isRetryable(code), exponential backoff |
+| RegistrationRefreshConfig | COMPLETE | 80%/30s margin, overrideDelayMs for tests |
+| SipAccount | COMPLETE | pjsua2 account wrapper, queued callbacks |
+| SipCall | COMPLETE | 9-state SM, stub + PJSIP paths, audio/video/RTT signals |
+| CallStateMachine | COMPLETE | 9-state SM, watchdog, display text |
+| AudioMediaManager | COMPLETE | attachCall/detachCall, mute, device selection, level forwarding |
+| VideoMediaManager | COMPLETE | attachCall/detachCall, mute, camera selection |
+| PjsipGdiRenderer | COMPLETE | Custom PJMEDIA GDI factory for HWND → device index mapping |
+| CodecManager | COMPLETE | Audio/video codec matrix, priorities, negotiation logging |
+| SipUriNormalizer | COMPLETE | bare users → sip:user@domain, full URI passthrough |
+| SipMessageTrace / SipTraceLogger | COMPLETE | Credential redaction, export Text/JSON |
+| SipLadderWidget | COMPLETE | paintEvent ladder, arrows, CSeq/Call-ID annotation |
+| RttSession | COMPLETE | 5-state SM, sendText, onCallMediaStateChanged |
+| RttPanel | COMPLETE | TX delta, RX accumulation, BS, CR→transcript |
+| FindPJSIP.cmake | COMPLETE | PJSIP discovery, PJSIP::pjsua2 imported target |
+| SIP registration (live) | COMPLETE | REGISTER/UNREGISTER, 401, refresh, retry — live validated |
+| SIP call control (live) | COMPLETE | INVITE, BYE, Hold, outbound proxy — live validated |
+| Audio calls (live) | COMPLETE | G.722 + G.711, level meters, device selection — live validated |
+| Video calls (live) | COMPLETE | VP8, DirectShow, SetParent render — live validated |
+| RTT RFC 4103 (live) | COMPLETE | TX/RX char-by-char, RED lv2, cleanup — live validated |
 | LMPE messaging | NOT STARTED | |
 | ETSI TS 103 479 | NOT STARTED | |
 | ETSI TS 103 480 | NOT STARTED | |
 | ETSI TS 103 698 | NOT STARTED | |
+| Incoming call notification | NOT STARTED | |
+| Call history | NOT STARTED | |
+| Network recovery | NOT STARTED | |
+| Linux/macOS credential backends | NOT STARTED | |
 | Debug bundle export | NOT STARTED | |
-| Profile editor dialog | IMPLEMENTED | SipProfileEditorDialog — Add/Edit/Delete with password via CredentialStore |
-| Media device selection | NOT STARTED | |
-| Call statistics | NOT STARTED | |
-| Credential / keychain storage | IMPLEMENTED (Windows) | Linux/macOS deferred (ADR-011) |
 
-## Known Limitations (Task 1)
+---
 
-- No SIP networking — application is GUI-only
-- No PJSIP dependency — must be added in the next SIP task
-- Nav rail buttons have text labels only (no icons)
-- Contact list uses hardcoded placeholder entries
-- Info tabs (Call Info, Media, Statistics) are empty panels
-- Category filter and search in Diagnostics are UI-only, not wired
-- Video area shows a placeholder paintEvent, no real video
-- Local preview is a labeled box, no camera input
-
-## Known Limitations (Task 6)
-
-- No profile editor dialog — Add/Edit buttons in SidebarPanel log "not implemented"
-- No SIP registration — SipProfileManager is persistence-only; PJSIP integration is deferred
-- `emergencyServiceUri` is persisted but not used — ETSI emergency integration is future work
-- Contact list remains hardcoded; contacts are a separate future task
-
-## Known Limitations (Task 7)
-
-- `CredentialStore` is implemented for Windows only; Linux/macOS backends not yet written
-- `CRED_PERSIST_LOCAL_MACHINE` — credentials are bound to the current machine, no roaming
-- No credential migration or export path (by design — credentials are not application data)
-
-## Known Limitations (Task 8)
-
-- Profile editor dialog is a plain modal — no in-dialog confirmation for destructive changes
-- "Custom SIP Headers" in the Advanced section is a UI placeholder, not yet wired
-- No inline error highlighting — validation errors are shown in a `QMessageBox`, not inline
-- Contact list in `SidebarPanel` remains hardcoded placeholder entries (separate future task)
-
-## Known Limitations (Task 10)
-
-- `ENABLE_PJSIP` defaults to `OFF`; no real SIP calls or registration until enabled + PJSIP installed
-- `SipAccount` and `SipCall` are header-only stubs — no account creation or call management yet
-- PJSIP thread safety: when PJSIP is compiled in, PJSIP callbacks must be dispatched to the Qt main thread via `QMetaObject::invokeMethod` (not yet implemented — deferred to registration task)
-- The status bar label `SIP: Stub SIP backend (ready)` is informational only; it does not reflect real registration state
-
-## Known Limitations (Task 9)
-
-- Audio level meters are static/inactive — no real microphone capture yet
-- Hot-plug detection: `QMediaDevices::audioInputsChanged` / `videoInputsChanged` signals are not yet forwarded into `MediaDeviceManager`; user must press Refresh
-- Camera enumeration requires Qt Multimedia camera permissions on macOS
-- Speakers may not enumerate on headless/virtual-machine systems
-- Video preview in `VideoPanel` remains a placeholder paintEvent — no real camera stream
-
-## Known Limitations (Task 12)
-
-- Real PJSIP registration was not integration-tested on this machine because PJSIP is not installed; stub mode and guarded APIs were verified.
-- Registration is manual; there is no startup/profile-change auto-register behavior.
-- Profile switching does not wait for an old account's unregister response before account replacement.
-
-## Known Limitations (Task 13)
-
-- No automatic registration on startup or profile selection.
-- ~~No refresh scheduling before registration expiry.~~ (Task 15 done)
-- ~~No retry/backoff on transient failures.~~ (Task 14 done)
-- Network-change recovery not implemented.
-- One account supported at a time; multi-account deferred.
-
-## Known Limitations (Task 14)
-
-- Retry counter resets on exhaustion; no persistent backoff across app restarts.
-
-## Known Limitations (Task 15)
-
-- Expiry is only extracted from PJSIP AccountInfo; if the server omits it, the configured default (300 s) is used.
-- No automatic registration on startup or profile selection.
-- ~~Profile switch does not wait for old account UNREGISTER response before replacing.~~ (Task 16 done)
-- Network-change recovery not implemented.
-- CredentialStore Linux/macOS backends not yet implemented.
-
-## Known Limitations (Task 16)
-
-- No automatic registration on startup or when a profile is selected for the first time.
-- Network-change recovery not implemented.
-- Watchdog timeout during profile switch proceeds with the new profile registration even if the old UNREGISTER was not acknowledged by the server; the old registration may live until server-side expiry.
-- One account is supported at a time; multi-account is deferred.
-
-## Known Limitations (Task 17)
+## Known Limitations (current, post-Task-28.6)
 
 - No automatic registration on startup or profile selection.
 - Network-change recovery not implemented.
-- Call audio/video/RTT media not yet wired — SipCall controls call state only; media setup is deferred.
-- SipCall PJSIP path requires pj::Account access from SipAccount; full PJSIP call integration is scaffolded but requires a live PJSIP installation to test.
-- One concurrent call supported; multi-party/conference is deferred.
-- Call duration timer is a UI placeholder — no elapsed-time counter yet.
-- Incoming call identification (name resolution) not yet implemented — remote URI only.
+- One active call at a time; conference not supported.
+- VP9 / H.264 not available (VP8 only).
+- Audio/video hot-swap during a call not implemented.
+- Hot-plug device detection not forwarded to MediaDeviceManager.
+- Incoming call not tested live (GUI flow only verified in stub mode).
+- ETSI / NG112 not implemented.
+- CredentialStore: Windows backend only; Linux/macOS return failure.
+- Contact list hardcoded; contact management not implemented.
+- Debug bundle export not implemented.
+- SIP trace: raw SIP capture not implemented (synthetic traces only).
 
-## Known Limitations (Task 18)
+---
 
-- Audio bridge tested through compilation only; live end-to-end audio requires `ENABLE_PJSIP=ON` with a real PJSIP installation.
-- Device hot-swap during a call: selection is persisted and takes effect on the next call. PJSIP integer device-index mapping from Qt Multimedia string IDs is not yet implemented.
-- Audio level meters always show 0 in stub mode (no PJSIP).
-- Video and RTT media are still NOT STARTED.
-- `tests/CMakeLists.txt`: any test target that compiles `SipManager.cpp` must include `AUDIO_MEDIA_SOURCES` (AudioMediaManager.cpp + MediaDeviceManager.cpp + MediaDeviceSelectionModel.cpp + QtMediaDeviceBackend.cpp) and link `Qt6::Multimedia`.
+## Branch Lineage Note
 
-## Known Limitations (Task 20)
-
-- PJSIP path: low-level byte-accurate raw SIP capture requires a PJSIP module registration (not implemented). Stub traces leave `rawSip` empty.
-- Call direction (incoming vs. outgoing) is not tracked by SipManager, so the 200 OK on `Active` is always marked Inbound in stub mode.
-- SIP Ladder export (JSON) omits `rawSip` by design (credential-safe output).
-- Auto-scroll in the SIP Ladder uses a queued `invokeMethod` which may occasionally lag one message behind.
-
-## Known Limitations (Task 19)
-
-- PJSIP video bridge tested through compilation only; live end-to-end video requires `ENABLE_PJSIP=ON` with a real PJSIP installation.
-- Real video rendering requires attaching a native window handle via `pj::VideoWindow` — not yet wired. `VideoPanel` shows a colour-tinted placeholder.
-- Camera hot-swap during a call: selection is persisted (takes effect on next call). PJSIP integer device-index mapping not yet implemented.
-- Local camera preview before a call (without SIP session) not yet started — `VideoPanel` PiP shows "Camera Off" until the call goes active.
-- Video level monitoring not implemented (no PJSIP equivalent of `pjsua_conf_get_signal_level` for video).
-
-## Next Recommended Task
-
-**Task 22:** Real PJSIP Integration Validation — install PJSIP, build with `-DENABLE_PJSIP=ON`, smoke-test registration against a real SIP registrar, fix compile/runtime issues, expose `pj::Account&` accessor in `SipAccount`, verify 401 credential challenge flow, confirm audio path connects. Validation and bug fixes only; no new features.
+No `main` branch exists. `origin/HEAD` → `feature/project-skeleton`.
+Each task branch is a linear child of the previous one. Tasks 2–5 remain on a
+separate unmerged lineage (richer Logger/DiagnosticsPanel/AppSettings variants);
+the active code uses the simpler Task-1 implementations of these.

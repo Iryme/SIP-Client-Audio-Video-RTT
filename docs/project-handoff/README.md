@@ -27,7 +27,8 @@ Files are named `handoff-NNN.md` where NNN is zero-padded (e.g., `handoff-010.md
 
 ## Current Handoffs
 
-| File | Tasks Covered | Date |
-|---|---|---|
-| [handoff-001.md](handoff-001.md) | Tasks 1-11 | 2026-06-22 |
-| [handoff-002.md](handoff-002.md) | Tasks 12-20 | 2026-06-23 |
+| File | Tasks Covered | Date | Milestone |
+|---|---|---|---|
+| [handoff-001.md](handoff-001.md) | Tasks 1-11 | 2026-06-22 | Foundation: skeleton, GUI, profiles, credentials, media devices, PJSIP build |
+| [handoff-002.md](handoff-002.md) | Tasks 12-20 | 2026-06-23 | SIP core: registration SM, retry, expiry, profile switch, call SM, audio, video scaffold, diagnostics |
+| [handoff-003.md](handoff-003.md) | Tasks 22-28.6 | 2026-06-26 | Live validation: SIP + Audio + Video + RTT RFC 4103 — all subsystems live-validated. Next: ETSI / NG112 |
