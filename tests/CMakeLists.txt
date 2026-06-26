@@ -486,14 +486,14 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         live_registration_probe.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
-        ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
-        ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
         ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+        ${CALL_SOURCES}
+        ${CODEC_MANAGER_SOURCES}
         ${AUDIO_MEDIA_SOURCES}
         ${PJSIP_AUDIO_MAPPER_SOURCES}
         ${SECURITY_SOURCES}
@@ -508,6 +508,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         Qt6::Core
         Qt6::Multimedia
         PJSIP::pjsua2
+        ${CALL_SOURCES_EXTRA_LIBS}
     )
 
     if(WIN32)
@@ -518,14 +519,14 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         live_audio_call_probe.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
-        ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
-        ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
         ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+        ${CALL_SOURCES}
+        ${CODEC_MANAGER_SOURCES}
         ${AUDIO_MEDIA_SOURCES}
         ${PJSIP_AUDIO_MAPPER_SOURCES}
         ${SECURITY_SOURCES}
@@ -540,6 +541,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         Qt6::Core
         Qt6::Multimedia
         PJSIP::pjsua2
+        ${CALL_SOURCES_EXTRA_LIBS}
     )
 
     if(WIN32)
