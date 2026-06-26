@@ -67,6 +67,10 @@ public:
     // No-op on non-Windows or stub builds.
     void attachVideoWindows(WId remoteWidget, WId localPreview);
 
+    // Send a T.140 RTT text block via the active RTP text stream.
+    // No-op in stub mode or when the text stream is not active.
+    void sendRttText(const QString &text);
+
     // Force to Idle regardless of current state (shutdown / cleanup path).
     void reset(const QString &reason = QStringLiteral("Reset"));
 
@@ -115,6 +119,16 @@ signals:
 
     // Video mute state change (true = muted / not sending).
     void videoMuteChanged(bool muted);
+
+    // Emitted when a T.140 / RFC 4103 text stream becomes active or inactive.
+    // In PJSIP mode driven by onCallMediaState PJMEDIA_TYPE_TEXT detection.
+    // In stub mode not emitted automatically (tests drive via direct signal).
+    void rttMediaConnected();
+    void rttMediaDisconnected();
+
+    // Emitted from the PJSIP media thread (via queued connection) when the
+    // remote peer sends an RTT text block.
+    void rttTextReceived(const QString &text);
 
 private slots:
     void onStateMachineStateChanged(CallState state, const QString &statusText, int statusCode);

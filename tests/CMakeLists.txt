@@ -33,7 +33,17 @@ set(CODEC_MANAGER_SOURCES
 set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/rtt/RttSession.cpp
 )
+# SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
+# Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
+# PjsipGdiRenderer.cpp needs Qt6::Widgets and Qt6::Gui.
+if(WIN32)
+    list(APPEND CALL_SOURCES ${CMAKE_SOURCE_DIR}/src/media/PjsipGdiRenderer.cpp)
+    set(CALL_SOURCES_EXTRA_LIBS Qt6::Widgets Qt6::Gui)
+else()
+    set(CALL_SOURCES_EXTRA_LIBS "")
+endif()
 
 # SIP trace sources — required by any test that compiles SipManager.cpp
 set(SIP_TRACE_SOURCES
@@ -145,6 +155,8 @@ qt_add_executable(test_registration_state_machine
     ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
 )
 
 target_include_directories(test_registration_state_machine PRIVATE
@@ -154,6 +166,7 @@ target_include_directories(test_registration_state_machine PRIVATE
 target_link_libraries(test_registration_state_machine PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Multimedia
 )
 
 add_test(NAME test_registration_state_machine COMMAND test_registration_state_machine)
@@ -389,6 +402,27 @@ target_link_libraries(test_codec_manager PRIVATE
 
 add_test(NAME test_codec_manager COMMAND test_codec_manager)
 
+# ---- test_rtt_session --------------------------------------------------
+# Note: RttSession.cpp is already part of CALL_SOURCES (added above).
+qt_add_executable(test_rtt_session
+    test_rtt_session.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
+)
+
+target_include_directories(test_rtt_session PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_rtt_session PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Multimedia
+)
+
+add_test(NAME test_rtt_session COMMAND test_rtt_session)
+
 # ---- test_sip_trace ----------------------------------------------------
 qt_add_executable(test_sip_trace
     test_sip_trace.cpp
@@ -407,6 +441,24 @@ target_link_libraries(test_sip_trace PRIVATE
 
 add_test(NAME test_sip_trace COMMAND test_sip_trace)
 
+# PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
+if(CALL_SOURCES_EXTRA_LIBS)
+    foreach(_call_test IN ITEMS
+        test_registration_state_machine
+        test_sip_manager
+        test_registration_retry
+        test_registration_expiry
+        test_profile_switch
+        test_audio_media
+        test_video_media
+        test_rtt_session
+    )
+        if(TARGET ${_call_test})
+            target_link_libraries(${_call_test} PRIVATE ${CALL_SOURCES_EXTRA_LIBS})
+        endif()
+    endforeach()
+endif()
+
 if(ENABLE_PJSIP AND PJSIP_FOUND)
     foreach(_pjsip_test_target IN ITEMS
         test_registration_state_machine
@@ -417,6 +469,7 @@ if(ENABLE_PJSIP AND PJSIP_FOUND)
         test_audio_media
         test_video_media
         test_codec_manager
+        test_rtt_session
     )
         if(TARGET ${_pjsip_test_target})
             target_link_libraries(${_pjsip_test_target} PRIVATE PJSIP::pjsua2)

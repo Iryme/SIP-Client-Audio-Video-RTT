@@ -176,9 +176,10 @@ void MainWindow::buildCentralWidget()
 
     m_horzSplitter->addWidget(centerWidget);
 
-    // Right RTT panel — placeholder; label it so users see it is not functional yet
+    // Right RTT panel — wired to SipManager::rttSession()
     m_rttPanel = new RttPanel(m_horzSplitter);
     m_rttPanel->setMinimumWidth(260);
+    m_rttPanel->setRttSession(SipManager::instance().rttSession());
     m_horzSplitter->addWidget(m_rttPanel);
 
     // Initial splitter proportions: sidebar=260, center=flexible, right=320

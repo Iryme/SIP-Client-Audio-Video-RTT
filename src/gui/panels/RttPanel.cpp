@@ -8,6 +8,7 @@
 #include <QTabWidget>
 #include <QListWidget>
 #include <QFrame>
+#include "sip/SipManager.h"
 
 RttPanel::RttPanel(QWidget *parent)
     : QWidget(parent)
@@ -30,7 +31,7 @@ RttPanel::RttPanel(QWidget *parent)
     rttLayout->setContentsMargins(8, 8, 8, 8);
     rttLayout->setSpacing(6);
 
-    m_rttState = new QLabel(tr("RTT: Inactive"), rttTab);
+    m_rttState = new QLabel(tr("RTT: Not negotiated"), rttTab);
     m_rttState->setObjectName("RttState");
     m_rttState->setStyleSheet("color: #aaaaaa; font-size: 11px;");
     rttLayout->addWidget(m_rttState);
@@ -60,13 +61,15 @@ RttPanel::RttPanel(QWidget *parent)
     // Input + buttons
     m_rttInput = new QLineEdit(rttTab);
     m_rttInput->setObjectName("RttInput");
-    m_rttInput->setPlaceholderText(tr("Type RTT message..."));
+    m_rttInput->setPlaceholderText(tr("RTT not negotiated — input disabled"));
+    m_rttInput->setEnabled(false);
     rttLayout->addWidget(m_rttInput);
 
     auto *rttBtnRow = new QHBoxLayout();
     m_rttClear = new QPushButton(tr("Clear"), rttTab);
     m_rttSend  = new QPushButton(tr("Send"), rttTab);
     m_rttSend->setObjectName("SendBtn");
+    m_rttSend->setEnabled(false);
     rttBtnRow->addWidget(m_rttClear);
     rttBtnRow->addStretch();
     rttBtnRow->addWidget(m_rttSend);
@@ -111,6 +114,44 @@ RttPanel::RttPanel(QWidget *parent)
     connect(m_lmpeInput, &QLineEdit::returnPressed, this, &RttPanel::onLmpeSend);
 
     tabs->addTab(lmpeTab, tr("LMPE"));
+
+    // Wire to SipManager RTT signals for live state updates.
+    connect(&SipManager::instance(), &SipManager::rttMediaConnected, this, [this]() {
+        if (m_rttSession)
+            onRttStateChanged(m_rttSession->state());
+    });
+    connect(&SipManager::instance(), &SipManager::rttMediaDisconnected, this, [this]() {
+        if (m_rttSession)
+            onRttStateChanged(m_rttSession->state());
+    });
+    connect(&SipManager::instance(), &SipManager::rttTextReceived, this, [this](const QString &text) {
+        m_rttRemoteLive->setPlainText(text);
+        m_rttTranscript->append(tr("Remote: %1").arg(text));
+    });
+    connect(&SipManager::instance(), &SipManager::callDisconnected, this, [this](const QString &, const QString &, int) {
+        m_rttRemoteLive->clear();
+        updateInputState();
+    });
+}
+
+void RttPanel::setRttSession(RttSession *session)
+{
+    if (m_rttSession) {
+        m_rttSession->disconnect(this);
+    }
+    m_rttSession = session;
+    if (m_rttSession) {
+        connect(m_rttSession, &RttSession::rttStateChanged,
+                this, &RttPanel::onRttStateChanged);
+        connect(m_rttSession, &RttSession::remoteTextReceived,
+                this, [this](const QString &text) {
+            m_rttRemoteLive->setPlainText(text);
+            m_rttTranscript->append(tr("Remote: %1").arg(text));
+        });
+        onRttStateChanged(m_rttSession->state());
+    } else {
+        onRttStateChanged(RttState::Disabled);
+    }
 }
 
 void RttPanel::onRttSend()
@@ -120,6 +161,12 @@ void RttPanel::onRttSend()
         return;
     m_rttTranscript->append(tr("You: %1").arg(text));
     m_rttInput->clear();
+
+    if (m_rttSession && m_rttSession->isActive()) {
+        m_rttSession->sendText(text);
+    } else {
+        SipManager::instance().sendRttText(text);
+    }
     emit rttMessageSent(text);
 }
 
@@ -131,4 +178,38 @@ void RttPanel::onLmpeSend()
     m_lmpeList->addItem(tr("You: %1").arg(text));
     m_lmpeInput->clear();
     emit lmpeMessageSent(text);
+}
+
+void RttPanel::onRttStateChanged(RttState state)
+{
+    QString stateText;
+    switch (state) {
+    case RttState::Disabled:
+        stateText = tr("RTT: Not negotiated");
+        break;
+    case RttState::Offered:
+        stateText = tr("RTT: Offered (awaiting negotiation)");
+        break;
+    case RttState::Negotiated:
+        stateText = tr("RTT: Negotiated");
+        break;
+    case RttState::Active:
+        stateText = tr("RTT: Active");
+        break;
+    case RttState::Failed:
+        stateText = tr("RTT: Failed");
+        break;
+    }
+    m_rttState->setText(stateText);
+    updateInputState();
+}
+
+void RttPanel::updateInputState()
+{
+    const bool active = m_rttSession && m_rttSession->isActive();
+    m_rttInput->setEnabled(active);
+    m_rttSend->setEnabled(active);
+    m_rttInput->setPlaceholderText(
+        active ? tr("Type RTT message...")
+               : tr("RTT not negotiated — input disabled"));
 }

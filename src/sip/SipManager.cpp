@@ -387,8 +387,15 @@ bool SipManager::registerActiveProfile()
                         this, &SipManager::remoteVideoStarted);
                 connect(m_activeCall, &SipCall::remoteVideoStopped,
                         this, &SipManager::remoteVideoStopped);
+                connect(m_activeCall, &SipCall::rttMediaConnected,
+                        this, &SipManager::rttMediaConnected);
+                connect(m_activeCall, &SipCall::rttMediaDisconnected,
+                        this, &SipManager::rttMediaDisconnected);
+                connect(m_activeCall, &SipCall::rttTextReceived,
+                        this, &SipManager::rttTextReceived);
                 AudioMediaManager::instance().attachCall(m_activeCall);
                 VideoMediaManager::instance().attachCall(m_activeCall);
+                m_rttSession.enableForCall(m_activeCall);
 
                 {
                     SipMessageTrace trace;
@@ -884,10 +891,26 @@ bool SipManager::isCallVideoMuted() const
     return m_activeCall ? m_activeCall->isVideoMuted() : false;
 }
 
+void SipManager::sendRttText(const QString &text)
+{
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendRttText: no active call"));
+        return;
+    }
+    m_rttSession.sendText(text);
+}
+
+RttSession *SipManager::rttSession()
+{
+    return &m_rttSession;
+}
+
 void SipManager::destroyActiveCall()
 {
     if (!m_activeCall)
         return;
+    m_rttSession.disable();
     AudioMediaManager::instance().detachCall();
     VideoMediaManager::instance().detachCall();
     disconnect(m_activeCall, nullptr, this, nullptr);
@@ -945,8 +968,15 @@ bool SipManager::makeCall(const QString &remoteUri)
             this, &SipManager::remoteVideoStarted);
     connect(m_activeCall, &SipCall::remoteVideoStopped,
             this, &SipManager::remoteVideoStopped);
+    connect(m_activeCall, &SipCall::rttMediaConnected,
+            this, &SipManager::rttMediaConnected);
+    connect(m_activeCall, &SipCall::rttMediaDisconnected,
+            this, &SipManager::rttMediaDisconnected);
+    connect(m_activeCall, &SipCall::rttTextReceived,
+            this, &SipManager::rttTextReceived);
     AudioMediaManager::instance().attachCall(m_activeCall);
     VideoMediaManager::instance().attachCall(m_activeCall);
+    m_rttSession.enableForCall(m_activeCall);
 #ifdef HAVE_PJSIP
     if (m_account)
         m_activeCall->setPjsipAccountHandle(m_account->pjAccountHandle());
@@ -1080,8 +1110,15 @@ void SipManager::onAccountIncomingCall(const QString &remoteUri)
             this, &SipManager::remoteVideoStarted);
     connect(m_activeCall, &SipCall::remoteVideoStopped,
             this, &SipManager::remoteVideoStopped);
+    connect(m_activeCall, &SipCall::rttMediaConnected,
+            this, &SipManager::rttMediaConnected);
+    connect(m_activeCall, &SipCall::rttMediaDisconnected,
+            this, &SipManager::rttMediaDisconnected);
+    connect(m_activeCall, &SipCall::rttTextReceived,
+            this, &SipManager::rttTextReceived);
     AudioMediaManager::instance().attachCall(m_activeCall);
     VideoMediaManager::instance().attachCall(m_activeCall);
+    m_rttSession.enableForCall(m_activeCall);
 
     // Emit INVITE inbound trace.
     {

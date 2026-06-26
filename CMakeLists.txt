@@ -77,6 +77,7 @@ set(SOURCES
     src/media/MediaDeviceSelectionModel.cpp
     src/media/QtMediaDeviceBackend.cpp
     src/media/PjsipGdiRenderer.cpp
+    src/rtt/RttSession.cpp
 )
 
 set(HEADERS
@@ -121,6 +122,7 @@ set(HEADERS
     src/media/IMediaDeviceBackend.h
     src/media/QtMediaDeviceBackend.h
     src/media/PjsipGdiRenderer.h
+    src/rtt/RttSession.h
 )
 
 if(WIN32)

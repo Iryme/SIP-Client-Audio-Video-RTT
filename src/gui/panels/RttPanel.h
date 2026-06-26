@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include "rtt/RttSession.h"
 
 class QLabel;
 class QTextEdit;
@@ -14,6 +15,9 @@ class RttPanel : public QWidget
 public:
     explicit RttPanel(QWidget *parent = nullptr);
 
+    // Wire the panel to a session. Pass nullptr to disconnect.
+    void setRttSession(RttSession *session);
+
 signals:
     void rttMessageSent(const QString &text);
     void lmpeMessageSent(const QString &text);
@@ -21,8 +25,11 @@ signals:
 private slots:
     void onRttSend();
     void onLmpeSend();
+    void onRttStateChanged(RttState state);
 
 private:
+    void updateInputState();
+
     // RTT tab
     QLabel      *m_rttState{nullptr};
     QTextEdit   *m_rttTranscript{nullptr};
@@ -36,4 +43,6 @@ private:
     QListWidget *m_lmpeList{nullptr};
     QLineEdit   *m_lmpeInput{nullptr};
     QPushButton *m_lmpeSend{nullptr};
+
+    RttSession  *m_rttSession{nullptr};
 };

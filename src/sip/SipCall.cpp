@@ -224,6 +224,7 @@ struct SipCall::Impl
             pj::CallInfo ci = getInfo();
             bool audioBridgeWired    = false;
             bool videoActive         = false;
+            bool textMediaActive     = false;
             int  videoIncomingWinId  = PJSUA_INVALID_ID;
             int  videoCapDevId       = -1;
 
@@ -359,17 +360,43 @@ struct SipCall::Impl
                             .arg(getId())
                             .arg(mi.index)
                             .arg(static_cast<int>(mi.status)));
+                } else if (mi.type == PJMEDIA_TYPE_TEXT) {
+                    if (mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
+                        textMediaActive = true;
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("PJSIP RTT text stream active: pjsipCallId=%1 "
+                                           "mediaIndex=%2 (RFC 4103 / T.140)")
+                                .arg(getId()).arg(mi.index));
+                    } else {
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("PJSIP RTT text stream not active: pjsipCallId=%1 "
+                                           "mediaIndex=%2 status=%3")
+                                .arg(getId()).arg(mi.index)
+                                .arg(static_cast<int>(mi.status)));
+                    }
                 }
             }
 
             QPointer<SipCall> self = m_impl->q;
+            const bool prevRttActive = m_impl->rttMediaActive;
+            m_impl->rttMediaActive = textMediaActive;
             QMetaObject::invokeMethod(self,
-                [self, audioBridgeWired, videoActive, videoIncomingWinId, videoCapDevId]() {
+                [self, audioBridgeWired, videoActive, videoIncomingWinId, videoCapDevId,
+                 textMediaActive, prevRttActive]() {
                 if (!self) return;
                 if (audioBridgeWired)
                     emit self->audioMediaConnected();
                 else
                     emit self->audioMediaDisconnected();
+                if (textMediaActive && !prevRttActive) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("RTT SDP offered and text media negotiated — rttMediaConnected"));
+                    emit self->rttMediaConnected();
+                } else if (!textMediaActive && prevRttActive) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("RTT text media gone — rttMediaDisconnected"));
+                    emit self->rttMediaDisconnected();
+                }
                 if (videoActive) {
                     // Store on Qt main thread — read by attachVideoWindows on same thread.
                     self->m_impl->videoIncomingWinId =
@@ -409,6 +436,21 @@ struct SipCall::Impl
                     .arg(mLines.size())
                     .arg(mLines.isEmpty() ? QStringLiteral("(none)")
                                           : mLines.join(QStringLiteral(", "))));
+        }
+
+        void onCallRxText(pj::OnCallRxTextParam &prm) override
+        {
+            if (!m_impl || !m_impl->q)
+                return;
+            const QString text = QString::fromStdString(prm.text);
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("RTT text received from remote: seq=%1 text=\"%2\"")
+                    .arg(prm.seq).arg(text));
+            QPointer<SipCall> self = m_impl->q;
+            QMetaObject::invokeMethod(self, [self, text]() {
+                if (self)
+                    emit self->rttTextReceived(text);
+            }, Qt::QueuedConnection);
         }
 
         void stopAudioBridge()
@@ -481,6 +523,7 @@ struct SipCall::Impl
     pj::VideoMedia     *callVideoMedia{nullptr};      // valid only while video media is active
     pjsua_vid_win_id    videoIncomingWinId{PJSUA_INVALID_ID}; // incoming video window id
     int                 videoCapDev{PJMEDIA_VID_INVALID_DEV}; // capture device; -1=default, >=0=specific
+    bool                rttMediaActive{false};         // true while T.140 text stream is active
 #endif
 };
 
@@ -566,7 +609,10 @@ bool SipCall::makeCall(const QString &remoteUri)
             m_impl->pjCall = new Impl::PjCall(m_impl, *account);
             pj::CallOpParam prm(true);
             prm.opt.videoCount = 1;
+            prm.opt.textCount  = 1;  // Offer m=text (RFC 4103 T.140) in SDP
             applyVideoMediaDirectionIfNeeded(prm.opt);
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP INVITE outbound: RTT m=text offered (textCount=1)"));
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP INVITE outbound video setup: call=%1 videoCount=%2 videoDevCount=%3 defaultCaptureDev=%4 hasCaptureDev=%5")
                     .arg(m_callId)
@@ -681,8 +727,11 @@ bool SipCall::answer()
         try {
             pj::CallOpParam prm(true);
             prm.opt.videoCount = 1;
+            prm.opt.textCount  = 1;  // Accept m=text (RFC 4103 T.140) if offered by remote
             applyVideoMediaDirectionIfNeeded(prm.opt);
             prm.statusCode = PJSIP_SC_OK;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP INVITE answer: RTT m=text accepted (textCount=1)"));
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP INVITE answer video setup: call=%1 videoCount=%2 videoDevCount=%3 defaultCaptureDev=%4 hasCaptureDev=%5")
                     .arg(m_callId)
@@ -1212,6 +1261,34 @@ void SipCall::onLevelTimerFired()
         emit inputLevelChanged(static_cast<int>(txLvl * 100 / 255));
         emit outputLevelChanged(static_cast<int>(rxLvl * 100 / 255));
     } catch (...) {}
+#endif
+}
+
+void SipCall::sendRttText(const QString &text)
+{
+#ifdef HAVE_PJSIP
+    if (!m_impl || !m_impl->pjCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("RTT sendRttText: no active PJSIP call"));
+        return;
+    }
+    try {
+        pj::CallSendTextParam prm;
+        prm.medIdx = -1;  // first text stream
+        prm.text   = text.toStdString();
+        m_impl->pjCall->sendText(prm);
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("RTT text sent via RTP T.140: call=%1 text=\"%2\"")
+                .arg(m_callId, text));
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("RTT sendRttText failed: call=%1 reason=%2")
+                .arg(m_callId, QString::fromStdString(e.reason)));
+    }
+#else
+    Q_UNUSED(text)
+    Logger::instance().warn(LogCategory::Sip,
+        QStringLiteral("RTT sendRttText: PJSIP not available (stub mode)"));
 #endif
 }
 

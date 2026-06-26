@@ -9,6 +9,7 @@
 #include "sip/RegistrationStateMachine.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
+#include "rtt/RttSession.h"
 
 // Owns the SIP endpoint lifecycle and the account for the active profile.
 // Registration flow is governed by RegistrationStateMachine; invalid operations
@@ -61,6 +62,13 @@ public:
     // Stop / resume sending video on the active call.
     bool setCallVideoMuted(bool muted);
     bool isCallVideoMuted() const;
+
+    // Send RTT text via the active call's T.140 text stream.
+    // No-op if no call is active or RTT is not negotiated.
+    void sendRttText(const QString &text);
+
+    // Access the RTT session for the current call (never null).
+    RttSession *rttSession();
 
     CallState callState()          const;
     QString   callStatusText()     const;
@@ -131,6 +139,11 @@ signals:
     void remoteVideoStarted();
     void remoteVideoStopped();
 
+    // RTT media signals (forwarded from the active SipCall)
+    void rttMediaConnected();
+    void rttMediaDisconnected();
+    void rttTextReceived(const QString &text);
+
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,
                                            const QString     &statusText,
@@ -166,6 +179,7 @@ private:
 #endif
 
     SipCall                 *m_activeCall{nullptr};
+    RttSession               m_rttSession;
     bool                     m_initialized{false};
     QString                  m_lastError;
     SipAccount              *m_account{nullptr};
