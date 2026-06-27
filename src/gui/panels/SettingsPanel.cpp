@@ -3,6 +3,7 @@
 #include "core/AppSettings.h"
 #include "core/Logger.h"
 #include "gui/panels/SidebarPanel.h"
+#include "gui/panels/VideoSettingsPanel.h"
 
 #include <QCheckBox>
 #include <QFormLayout>
@@ -13,6 +14,7 @@
 #include <QList>
 #include <QPushButton>
 #include <QSplitter>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 SettingsPanel::SettingsPanel(QWidget *parent)
@@ -83,8 +85,11 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_persistMedia->setChecked(true);
     form->addRow(QString(), m_persistMedia);
 
-    rightLayout->addWidget(group);
-    rightLayout->addStretch(1);
+    auto *tabs = new QTabWidget(rightWrap);
+    tabs->addTab(group, tr("Connection"));
+    m_videoSettings = new VideoSettingsPanel(tabs);
+    tabs->addTab(m_videoSettings, tr("Video"));
+    rightLayout->addWidget(tabs, 1);
     split->addWidget(rightWrap);
 
     split->setStretchFactor(0, 1);

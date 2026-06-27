@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class SidebarPanel;
+class VideoSettingsPanel;
 class QCheckBox;
 class QLineEdit;
 class QPushButton;
@@ -22,7 +23,8 @@ private:
     void load();
     void applyDebugToggle(bool enabled);
 
-    SidebarPanel *m_accountsPanel{nullptr};
+    SidebarPanel      *m_accountsPanel{nullptr};
+    VideoSettingsPanel *m_videoSettings{nullptr};
     QLineEdit  *m_serverIp{nullptr};
     QLineEdit  *m_sipDomain{nullptr};
     QLineEdit  *m_sipPort{nullptr};

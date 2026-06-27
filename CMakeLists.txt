@@ -91,6 +91,11 @@ set(SOURCES
     src/media/MediaDeviceSelectionModel.cpp
     src/media/QtMediaDeviceBackend.cpp
     src/media/PjsipGdiRenderer.cpp
+    src/media/VideoSettings.cpp
+    src/media/VideoQualityManager.cpp
+    src/media/VideoStatistics.cpp
+    src/media/VideoPipelineMonitor.cpp
+    src/gui/panels/VideoSettingsPanel.cpp
     src/rtt/RttSession.cpp
     # Emergency module — no PJSIP dependency; wired to GUI in Task 42
     src/emergency/EmergencyCallAdapter.cpp
@@ -155,6 +160,11 @@ set(HEADERS
     src/media/IMediaDeviceBackend.h
     src/media/QtMediaDeviceBackend.h
     src/media/PjsipGdiRenderer.h
+    src/media/VideoSettings.h
+    src/media/VideoQualityManager.h
+    src/media/VideoStatistics.h
+    src/media/VideoPipelineMonitor.h
+    src/gui/panels/VideoSettingsPanel.h
     src/rtt/RttSession.h
 )
 

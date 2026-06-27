@@ -21,6 +21,9 @@
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoMediaManager.h"
+#include "media/VideoQualityManager.h"
+#include "media/VideoStatistics.h"
+#include "media/VideoPipelineMonitor.h"
 #include "sip/SipManager.h"
 
 #ifdef HAVE_PJSIP
@@ -222,6 +225,12 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
             refreshIdlePreview();
     });
 
+    connect(&VideoQualityManager::instance(), &VideoQualityManager::settingsChanged,
+            this, [this](const VideoSettings &) {
+        if (m_idlePreviewRunning)
+            refreshIdlePreview();
+    });
+
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
             this, [this]() {
         populateCameraCombo();
@@ -369,6 +378,8 @@ void VideoPanel::paintEvent(QPaintEvent *event)
             p.drawImage(rect(), frame);
         else
             p.fillRect(rect(), QColor(0x0a, 0x0a, 0x0a));
+        if (VideoQualityManager::instance().current().overlayEnabled)
+            drawDebugOverlay(p);
         return;
     }
 
@@ -383,6 +394,8 @@ void VideoPanel::paintEvent(QPaintEvent *event)
         ? tr("No video — waiting for call")
         : tr("Camera preview");
     p.drawText(rect(), Qt::AlignCenter, idleText);
+    if (m_idlePreviewRunning && VideoQualityManager::instance().current().overlayEnabled)
+        drawDebugOverlay(p);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,20 +477,32 @@ void VideoPanel::startIdlePreview()
     QElapsedTimer startTimer;
     startTimer.start();
 
-    // Find the Qt camera device matching the user's selection.
-    MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
-    const MediaDevice cam = sel.selectedCamera();
+    // Find the Qt camera device — prefer VideoQualityManager ID, then name match.
+    const VideoSettings vs = VideoQualityManager::instance().current();
+    const QList<QCameraDevice> inputs = QMediaDevices::videoInputs();
 
     QCameraDevice qtDev;
-    const QList<QCameraDevice> inputs = QMediaDevices::videoInputs();
-    for (const QCameraDevice &d : inputs) {
-        if (!cam.isNull()
-            && (d.description().contains(cam.displayName, Qt::CaseInsensitive)
-                || cam.displayName.contains(d.description(), Qt::CaseInsensitive))) {
-            qtDev = d;
-            break;
+    // 1. ID-based match from VideoQualityManager
+    if (!vs.cameraId.isEmpty()) {
+        const QByteArray wantId = vs.cameraId.toLatin1();
+        for (const QCameraDevice &d : inputs) {
+            if (d.id() == wantId) { qtDev = d; break; }
         }
     }
+    // 2. Name-based match from MediaDeviceSelectionModel
+    if (qtDev.isNull()) {
+        MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
+        const MediaDevice cam = sel.selectedCamera();
+        for (const QCameraDevice &d : inputs) {
+            if (!cam.isNull()
+                && (d.description().contains(cam.displayName, Qt::CaseInsensitive)
+                    || cam.displayName.contains(d.description(), Qt::CaseInsensitive))) {
+                qtDev = d;
+                break;
+            }
+        }
+    }
+    // 3. Fallback: first available
     if (qtDev.isNull() && !inputs.isEmpty())
         qtDev = inputs.first();
 
@@ -492,6 +517,17 @@ void VideoPanel::startIdlePreview()
     m_previewCamera  = new QCamera(qtDev);
     m_previewSession = new QMediaCaptureSession();
     m_previewSink    = new QVideoSink();
+
+    // Apply configured resolution + fps via camera format
+    const QCameraFormat fmt = VideoQualityManager::bestFormat(qtDev, vs.resolution, vs.fps);
+    if (!fmt.isNull()) {
+        m_previewCamera->setCameraFormat(fmt);
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("VideoPanel: format applied %1x%2 @ %3 fps")
+                .arg(fmt.resolution().width())
+                .arg(fmt.resolution().height())
+                .arg(static_cast<int>(fmt.maxFrameRate())));
+    }
 
     m_previewSession->setCamera(m_previewCamera);
     m_previewSession->setVideoSink(m_previewSink);
@@ -545,14 +581,55 @@ void VideoPanel::refreshIdlePreview()
     startIdlePreview();
 }
 
+void VideoPanel::drawDebugOverlay(QPainter &p)
+{
+    const VideoSettings vs   = VideoQualityManager::instance().current();
+    const float fps          = VideoStatistics::instance().currentFps();
+    const int   drops        = VideoStatistics::instance().totalDrops();
+    const qint64 capMs       = VideoPipelineMonitor::instance().latencyMs(
+                                   VideoPipelineMonitor::Stage::Capture);
+    const qint64 rendMs      = VideoPipelineMonitor::instance().latencyMs(
+                                   VideoPipelineMonitor::Stage::Render);
+
+    const QStringList lines{
+        QStringLiteral("FPS: %1").arg(fps, 0, 'f', 1),
+        QStringLiteral("Res: %1x%2").arg(vs.resolution.width()).arg(vs.resolution.height()),
+        QStringLiteral("Codec: %1").arg(vs.codecOrder.isEmpty() ? QStringLiteral("?") : vs.codecOrder.first()),
+        QStringLiteral("Bitrate: %1 kbps").arg(vs.bitrateKbps),
+        QStringLiteral("Dropped: %1").arg(drops),
+        QStringLiteral("Capture+Render: %1ms").arg(capMs + rendMs),
+    };
+
+    p.save();
+    p.setFont(QFont(QStringLiteral("Monospace"), 9));
+
+    const int lineH   = 16;
+    const int padding = 6;
+    const int boxW    = 200;
+    const int boxH    = lines.size() * lineH + padding * 2;
+
+    p.fillRect(padding, padding, boxW, boxH, QColor(0, 0, 0, 160));
+    p.setPen(Qt::white);
+    for (int i = 0; i < lines.size(); ++i)
+        p.drawText(padding * 2, padding + lineH * i + lineH - 3, lines[i]);
+    p.restore();
+}
+
 void VideoPanel::onIdlePreviewFrame(const QVideoFrame &frame)
 {
     if (!m_idlePreviewRunning || !m_localPreview || !frame.isValid())
         return;
-    // Throttle to ~30 fps max — drop frames arriving within 33 ms of the last one.
-    // SmoothTransformation at camera rate (30+ fps) wastes CPU during a call.
-    if (m_frameThrottle.isValid() && m_frameThrottle.elapsed() < 33)
+
+    VideoPipelineMonitor::instance().stageBegin(VideoPipelineMonitor::Stage::Capture);
+
+    // Throttle to configured fps max (default ~30 fps).
+    const int wantFps = qMax(1, VideoQualityManager::instance().current().fps);
+    const int throttleMs = 1000 / wantFps;
+    if (m_frameThrottle.isValid() && m_frameThrottle.elapsed() < throttleMs) {
+        VideoStatistics::instance().frameDrop();
+        VideoPipelineMonitor::instance().stageEnd(VideoPipelineMonitor::Stage::Capture);
         return;
+    }
     m_frameThrottle.start();
 
     const QImage img = frame.toImage()
@@ -561,6 +638,10 @@ void VideoPanel::onIdlePreviewFrame(const QVideoFrame &frame)
                                      Qt::FastTransformation);
     if (!img.isNull())
         m_localPreview->setPixmap(QPixmap::fromImage(img));
+
+    VideoPipelineMonitor::instance().stageEnd(VideoPipelineMonitor::Stage::Render);
+    VideoStatistics::instance().frameProduced();
+    update(); // repaint to show overlay if enabled
 }
 
 // ---------------------------------------------------------------------------

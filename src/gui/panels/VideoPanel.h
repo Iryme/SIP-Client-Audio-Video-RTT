@@ -33,6 +33,7 @@ public:
 public slots:
     void startIdlePreview();
     void stopIdlePreview();
+    void refreshIdlePreview();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -53,7 +54,7 @@ private:
     void repositionOverlays();
     void populateCameraCombo();
     void applyVideoState();
-    void refreshIdlePreview();
+    void drawDebugOverlay(QPainter &p);
     // Re-fit the embedded PJSIP video HWND to fill its parent widget area.
     // Called on resize when video is active.
     void resizeEmbeddedVideoWindows();
