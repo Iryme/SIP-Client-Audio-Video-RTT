@@ -263,9 +263,19 @@ QMenu::separator { height: 1px; background: __B1__; margin: 4px 0; }
     border: 1px solid __CBRD__;
     border-radius: 5px;
 }
+#StatusCardDot {
+    color: __T2__;
+    font-size: 8px;
+}
 #StatusCardTitle {
     color: __CTIT__;
     font-size: 9px;
+}
+#StatusCardValue {
+    color: __T1__;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: monospace;
 }
 
 /* --- Video panel --- */

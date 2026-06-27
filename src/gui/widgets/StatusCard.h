@@ -2,6 +2,7 @@
 #include <QFrame>
 
 class QLabel;
+class QResizeEvent;
 
 // A compact status tile widget for the call info area.
 // Background/border/title color are controlled by QSS (#StatusCard, #StatusCardTitle).
@@ -23,8 +24,13 @@ public:
 
 private:
     void refreshColors();
+    void updateElidedValue();
+
+protected:
+    void resizeEvent(QResizeEvent *event) override;
 
     QLabel *m_dotLabel{nullptr};
     QLabel *m_valueLabel{nullptr};
+    QString m_valueText;
     QString m_status;
 };

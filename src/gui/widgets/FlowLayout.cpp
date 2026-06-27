@@ -65,11 +65,17 @@ int FlowLayout::doLayout(const QRect &rect, bool testOnly) const
     int lineH = 0;
 
     for (QLayoutItem *item : m_items) {
-        const QSize sz = item->sizeHint();
+        QSize sz = item->sizeHint();
+        if (sz.width() > eff.width())
+            sz.setWidth(eff.width());
+
         int nextX = x + sz.width() + m_hSpace;
         if (nextX - m_hSpace > eff.right() && lineH > 0) {
             x = eff.x();
             y += lineH + m_vSpace;
+            sz = item->sizeHint();
+            if (sz.width() > eff.width())
+                sz.setWidth(eff.width());
             nextX = x + sz.width() + m_hSpace;
             lineH = 0;
         }
