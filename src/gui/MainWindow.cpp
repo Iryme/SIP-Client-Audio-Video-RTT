@@ -433,6 +433,7 @@ QWidget *MainWindow::buildClientsPage()
 
     auto makeActionButton = [](const QString &text, QWidget *parent, bool checkable = false) {
         auto *btn = new QPushButton(text, parent);
+        btn->setObjectName(QStringLiteral("CallCtrlBtn"));
         btn->setCheckable(checkable);
         btn->setMinimumHeight(32);
         return btn;
@@ -474,6 +475,14 @@ QWidget *MainWindow::buildClientsPage()
     auto *holdBtn = makeActionButton(tr("Hold"), callGroup, true);
     auto *requestVideoBtn = makeActionButton(tr("Request Video"), callGroup, true);
     auto *requestRttBtn = makeActionButton(tr("Request RTT"), callGroup, true);
+    callBtn->setProperty("callRole", QStringLiteral("call"));
+    answerBtn->setProperty("callRole", QStringLiteral("answer"));
+    rejectBtn->setProperty("callRole", QStringLiteral("reject"));
+    hangupBtn->setProperty("callRole", QStringLiteral("hangup"));
+    muteBtn->setProperty("callRole", QStringLiteral("mute"));
+    holdBtn->setProperty("callRole", QStringLiteral("hold"));
+    requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
+    requestRttBtn->setProperty("callRole", QStringLiteral("requestRtt"));
     callRow->addWidget(callBtn);
     callRow->addWidget(answerBtn);
     callRow->addWidget(rejectBtn);
@@ -669,6 +678,23 @@ QWidget *MainWindow::buildClientsPage()
             m_clientsTargetInput->backspace();
     });
 
+    auto refreshHoldButton = [holdBtn]() {
+        const CallState state = SipManager::instance().callState();
+        const bool held = (state == CallState::Held);
+        const bool active = (state == CallState::Active || state == CallState::Held);
+        QSignalBlocker blocker(holdBtn);
+        holdBtn->setEnabled(active);
+        holdBtn->setChecked(held);
+        holdBtn->setText(held ? MainWindow::tr("Unhold") : MainWindow::tr("Hold"));
+    };
+
+    auto videoRequestFailed = std::make_shared<bool>(false);
+    auto rttRequestFailed = std::make_shared<bool>(false);
+
+    auto holdConfirmTimer = new QTimer(page);
+    holdConfirmTimer->setSingleShot(true);
+    holdConfirmTimer->setInterval(1200);
+
     connect(callBtn, &QPushButton::clicked, this, [this, requestVideoBtn, requestRttBtn]() {
         const QString raw = m_clientsTargetInput ? m_clientsTargetInput->text().trimmed() : QString{};
         if (raw.isEmpty())
@@ -702,12 +728,40 @@ QWidget *MainWindow::buildClientsPage()
     connect(muteBtn, &QPushButton::toggled, this, [](bool on) {
         SipManager::instance().setCallMuted(on);
     });
-    connect(holdBtn, &QPushButton::toggled, this, [](bool on) {
-        if (on) SipManager::instance().holdCall();
-        else    SipManager::instance().resumeCall();
+    connect(holdBtn, &QPushButton::toggled, this, [this, holdBtn, holdConfirmTimer, refreshHoldButton](bool on) {
+        Logger::instance().info(LogCategory::Sip,
+            on ? QStringLiteral("Hold requested") : QStringLiteral("Unhold requested"));
+        holdBtn->setText(on ? tr("Hold...") : tr("Unhold..."));
+        holdConfirmTimer->start();
+        const bool ok = on ? SipManager::instance().holdCall() : SipManager::instance().resumeCall();
+        if (!ok) {
+            holdConfirmTimer->stop();
+            Logger::instance().warn(LogCategory::Sip, QStringLiteral("Hold failed"));
+            refreshHoldButton();
+        }
     });
 
-    connect(requestVideoBtn, &QPushButton::toggled, this, [this, cardVideo, requestVideoBtn](bool enabled) {
+    connect(holdConfirmTimer, &QTimer::timeout, this, [this, holdBtn, refreshHoldButton]() {
+        const CallState state = SipManager::instance().callState();
+        const bool desiredHold = holdBtn->isChecked();
+        const bool confirmed = desiredHold ? (state == CallState::Held)
+                                           : (state == CallState::Active);
+        if (confirmed) {
+            Logger::instance().info(LogCategory::Sip,
+                desiredHold ? QStringLiteral("Hold active") : QStringLiteral("Hold released"));
+            refreshHoldButton();
+            return;
+        }
+
+        Logger::instance().warn(LogCategory::Sip, QStringLiteral("Hold failed"));
+        QSignalBlocker blocker(holdBtn);
+        holdBtn->setChecked(state == CallState::Held);
+        refreshHoldButton();
+    });
+
+    connect(requestVideoBtn, &QPushButton::toggled, this,
+            [this, cardVideo, requestVideoBtn, videoRequestFailed](bool enabled) {
+        *videoRequestFailed = false;
         cardVideo->setValue(enabled ? tr("Requested") : tr("Not requested"));
         cardVideo->setStatus(enabled ? QStringLiteral("warn") : QString{});
         if (SipManager::instance().callState() == CallState::Idle
@@ -718,13 +772,14 @@ QWidget *MainWindow::buildClientsPage()
             return;
         }
         if (!SipManager::instance().requestCallVideo(enabled)) {
+            *videoRequestFailed = true;
             cardVideo->setValue(tr("Failed"));
             cardVideo->setStatus(QStringLiteral("err"));
-            QSignalBlocker blocker(requestVideoBtn);
-            requestVideoBtn->setChecked(false);
         }
     });
-    connect(requestRttBtn, &QPushButton::toggled, this, [this, cardRtt, requestRttBtn](bool enabled) {
+    connect(requestRttBtn, &QPushButton::toggled, this,
+            [this, cardRtt, requestRttBtn, rttRequestFailed](bool enabled) {
+        *rttRequestFailed = false;
         cardRtt->setValue(enabled ? tr("Requested") : tr("Not requested"));
         cardRtt->setStatus(enabled ? QStringLiteral("warn") : QString{});
         if (SipManager::instance().callState() == CallState::Idle
@@ -734,10 +789,9 @@ QWidget *MainWindow::buildClientsPage()
             return;
         }
         if (!SipManager::instance().requestCallRtt(enabled)) {
+            *rttRequestFailed = true;
             cardRtt->setValue(tr("Failed"));
             cardRtt->setStatus(QStringLiteral("err"));
-            QSignalBlocker blocker(requestRttBtn);
-            requestRttBtn->setChecked(false);
         }
     });
 
@@ -775,34 +829,69 @@ QWidget *MainWindow::buildClientsPage()
         else
             cardDuration->setStatus({});
 
-        cardDuration->setValue(QStringLiteral("00:00:00"));
+        cardDuration->setValue((state == CallState::Active || state == CallState::Held)
+                                   ? QStringLiteral("00:00:00")
+                                   : QStringLiteral("—"));
         cardAudio->setValue(audioActive ? tr("Connected") : QStringLiteral("—"));
         cardAudio->setStatus(audioActive ? QStringLiteral("ok") : QString{});
-        cardVideo->setValue(requestVideoBtn->isChecked()
-                                ? (videoActive ? tr("Active") : tr("Requested"))
-                                : tr("Not requested"));
-        cardVideo->setStatus(videoActive ? QStringLiteral("ok")
-                                         : (requestVideoBtn->isChecked() ? QStringLiteral("warn") : QString{}));
-        cardRtt->setValue(requestRttBtn->isChecked()
-                              ? (state == CallState::Idle ? tr("Requested") : tr("Requested"))
-                              : tr("Not requested"));
-        cardRtt->setStatus(SipManager::instance().rttSession()->isActive()
-                               ? QStringLiteral("ok")
-                               : (requestRttBtn->isChecked() ? QStringLiteral("warn") : QString{}));
-        cardLmpe->setValue(tr("Enabled"));
-        cardLmpe->setStatus(QStringLiteral("ok"));
+        if (*videoRequestFailed) {
+            cardVideo->setValue(tr("Failed"));
+            cardVideo->setStatus(QStringLiteral("err"));
+        } else {
+            cardVideo->setValue(videoActive
+                                    ? tr("Active")
+                                    : (requestVideoBtn->isChecked()
+                                           ? tr("Requested")
+                                           : tr("Not requested")));
+            cardVideo->setStatus(videoActive ? QStringLiteral("ok")
+                                             : (requestVideoBtn->isChecked()
+                                                    ? QStringLiteral("warn")
+                                                    : QString{}));
+        }
+        if (*rttRequestFailed) {
+            cardRtt->setValue(tr("Failed"));
+            cardRtt->setStatus(QStringLiteral("err"));
+        } else {
+            cardRtt->setValue(SipManager::instance().rttSession()->isActive()
+                                  ? tr("Active")
+                                  : (requestRttBtn->isChecked()
+                                         ? tr("Requested")
+                                         : tr("Not requested")));
+            cardRtt->setStatus(SipManager::instance().rttSession()->isActive()
+                                   ? QStringLiteral("ok")
+                                   : (requestRttBtn->isChecked()
+                                          ? QStringLiteral("warn")
+                                          : QString{}));
+        }
+        cardLmpe->setValue(QStringLiteral("—"));
+        cardLmpe->setStatus({});
         cardLocalVideo->setValue(localVideo ? tr("On") : tr("Off"));
         cardLocalVideo->setStatus(localVideo ? QStringLiteral("ok") : QString{});
         cardRemoteVideo->setValue(remoteVideo ? tr("On") : tr("Off"));
         cardRemoteVideo->setStatus(remoteVideo ? QStringLiteral("ok") : QString{});
-        cardVideoCodec->setValue(vs.codecOrder.isEmpty() ? QStringLiteral("—") : vs.codecOrder.first());
-        cardVideoCodec->setStatus(QStringLiteral("ok"));
-        cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
-        cardBitrate->setStatus(QStringLiteral("ok"));
-        cardResolution->setValue(QStringLiteral("%1x%2").arg(vs.resolution.width()).arg(vs.resolution.height()));
-        cardResolution->setStatus(QStringLiteral("ok"));
-        cardFps->setValue(QStringLiteral("%1 fps").arg(vs.fps));
-        cardFps->setStatus(QStringLiteral("ok"));
+        if (videoActive || localVideo) {
+            cardVideoCodec->setValue(vs.codecOrder.isEmpty() ? QStringLiteral("—")
+                                                             : vs.codecOrder.first());
+            cardVideoCodec->setStatus(QStringLiteral("ok"));
+            cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
+            cardBitrate->setStatus(QStringLiteral("ok"));
+            cardResolution->setValue(QStringLiteral("%1x%2")
+                                         .arg(vs.resolution.width())
+                                         .arg(vs.resolution.height()));
+            cardResolution->setStatus(QStringLiteral("ok"));
+            cardFps->setValue(QStringLiteral("%1 fps").arg(QString::number(vs.fps, 'f', 1)));
+        } else {
+            cardVideoCodec->setValue(QStringLiteral("—"));
+            cardVideoCodec->setStatus({});
+            cardBitrate->setValue(QStringLiteral("—"));
+            cardBitrate->setStatus({});
+            cardResolution->setValue(QStringLiteral("—"));
+            cardResolution->setStatus({});
+            cardFps->setValue(QStringLiteral("—"));
+        }
+        cardFps->setStatus((videoActive || localVideo)
+                               ? QStringLiteral("ok")
+                               : QString{});
         cardRemoteUri->setValue(remoteUri.isEmpty() ? QStringLiteral("—") : remoteUri);
         cardRemoteUri->setStatus(remoteUri.isEmpty() ? QString{} : QStringLiteral("ok"));
         cardLocalAccount->setValue(localAccount.isEmpty() ? QStringLiteral("—") : localAccount);
@@ -813,7 +902,7 @@ QWidget *MainWindow::buildClientsPage()
     };
 
     connect(&SipManager::instance(), &SipManager::callStateChanged,
-            this, [=](CallState state, const QString &, int) mutable {
+            this, [=](CallState state, const QString &, int) {
         const bool hasCall = (state != CallState::Idle && state != CallState::Failed);
         answerBtn->setVisible(state == CallState::IncomingRinging);
         rejectBtn->setVisible(state == CallState::IncomingRinging);
@@ -822,15 +911,13 @@ QWidget *MainWindow::buildClientsPage()
         muteBtn->setEnabled(state == CallState::Active);
         callBtn->setEnabled(SipManager::instance().registrationState() == RegistrationState::Registered
                             && (state == CallState::Idle || state == CallState::Failed));
-        if (state == CallState::Idle || state == CallState::Failed) {
-            QSignalBlocker b1(requestVideoBtn);
-            QSignalBlocker b2(requestRttBtn);
-            requestVideoBtn->setChecked(false);
-            requestRttBtn->setChecked(false);
+        if (state == CallState::Idle || state == CallState::Failed)
             durationTimer->stop();
+        if (state == CallState::Idle || state == CallState::Failed)
             *callStartTime = QDateTime();
-            cardDuration->setValue(QStringLiteral("00:00:00"));
-        }
+        if (state == CallState::Active || state == CallState::Held)
+            holdConfirmTimer->stop();
+        refreshHoldButton();
         cardState->setValue(callStateDisplayText(state));
         refreshCards();
     });
@@ -852,17 +939,21 @@ QWidget *MainWindow::buildClientsPage()
     connect(&SipManager::instance(), &SipManager::audioMediaDisconnected,
             this, [=]() { refreshCards(); });
     connect(&SipManager::instance(), &SipManager::videoMediaConnected,
-            this, [=]() { cardVideo->setValue(tr("Active")); cardVideo->setStatus(QStringLiteral("ok")); refreshCards(); });
+            this, [=]() { *videoRequestFailed = false; refreshCards(); });
     connect(&SipManager::instance(), &SipManager::videoMediaDisconnected,
             this, [=]() { refreshCards(); });
     connect(&SipManager::instance(), &SipManager::rttMediaConnected,
-            this, [=]() { cardRtt->setValue(tr("Active")); cardRtt->setStatus(QStringLiteral("ok")); refreshCards(); });
+            this, [=]() { *rttRequestFailed = false; refreshCards(); });
     connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
             this, [=]() { refreshCards(); });
     connect(&VideoStatistics::instance(), &VideoStatistics::statsUpdated,
             this, [=](float fps, int drops) {
-        cardFps->setValue(QStringLiteral("%1 fps").arg(fps, 0, 'f', 1));
-        cardPacketLoss->setValue(QStringLiteral("%1").arg(drops));
+        if (VideoMediaManager::instance().isVideoActive() || VideoMediaManager::instance().isLocalVideoAvailable()) {
+            cardFps->setValue(QStringLiteral("%1 fps").arg(QString::number(fps, 'f', 1)));
+            cardFps->setStatus(QStringLiteral("ok"));
+            cardPacketLoss->setValue(QStringLiteral("%1").arg(drops));
+            cardPacketLoss->setStatus(drops > 0 ? QStringLiteral("warn") : QStringLiteral("ok"));
+        }
     });
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
             this, [=]() { refreshSelectionCombos(); refreshCards(); });
@@ -892,6 +983,7 @@ QWidget *MainWindow::buildClientsPage()
     callBtn->setEnabled(registeredNow);
     if (m_clientsTargetInput)
         m_clientsTargetInput->setEnabled(registeredNow);
+    refreshHoldButton();
 
     connect(&SipManager::instance(), &SipManager::callConnected,
             this, [=](const QString &) mutable {
@@ -914,6 +1006,7 @@ QWidget *MainWindow::buildClientsPage()
     });
 
     refreshCards();
+    QTimer::singleShot(0, page, refreshCards);
     m_rttPanel->setRttSession(SipManager::instance().rttSession());
     return page;
 }

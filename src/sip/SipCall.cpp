@@ -7,6 +7,7 @@
 #include "core/AppSettings.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
+#include "media/VideoQualityManager.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -1031,12 +1032,73 @@ bool SipCall::requestVideo(bool enabled)
         QStringLiteral("Request video %1: call id=%2")
             .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
 
+    auto logMediaSummary = [this](const QString &phase) {
+        if (!m_impl || !m_impl->pjCall)
+            return;
+        try {
+            const pj::CallInfo ci = m_impl->pjCall->getInfo();
+            bool audioActive = false;
+            bool videoActive = false;
+            bool textActive = false;
+            QString mediaState;
+            for (const auto &mi : ci.media) {
+                const bool active = (mi.status == PJSUA_CALL_MEDIA_ACTIVE);
+                switch (mi.type) {
+                case PJMEDIA_TYPE_AUDIO: audioActive |= active; break;
+                case PJMEDIA_TYPE_VIDEO: videoActive |= active; break;
+                case PJMEDIA_TYPE_TEXT:  textActive  |= active; break;
+                default: break;
+                }
+                if (!mediaState.isEmpty())
+                    mediaState += QStringLiteral(", ");
+                mediaState += QStringLiteral("%1:%2")
+                                  .arg(static_cast<int>(mi.type))
+                                  .arg(static_cast<int>(mi.status));
+            }
+
+            const VideoSettings vs = VideoQualityManager::instance().current();
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("%1 summary: audio=%2 video=%3 rtt=%4 codecPriorities=%5 media=[%6]")
+                    .arg(phase)
+                    .arg(audioActive ? QStringLiteral("enabled") : QStringLiteral("disabled"))
+                    .arg(videoActive ? QStringLiteral("enabled") : QStringLiteral("disabled"))
+                    .arg(textActive ? QStringLiteral("enabled") : QStringLiteral("disabled"))
+                    .arg(vs.codecOrder.join(QStringLiteral(",")))
+                    .arg(mediaState.isEmpty() ? QStringLiteral("(none)") : mediaState));
+        } catch (const pj::Error &e) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("%1 summary unavailable: %2")
+                    .arg(phase, QString::fromStdString(e.reason)));
+        } catch (...) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("%1 summary unavailable: unknown error").arg(phase));
+        }
+    };
+
+    logMediaSummary(QStringLiteral("Before Request Video"));
+
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         try {
-            pj::CallOpParam prm;
+            bool textActive = false;
+            try {
+                const pj::CallInfo ci = m_impl->pjCall->getInfo();
+                for (const auto &mi : ci.media) {
+                    if (mi.type == PJMEDIA_TYPE_TEXT
+                        && mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
+                        textActive = true;
+                        break;
+                    }
+                }
+            } catch (...) {}
+
+            pj::CallOpParam prm(true);
             prm.opt.videoCount = enabled ? 1 : 0;
+            prm.opt.textCount = textActive ? 1 : 0;
+            if (enabled)
+                applyVideoMediaDirectionIfNeeded(prm.opt);
             m_impl->pjCall->reinvite(prm);
+            logMediaSummary(QStringLiteral("After Request Video"));
             return true;
         } catch (const pj::Error &e) {
             Logger::instance().warn(LogCategory::Sip,
@@ -1066,12 +1128,73 @@ bool SipCall::requestRtt(bool enabled)
         QStringLiteral("Request RTT %1: call id=%2")
             .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
 
+    auto logMediaSummary = [this](const QString &phase) {
+        if (!m_impl || !m_impl->pjCall)
+            return;
+        try {
+            const pj::CallInfo ci = m_impl->pjCall->getInfo();
+            bool audioActive = false;
+            bool videoActive = false;
+            bool textActive = false;
+            QString mediaState;
+            for (const auto &mi : ci.media) {
+                const bool active = (mi.status == PJSUA_CALL_MEDIA_ACTIVE);
+                switch (mi.type) {
+                case PJMEDIA_TYPE_AUDIO: audioActive |= active; break;
+                case PJMEDIA_TYPE_VIDEO: videoActive |= active; break;
+                case PJMEDIA_TYPE_TEXT:  textActive  |= active; break;
+                default: break;
+                }
+                if (!mediaState.isEmpty())
+                    mediaState += QStringLiteral(", ");
+                mediaState += QStringLiteral("%1:%2")
+                                  .arg(static_cast<int>(mi.type))
+                                  .arg(static_cast<int>(mi.status));
+            }
+
+            const VideoSettings vs = VideoQualityManager::instance().current();
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("%1 summary: audio=%2 video=%3 rtt=%4 codecPriorities=%5 media=[%6]")
+                    .arg(phase)
+                    .arg(audioActive ? QStringLiteral("enabled") : QStringLiteral("disabled"))
+                    .arg(videoActive ? QStringLiteral("enabled") : QStringLiteral("disabled"))
+                    .arg(textActive ? QStringLiteral("enabled") : QStringLiteral("disabled"))
+                    .arg(vs.codecOrder.join(QStringLiteral(",")))
+                    .arg(mediaState.isEmpty() ? QStringLiteral("(none)") : mediaState));
+        } catch (const pj::Error &e) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("%1 summary unavailable: %2")
+                    .arg(phase, QString::fromStdString(e.reason)));
+        } catch (...) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("%1 summary unavailable: unknown error").arg(phase));
+        }
+    };
+
+    logMediaSummary(QStringLiteral("Before Request RTT"));
+
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         try {
-            pj::CallOpParam prm;
+            bool videoActive = false;
+            try {
+                const pj::CallInfo ci = m_impl->pjCall->getInfo();
+                for (const auto &mi : ci.media) {
+                    if (mi.type == PJMEDIA_TYPE_VIDEO
+                        && mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
+                        videoActive = true;
+                        break;
+                    }
+                }
+            } catch (...) {}
+
+            pj::CallOpParam prm(true);
+            prm.opt.videoCount = videoActive ? 1 : 0;
             prm.opt.textCount = enabled ? 1 : 0;
+            if (videoActive)
+                applyVideoMediaDirectionIfNeeded(prm.opt);
             m_impl->pjCall->reinvite(prm);
+            logMediaSummary(QStringLiteral("After Request RTT"));
             return true;
         } catch (const pj::Error &e) {
             Logger::instance().warn(LogCategory::Sip,

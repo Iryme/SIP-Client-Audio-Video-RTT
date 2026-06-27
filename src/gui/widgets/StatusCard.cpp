@@ -105,10 +105,15 @@ void StatusCard::updateElidedValue()
         return;
 
     const QString text = m_valueText.isEmpty() ? QStringLiteral("\u2014") : m_valueText;
-    const int available = qMax(0, m_valueLabel->contentsRect().width());
+    const int available = m_valueLabel->contentsRect().width();
+    if (available <= 0) {
+        m_valueLabel->setText(text);
+        return;
+    }
+
     const QString shown = QFontMetrics(m_valueLabel->font()).elidedText(
         text, Qt::ElideRight, available);
-    m_valueLabel->setText(shown);
+    m_valueLabel->setText(shown.isEmpty() ? text : shown);
 }
 
 void StatusCard::resizeEvent(QResizeEvent *event)

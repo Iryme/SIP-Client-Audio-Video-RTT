@@ -81,6 +81,9 @@ SipLadderPage::SipLadderPage(QWidget *parent)
     connect(&SipTraceLogger::instance(), &SipTraceLogger::cleared,
             m_ladder, &SipLadderWidget::onCleared);
 
+    for (const SipMessageTrace &trace : SipTraceLogger::instance().messages())
+        m_ladder->onMessageLogged(trace);
+
     applyFilters();
 }
 
