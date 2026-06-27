@@ -27,7 +27,11 @@ class VideoPanel : public QWidget
 {
     Q_OBJECT
 public:
-    explicit VideoPanel(QWidget *parent = nullptr);
+    explicit VideoPanel(QWidget *parent = nullptr, bool autoStartIdlePreview = true);
+
+public slots:
+    void startIdlePreview();
+    void stopIdlePreview();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -48,8 +52,6 @@ private:
     void repositionOverlays();
     void populateCameraCombo();
     void applyVideoState();
-    void startIdlePreview();
-    void stopIdlePreview();
     void refreshIdlePreview();
     // Re-fit the embedded PJSIP video HWND to fill its parent widget area.
     // Called on resize when video is active.
@@ -77,6 +79,7 @@ private:
     bool   m_idlePreviewRunning{false};
     int    m_idlePreviewCapDev{-3};
     bool   m_noVideoDeviceAvailable{false};
+    bool   m_autoStartIdlePreview{true};
 
     // Qt camera stack for idle local preview (used when no call is active).
     QCamera              *m_previewCamera{nullptr};

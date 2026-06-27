@@ -56,12 +56,13 @@ static pjmedia_vid_dev_index preferredPreviewRenderDevice()
 }
 #endif
 
-VideoPanel::VideoPanel(QWidget *parent)
+VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
     : QWidget(parent)
 {
     setObjectName("VideoPanel");
     setMinimumSize(320, 240);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_autoStartIdlePreview = autoStartIdlePreview;
     // Native window handle required for PJSIP video embedding via SetParent.
     setAttribute(Qt::WA_NativeWindow);
 
@@ -191,8 +192,10 @@ VideoPanel::VideoPanel(QWidget *parent)
         populateCameraCombo();
         refreshIdlePreview();
     });
-    connect(&SipManager::instance(), &SipManager::initialized,
-            this, [this]() { startIdlePreview(); });
+    if (m_autoStartIdlePreview) {
+        connect(&SipManager::instance(), &SipManager::initialized,
+                this, [this]() { startIdlePreview(); });
+    }
     connect(&SipManager::instance(), &SipManager::shutdownComplete,
             this, [this]() { stopIdlePreview(); });
 
@@ -211,9 +214,11 @@ VideoPanel::VideoPanel(QWidget *parent)
     });
 
     applyVideoState();
-    QTimer::singleShot(0, this, [this]() {
-        startIdlePreview();
-    });
+    if (m_autoStartIdlePreview) {
+        QTimer::singleShot(0, this, [this]() {
+            startIdlePreview();
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +537,8 @@ void VideoPanel::onVideoMediaDisconnected()
     m_localVideoAvail  = false;
     m_remoteVideoAvail = false;
     m_swapped          = false;
-    startIdlePreview();
+    if (m_autoStartIdlePreview)
+        startIdlePreview();
     applyVideoState();
 }
 

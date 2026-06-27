@@ -529,35 +529,7 @@ QWidget *MainWindow::buildLogsPage()
 
 QWidget *MainWindow::buildMediaPage()
 {
-    auto *page = new QWidget(this);
-    auto *root = new QVBoxLayout(page);
-    root->setContentsMargins(12, 12, 12, 12);
-    root->setSpacing(8);
-
-    auto *title = new QLabel(tr("Media / Devices"), page);
-    title->setStyleSheet("font-size: 18px; font-weight: 600;");
-    root->addWidget(title);
-
-    auto *desc = new QLabel(
-        tr("Audio, camera and preview settings are kept here. The preview panel remains stable across resize."),
-        page);
-    desc->setStyleSheet("color: #b7c4d6;");
-    desc->setWordWrap(true);
-    root->addWidget(desc);
-
-    auto *split = new QSplitter(Qt::Vertical, page);
-    split->setChildrenCollapsible(false);
-    m_videoPanel = new VideoPanel(split);
-    m_videoPanel->setMinimumHeight(360);
-    split->addWidget(m_videoPanel);
-
-    auto *mediaPanel = new MediaPanel(split);
-    split->addWidget(mediaPanel);
-    split->setStretchFactor(0, 3);
-    split->setStretchFactor(1, 1);
-
-    root->addWidget(split, 1);
-    return page;
+    return new MediaPanel(this);
 }
 
 void MainWindow::exportConfiguration()
