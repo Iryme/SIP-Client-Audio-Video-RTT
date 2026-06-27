@@ -155,15 +155,47 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
         repositionOverlays();
     });
 
+    // In media-preview mode (autoStartIdlePreview=false) permanently hide all
+    // remote-video UI elements — this panel is for local camera testing only.
+    if (!m_autoStartIdlePreview) {
+        m_remoteLabel->setVisible(false);
+        m_signalIndicator->setVisible(false);
+        m_controlOverlay->setVisible(false);
+        m_btnSwap->setVisible(false);
+    }
+
+    // Resize debounce: coalesce rapid WM_SIZE events (window drag) into a single
+    // resizeEmbeddedVideoWindows() call 100 ms after the last resize.
+    m_resizeDebounceTimer.setSingleShot(true);
+    m_resizeDebounceTimer.setInterval(100);
+    connect(&m_resizeDebounceTimer, &QTimer::timeout, this, [this]() {
+        if (m_videoActive) {
+            QElapsedTimer t;
+            t.start();
+            resizeEmbeddedVideoWindows();
+            Logger::instance().debug(LogCategory::Media,
+                QStringLiteral("VideoPanel: embedded video resized in %1 ms").arg(t.elapsed()));
+        }
+    });
+
     // Remote-video wiring is only needed for the call panel (autoStartIdlePreview=true).
     // The media-settings preview panel (autoStartIdlePreview=false) shows only local
     // camera preview and must not intercept PJSIP video handles from the call panel.
     if (m_autoStartIdlePreview) {
-        // Retry timer: re-attach PJSIP video windows every 2 s while video is active.
-        m_videoRetryTimer.setInterval(2000);
+        // Retry timer: re-attach PJSIP video windows every 3 s while video is active.
+        // 3 s is long enough to avoid micro-stutters while still recovering a lazily-
+        // created remote HWND (PJSIP may deliver videoIncomingWindowId=-1 on the first
+        // onCallMediaState callback).
+        m_videoRetryTimer.setInterval(3000);
         connect(&m_videoRetryTimer, &QTimer::timeout, this, [this]() {
-            if (m_videoActive)
-                VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
+            if (!m_videoActive) return;
+            Logger::instance().info(LogCategory::Media,
+                "VideoPanel: retry attach video windows");
+            QElapsedTimer t;
+            t.start();
+            VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("VideoPanel: retry attach done in %1 ms").arg(t.elapsed()));
         });
 
         connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMediaConnected,
@@ -236,8 +268,9 @@ void VideoPanel::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     repositionOverlays();
+    // Debounce: coalesce rapid resize events (window drag) into one Win32 call.
     if (m_videoActive)
-        resizeEmbeddedVideoWindows();
+        m_resizeDebounceTimer.start();
 }
 
 void VideoPanel::repositionOverlays()
@@ -346,7 +379,10 @@ void VideoPanel::paintEvent(QPaintEvent *event)
     p.drawLine(0, height() / 2, width(), height() / 2);
     p.setPen(QColor(0x3a, 0x45, 0x70));
     p.setFont(QFont("Sans", 12));
-    p.drawText(rect(), Qt::AlignCenter, tr("No video — waiting for call"));
+    const QString idleText = m_autoStartIdlePreview
+        ? tr("No video — waiting for call")
+        : tr("Camera preview");
+    p.drawText(rect(), Qt::AlignCenter, idleText);
 }
 
 // ---------------------------------------------------------------------------
@@ -355,10 +391,12 @@ void VideoPanel::paintEvent(QPaintEvent *event)
 
 void VideoPanel::applyVideoState()
 {
-    const bool inCall = m_videoActive || SipManager::instance().callState() != CallState::Idle;
-
-    m_controlOverlay->setVisible(inCall);
-    m_btnSwap->setVisible(inCall);
+    // Remote-video UI elements stay permanently hidden in media-preview mode.
+    if (m_autoStartIdlePreview) {
+        const bool inCall = m_videoActive || SipManager::instance().callState() != CallState::Idle;
+        m_controlOverlay->setVisible(inCall);
+        m_btnSwap->setVisible(inCall);
+    }
 
     if (m_videoActive || m_idlePreviewRunning) {
         m_signalIndicator->setText(tr("● VIDEO"));
@@ -423,6 +461,9 @@ void VideoPanel::startIdlePreview()
     if (!m_localPreview)
         return;
 
+    QElapsedTimer startTimer;
+    startTimer.start();
+
     // Find the Qt camera device matching the user's selection.
     MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
     const MediaDevice cam = sel.selectedCamera();
@@ -463,8 +504,8 @@ void VideoPanel::startIdlePreview()
     m_noVideoDeviceAvailable = false;
 
     Logger::instance().info(LogCategory::Media,
-        QStringLiteral("VideoPanel: preview started — camera='%1'")
-            .arg(qtDev.description()));
+        QStringLiteral("VideoPanel: preview started — camera='%1' in %2 ms")
+            .arg(qtDev.description()).arg(startTimer.elapsed()));
     applyVideoState();
 }
 
@@ -472,6 +513,9 @@ void VideoPanel::stopIdlePreview()
 {
     if (!m_idlePreviewRunning && !m_previewCamera)
         return;
+
+    QElapsedTimer stopTimer;
+    stopTimer.start();
 
     if (m_previewCamera) {
         m_previewCamera->stop();
@@ -488,7 +532,8 @@ void VideoPanel::stopIdlePreview()
 
     m_localPreview->setPixmap(QPixmap());
 
-    Logger::instance().info(LogCategory::Media, "VideoPanel: preview stopped");
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoPanel: preview stopped in %1 ms").arg(stopTimer.elapsed()));
     applyVideoState();
 }
 
@@ -504,10 +549,16 @@ void VideoPanel::onIdlePreviewFrame(const QVideoFrame &frame)
 {
     if (!m_idlePreviewRunning || !m_localPreview || !frame.isValid())
         return;
+    // Throttle to ~30 fps max — drop frames arriving within 33 ms of the last one.
+    // SmoothTransformation at camera rate (30+ fps) wastes CPU during a call.
+    if (m_frameThrottle.isValid() && m_frameThrottle.elapsed() < 33)
+        return;
+    m_frameThrottle.start();
+
     const QImage img = frame.toImage()
                              .scaled(m_localPreview->size(),
                                      Qt::KeepAspectRatio,
-                                     Qt::SmoothTransformation);
+                                     Qt::FastTransformation);
     if (!img.isNull())
         m_localPreview->setPixmap(QPixmap::fromImage(img));
 }
@@ -537,16 +588,25 @@ void VideoPanel::onVideoMediaConnected()
             .arg(static_cast<quintptr>(remoteHwnd), 0, 16)
             .arg(static_cast<quintptr>(localHwnd), 0, 16));
 
+    QElapsedTimer attachTimer;
+    attachTimer.start();
     VideoMediaManager::instance().attachVideoToWidgets(remoteHwnd, localHwnd);
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoPanel: attach local preview done in %1 ms")
+            .arg(attachTimer.elapsed()));
+
+    m_remoteAttached = true;
     m_videoRetryTimer.start();
 }
 
 void VideoPanel::onVideoMediaDisconnected()
 {
     m_videoRetryTimer.stop();
+    m_resizeDebounceTimer.stop();
     m_videoActive      = false;
     m_localVideoAvail  = false;
     m_remoteVideoAvail = false;
+    m_remoteAttached   = false;
     m_swapped          = false;
     if (m_autoStartIdlePreview)
         startIdlePreview();
@@ -569,13 +629,19 @@ void VideoPanel::onRemoteVideoStarted()
 {
     m_remoteVideoAvail = true;
     applyVideoState();
-    // Re-attach on every media re-negotiation. PJSIP creates the incoming
-    // render HWND lazily (may be PJSUA_INVALID_ID on the first callback and
-    // become valid only after a subsequent UPDATE/re-INVITE). attachVideoToWidgets
-    // is idempotent: it skips remote if winId==-1, and skips preview if already
-    // embedded (SetParent on an already-parented child is a no-op).
-    if (m_videoActive)
+    // Attach remote video HWND only if not yet attached. PJSIP creates the
+    // incoming render HWND lazily; if the handle was invalid on first attach
+    // the retry timer will pick it up. Skip if already attached to avoid
+    // redundant SetParent calls that can flicker the video frame.
+    if (m_videoActive && !m_remoteAttached) {
+        QElapsedTimer t;
+        t.start();
         VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("VideoPanel: attach remote video on start in %1 ms")
+                .arg(t.elapsed()));
+        m_remoteAttached = true;
+    }
 }
 
 void VideoPanel::onRemoteVideoStopped()

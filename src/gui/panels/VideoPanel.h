@@ -1,4 +1,5 @@
 #pragma once
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QWidget>
 
@@ -86,8 +87,16 @@ private:
     QMediaCaptureSession *m_previewSession{nullptr};
     QVideoSink           *m_previewSink{nullptr};
 
-    // Retries video window attachment every 2 s while a call is active.
-    // Needed because PJSIP creates the remote render HWND lazily and
-    // the first onCallMediaState callback often has videoIncomingWindowId=-1.
+    // Retries video window attachment while a call is active (lazy PJSIP HWND).
     QTimer m_videoRetryTimer;
+
+    // Debounces resizeEmbeddedVideoWindows: coalesces rapid WM_SIZE events.
+    QTimer m_resizeDebounceTimer;
+
+    // Frame throttle: drop idle-preview frames arriving faster than ~30 fps.
+    QElapsedTimer m_frameThrottle;
+
+    // True once PJSIP video windows have been successfully attached to this
+    // panel; reset on disconnect. Prevents redundant attach calls.
+    bool m_remoteAttached{false};
 };
