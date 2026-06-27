@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-27
-Current task count: 40 of N (Tasks 1–28.6 + Task 34–40 complete)
+Current task count: 41 of N (Tasks 1–28.6 + Task 34–41 complete)
 Active branch: `feature/project-handoff-002`
 
 ---
@@ -27,6 +27,7 @@ Active branch: `feature/project-handoff-002`
 | ETSI / NG112 Emergency SIP Integration Minimal | 38 | COMPLETE — SipCallOptions, header injection, EmergencyCallAdapter |
 | ETSI / NG112 Multipart INVITE + PIDF-LO body | 39 | COMPLETE — EmergencyMultipartBuilder, PJSIP multipart injection, SDP preserved |
 | ETSI / NG112 Emergency Protocol Validation | 40 | COMPLETE — 25/25 CTest PASS, live probe built, pre-INVITE chain validated, live run documented |
+| ETSI / NG112 Live Emergency INVITE Capture | 41 | COMPLETE — live probe ran, INVITE confirmed on wire (404 expected), all NG112 headers validated |
 
 ---
 
@@ -74,6 +75,7 @@ Active branch: `feature/project-handoff-002`
 | 38 | Emergency SIP Integration Minimal — SipCallOptions, makeCallWithOptions, EmergencyCallAdapter | feature/project-handoff-002 | COMPLETE — header injection path, normal call untouched |
 | 39 | Emergency Multipart PIDF-LO Body — EmergencyMultipartBuilder, PJSIP multipart injection | feature/project-handoff-002 | COMPLETE — SDP preserved, PIDF-LO part attached, 24/24 CTest PASS |
 | 40 | Emergency Protocol Validation — test_emergency_protocol_validation, live_emergency_call_probe | feature/project-handoff-002 | COMPLETE — 25/25 CTest PASS, pre-INVITE chain validated, live probe ready |
+| 41 | Live Emergency INVITE Capture — live probe ran, headers confirmed, PIDF-LO confirmed, 404 from Kamailio (PSAP absent, expected) | feature/project-handoff-002 | COMPLETE — live validated |
 
 ---
 
@@ -137,7 +139,7 @@ Active branch: `feature/project-handoff-002`
 | EmergencyCallAdapter | COMPLETE | Bridges EmergencyInvite → SipCallOptions. Generates Content-ID. |
 | EmergencyMultipartBuilder | COMPLETE | Declarative MIME part builder. PIDF-LO part with Content-ID header. No PJSIP. |
 | test_emergency_protocol_validation | COMPLETE | 12 subtests — negative/positive protocol validation. No PJSIP. |
-| live_emergency_call_probe | COMPLETE | CLI live probe. Full chain to PJSIP. Ready to run; requires SIP credentials. |
+| live_emergency_call_probe | COMPLETE | CLI live probe. Full chain to PJSIP. Live validated (Task 41) — INVITE sent, 404 from Kamailio (PSAP absent, expected). |
 | LMPE messaging | NOT STARTED | |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |
 | ETSI TS 103 480 | NOT STARTED | Blocked on Task 37–38 |
