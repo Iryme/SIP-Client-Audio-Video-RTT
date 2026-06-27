@@ -620,6 +620,27 @@ target_link_libraries(test_pidf_lo_builder PRIVATE
 
 add_test(NAME test_pidf_lo_builder COMMAND test_pidf_lo_builder)
 
+# ---- test_emergency_sip_integration ------------------------------------
+qt_add_executable(test_emergency_sip_integration
+    test_emergency_sip_integration.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallAdapter.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyInviteBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+)
+
+target_include_directories(test_emergency_sip_integration PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_sip_integration PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_sip_integration COMMAND test_emergency_sip_integration)
+
 if(BUILD_LIVE_VALIDATION_TOOLS)
     if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
         message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")

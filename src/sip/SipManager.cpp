@@ -918,7 +918,7 @@ void SipManager::destroyActiveCall()
     m_activeCall = nullptr;
 }
 
-bool SipManager::makeCall(const QString &remoteUri)
+bool SipManager::prepareOutgoingCall(const QString &remoteUri)
 {
     if (m_activeCall && m_activeCall->state() != CallState::Idle
                      && m_activeCall->state() != CallState::Failed) {
@@ -981,6 +981,13 @@ bool SipManager::makeCall(const QString &remoteUri)
     if (m_account)
         m_activeCall->setPjsipAccountHandle(m_account->pjAccountHandle());
 #endif
+    return true;
+}
+
+bool SipManager::makeCall(const QString &remoteUri)
+{
+    if (!prepareOutgoingCall(remoteUri))
+        return false;
 
     // Emit INVITE outbound trace.
     {
@@ -995,6 +1002,26 @@ bool SipManager::makeCall(const QString &remoteUri)
     }
 
     return m_activeCall->makeCall(remoteUri);
+}
+
+bool SipManager::makeEmergencyCall(const QString &remoteUri, const SipCallOptions &options)
+{
+    if (!prepareOutgoingCall(remoteUri))
+        return false;
+
+    // Emit INVITE outbound trace (emergency).
+    {
+        SipMessageTrace trace;
+        trace.direction = SipMessageTrace::Direction::Outbound;
+        trace.method    = QStringLiteral("INVITE");
+        trace.toUri     = remoteUri.trimmed();
+        const SipProfile cp = SipProfileManager::instance().activeProfile();
+        if (!cp.isNull())
+            trace.fromUri = cp.effectiveSipUri();
+        SipTraceLogger::instance().logMessage(trace);
+    }
+
+    return m_activeCall->makeCallWithOptions(remoteUri, options);
 }
 
 bool SipManager::answerCall()

@@ -504,26 +504,158 @@ Content-ID: <pidflo-1@ng112.local>
 
 | Item | Task |
 |---|---|
-| Windows Location API (COM) — `WindowsLocationProvider` | Task 38+ |
-| Multipart INVITE body (`multipart/mixed`) | Task 38 |
-| PJSIP header injection into real INVITE | Task 38 |
-| `EmergencyCallController` → `SipManager::makeCall()` wiring | Task 38 |
-| PIDF-LO civic address (PIDF-LO §5) | Task 38+ |
-| ETSI TS 103 698 conformance validation | Task 38+ |
+| Windows Location API (COM) — `WindowsLocationProvider` | Task 39+ |
+| Multipart INVITE body (`multipart/mixed`) | Task 39 |
+| PIDF-LO body injection (requires multipart/mixed) | Task 39 |
+| PIDF-LO civic address (PIDF-LO §5) | Task 39+ |
+| ETSI TS 103 698 conformance validation | Task 39+ |
+| GUI: Emergency button in CallPanel | Task 40 |
 
 ---
 
-## 11. Roadmap
+## 11. Emergency SIP Integration Minimal (Task 38)
 
-### Task 37 — Location Provider
-- `GpsLocationProvider` — Windows Location API (COM)
-- `ManualLocationProvider` — PIDF-LO from user-entered coordinates
-- PIDF-LO XML generation (`EmergencyLocationProvider::pidfLo()`)
-- Location injected into `EmergencyCallProfile.pidfLo` before `readyToDial`
+**Status:** Complete — SIP call options, header injection path, EmergencyCallAdapter.
 
-### Task 38 — Multipart INVITE Body + Real Emergency Call (ETSI TS 103 479 / RFC 7852)
-- `EmergencyCallController::readyToDial` connected to `SipManager::makeCall()`
-- `multipart/mixed` body builder (PIDF-LO + RFC 7852 additional data)
-- PJSIP header injection via `pjsua2::CallOpParam`
+### 11.1 Overview
+
+Task 38 adds the minimal wiring between the pure-declarative emergency module
+(Tasks 34–37) and the PJSIP SIP stack, without modifying the normal call flow.
+
+**What was added:**
+- `SipCallOptions` — generic per-call options struct in `src/sip/`
+- `SipCall::makeCallWithOptions()` — INVITE with custom headers via `CallOpParam::txOption`
+- `SipManager::makeEmergencyCall()` — emergency call entry point; normal `makeCall()` untouched
+- `SipManager::prepareOutgoingCall()` — private helper to de-duplicate call setup
+- `EmergencyCallAdapter` — bridges `EmergencyInvite` → `SipCallOptions`; generates Content-ID
+
+### 11.2 SipCallOptions
+
+```cpp
+struct SipCallOptions {
+    bool    emergencyCall    = false;
+    QString requestUriOverride;
+    QList<QPair<QString,QString>> customHeaders;  // injected into INVITE txOption.headers
+    QString body;          // reserved — multipart body (Task 39)
+    QString contentType;
+    QString contentId;
+    bool    requireAudio = true;   // offer m=audio
+    bool    requireRtt   = true;   // offer m=text (RFC 4103)
+    bool    allowVideo   = true;   // offer m=video
+
+    bool isEmpty() const;
+    static SipCallOptions normal();
+};
+```
+
+Default-constructed `SipCallOptions` (isEmpty()==true) produces behavior identical to
+the old `makeCall()`. Normal calls continue to use `SipManager::makeCall()` and are
+completely unaffected.
+
+### 11.3 PJSIP header injection
+
+`SipCall::makeCallWithOptions()` injects `customHeaders` into `CallOpParam::txOption.headers`
+using `pj::SipHeader { hName, hValue }` before calling `pjsua2::Call::makeCall()`:
+
+```cpp
+for (const auto &hdr : opts.customHeaders) {
+    pj::SipHeader sh;
+    sh.hName  = hdr.first.toStdString();
+    sh.hValue = hdr.second.toStdString();
+    prm.txOption.headers.push_back(sh);
+}
+```
+
+Headers injected for an NG112 emergency INVITE (from `EmergencyInviteBuilder`):
+- `Geolocation: <cid:pidflo-<ts>@ng112.local>` (RFC 6442)
+- `Geolocation-Routing: yes`
+- `Supported: geolocation`
+- `Accept: application/sdp`
+
+### 11.4 PIDF-LO body — deferred to Task 39
+
+Setting `txOption.msgBody` in PJSIP's `makeCall()` **only applies when the message
+has no body** — but PJSIP adds the SDP body automatically for audio/video. Injecting
+a raw PIDF-LO body would replace the SDP and break media negotiation.
+
+The correct approach is `txOption.multipartParts` to build a `multipart/mixed` body
+combining:
+- Part 1: `application/sdp` (SDP offered by PJSIP)
+- Part 2: `application/pidf+xml` (PIDF-LO)
+
+This is Task 39. For Task 38:
+- `SipCallOptions.body` and `.contentType` carry the PIDF-LO data declaratively
+- The Geolocation header is injected (so the PSAP knows a body is coming)
+- The body itself is NOT injected into the real INVITE yet
+
+### 11.5 EmergencyCallAdapter
+
+Pure bridge with no PJSIP dependency (`src/emergency/EmergencyCallAdapter.h`):
+
+```cpp
+// EmergencyInvite → SipCallOptions
+SipCallOptions EmergencyCallAdapter::toSipCallOptions(const EmergencyInvite &invite);
+
+// "pidflo-<ms-since-epoch>@ng112.local"
+QString EmergencyCallAdapter::generateContentId();
+```
+
+### 11.6 Normal call protection
+
+`makeCall()` is unchanged except for delegating to `makeCallWithOptions(SipCallOptions{})`.
+Since `SipCallOptions{}` has the same defaults as the old hardcoded values
+(`videoCount=1`, `textCount=1`, no custom headers), existing behavior is identical.
+All 22 previous tests continue to pass (23/23 total with the new test).
+
+### 11.7 Usage pattern (when calling)
+
+```cpp
+// Build location + PIDF-LO
+auto loc   = EmergencyLocation::makeStatic(47.6, -122.3, "2026-06-27T12:00:00Z");
+auto pidf  = PidfLoBuilder(loc)
+                 .setContentId(EmergencyCallAdapter::generateContentId())
+                 .build();
+
+// Build profile
+auto profile = EmergencyCallProfile::makeSos("sip:psap@ng112.example.com");
+profile.pidfLo = pidf.xml;
+
+// Build invite
+EmergencyInvite inv = EmergencyInviteBuilder(profile)
+                          .setContentId(pidf.contentId)
+                          .build();
+
+// Convert to SIP options
+SipCallOptions opts = EmergencyCallAdapter::toSipCallOptions(inv);
+
+// Dial
+SipManager::instance().makeEmergencyCall(inv.requestUri, opts);
+// ↳ injects Geolocation + Supported + Accept headers
+// ↳ PIDF-LO body deferred to Task 39 (multipart/mixed)
+```
+
+### 11.8 What remains for subsequent tasks
+
+| Item | Task |
+|---|---|
+| Multipart/mixed body builder (SDP + PIDF-LO) | Task 39 |
+| PIDF-LO body injection into real INVITE | Task 39 |
+| Windows Location API (`WindowsLocationProvider`) | Task 39+ |
+| GUI: Emergency button in CallPanel | Task 40 |
+| ETSI TS 103 698 conformance validation | Task 40+ |
+| Live INVITE capture + header verification | Task 39 |
+
+---
+
+## 12. Roadmap
+
+### Task 39 — Multipart INVITE Body + PIDF-LO body injection
+- `multipart/mixed` builder: Part 1 = `application/sdp`, Part 2 = `application/pidf+xml`
+- `txOption.multipartParts` injection in `makeCallWithOptions()`
+- Windows Location API (COM) — `WindowsLocationProvider`
+- Live INVITE capture + Geolocation header + body verification
+
+### Task 40 — Real Emergency Call (ETSI TS 103 479 conformance)
 - GUI: Emergency button in `CallPanel`
-- Validation against ETSI TS 103 479 conformance checklist
+- `EmergencyCallController::readyToDial` → `SipManager::makeEmergencyCall()` wiring
+- ETSI TS 103 479 / TS 103 480 conformance checklist

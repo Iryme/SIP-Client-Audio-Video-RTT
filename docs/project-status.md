@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-27
-Current task count: 37 of N (Tasks 1–28.6 + Task 34–37 complete)
+Current task count: 38 of N (Tasks 1–28.6 + Task 34–38 complete)
 Active branch: `feature/project-handoff-002`
 
 ---
@@ -24,7 +24,8 @@ Active branch: `feature/project-handoff-002`
 | Green build recovery (PJMEDIA_HAS_VIDEO fix) | 35 | COMPLETE — 20/20 CTest PASS |
 | ETSI / NG112 Emergency SIP INVITE Builder | 36 | COMPLETE — declarative builder, no real call |
 | ETSI / NG112 PIDF-LO Builder + Manual Location Model | 37 | COMPLETE — PIDF-LO builder, not yet sent over SIP |
-| ETSI / NG112 Multipart INVITE + real emergency call | 38 | NOT STARTED |
+| ETSI / NG112 Emergency SIP Integration Minimal | 38 | COMPLETE — SipCallOptions, header injection, EmergencyCallAdapter |
+| ETSI / NG112 Multipart INVITE + PIDF-LO body | 39 | NOT STARTED |
 
 ---
 
@@ -69,6 +70,7 @@ Active branch: `feature/project-handoff-002`
 | 35 | Green Build Recovery — PJMEDIA_HAS_VIDEO + pjlib linkage for PJSIP test targets | feature/project-handoff-002 | COMPLETE — 20/20 CTest PASS |
 | 36 | Emergency SIP INVITE Builder — EmergencyInviteBuilder, EmergencyInvite, validation | feature/project-handoff-002 | COMPLETE — declarative builder, no real call |
 | 37 | PIDF-LO Builder + Manual Location — EmergencyLocation, PidfLoBuilder, StaticLocationProvider | feature/project-handoff-002 | COMPLETE — PIDF-LO builder, not yet sent over SIP |
+| 38 | Emergency SIP Integration Minimal — SipCallOptions, makeCallWithOptions, EmergencyCallAdapter | feature/project-handoff-002 | COMPLETE — header injection path, normal call untouched |
 
 ---
 
@@ -126,6 +128,10 @@ Active branch: `feature/project-handoff-002`
 | EmergencyLocation | COMPLETE | Geodetic location struct. WGS-84. Validation. |
 | PidfLoBuilder | COMPLETE | RFC 4119 PIDF-LO XML builder. Point/Circle. No PJSIP. |
 | StaticLocationProvider | COMPLETE | Location provider backed by static EmergencyLocation. |
+| SipCallOptions | COMPLETE | Generic per-call SIP options. Header injection, media policy. |
+| SipCall::makeCallWithOptions | COMPLETE | INVITE + custom headers via pjsua2 txOption. Normal makeCall() unchanged. |
+| SipManager::makeEmergencyCall | COMPLETE | Emergency call entry point. Uses SipCallOptions. |
+| EmergencyCallAdapter | COMPLETE | Bridges EmergencyInvite → SipCallOptions. Generates Content-ID. |
 | LMPE messaging | NOT STARTED | |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |
 | ETSI TS 103 480 | NOT STARTED | Blocked on Task 37–38 |

@@ -6,6 +6,7 @@
 #include <qwindowdefs.h>
 
 #include "sip/CallStateMachine.h"
+#include "sip/SipCallOptions.h"
 
 // Manages a single SIP call. Owns a CallStateMachine that enforces valid
 // call state transitions. In stub mode (ENABLE_PJSIP=OFF) all operations
@@ -23,6 +24,10 @@ public:
 
     // Initiate an outgoing call. Must be in Idle state.
     bool makeCall(const QString &remoteUri);
+
+    // Outgoing call with per-call SIP options (emergency headers, media policy).
+    // When options.isEmpty(), behavior is identical to makeCall().
+    bool makeCallWithOptions(const QString &remoteUri, const SipCallOptions &options);
 
     // Binds the call to the active PJSIP account or existing incoming INVITE.
     // No-op in stub builds; the handle is a pj::Account* behind HAVE_PJSIP.

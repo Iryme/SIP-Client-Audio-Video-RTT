@@ -611,9 +611,14 @@ SipCall::~SipCall()
 
 bool SipCall::makeCall(const QString &remoteUri)
 {
+    return makeCallWithOptions(remoteUri, SipCallOptions{});
+}
+
+bool SipCall::makeCallWithOptions(const QString &remoteUri, const SipCallOptions &opts)
+{
     if (m_stateMachine.state() != CallState::Idle) {
         Logger::instance().warn(LogCategory::Sip,
-            QStringLiteral("Call rejected: makeCall called in state %1")
+            QStringLiteral("Call rejected: makeCallWithOptions called in state %1")
                 .arg(callStateName(m_stateMachine.state())));
         return false;
     }
@@ -627,7 +632,9 @@ bool SipCall::makeCall(const QString &remoteUri)
     m_callId    = QUuid::createUuid().toString(QUuid::WithoutBraces).left(12);
 
     Logger::instance().info(LogCategory::Sip,
-        QStringLiteral("Call started: id=%1 uri=%2").arg(m_callId, m_remoteUri));
+        QStringLiteral("Call started: id=%1 uri=%2 emergency=%3")
+            .arg(m_callId, m_remoteUri,
+                 opts.emergencyCall ? QStringLiteral("yes") : QStringLiteral("no")));
 
     m_stateMachine.tryTransition(CallState::OutgoingInit,
                                  QStringLiteral("Dialing %1").arg(m_remoteUri));
@@ -638,11 +645,13 @@ bool SipCall::makeCall(const QString &remoteUri)
         try {
             m_impl->pjCall = new Impl::PjCall(m_impl, *account);
             pj::CallOpParam prm(true);
-            prm.opt.videoCount = 1;
-            prm.opt.textCount  = 1;  // Offer m=text (RFC 4103 T.140) in SDP
-            applyVideoMediaDirectionIfNeeded(prm.opt);
+            prm.opt.videoCount = opts.allowVideo ? 1 : 0;
+            prm.opt.textCount  = opts.requireRtt ? 1 : 0;
+            if (opts.allowVideo)
+                applyVideoMediaDirectionIfNeeded(prm.opt);
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("PJSIP INVITE outbound: RTT m=text offered (textCount=1)"));
+                QStringLiteral("PJSIP INVITE outbound: RTT m=text offered (textCount=%1)")
+                    .arg(prm.opt.textCount));
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP INVITE outbound video setup: call=%1 videoCount=%2 videoDevCount=%3 defaultCaptureDev=%4 hasCaptureDev=%5")
                     .arg(m_callId)
@@ -653,6 +662,19 @@ bool SipCall::makeCall(const QString &remoteUri)
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP INVITE outbound: call=%1 target=%2")
                     .arg(m_callId, m_remoteUri));
+
+            // Inject extra SIP headers (emergency path).
+            for (const auto &hdr : opts.customHeaders) {
+                pj::SipHeader sh;
+                sh.hName  = hdr.first.toStdString();
+                sh.hValue = hdr.second.toStdString();
+                prm.txOption.headers.push_back(sh);
+            }
+            if (!opts.customHeaders.isEmpty())
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("PJSIP INVITE: %1 custom headers injected (emergency)")
+                        .arg(opts.customHeaders.size()));
+
             m_impl->pjCall->makeCall(m_remoteUri.toStdString(), prm);
             return true;
         } catch (const pj::Error &e) {

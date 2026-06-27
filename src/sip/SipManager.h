@@ -6,6 +6,7 @@
 
 #include "sip/SipAccount.h"
 #include "sip/SipCall.h"
+#include "sip/SipCallOptions.h"
 #include "sip/RegistrationStateMachine.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
@@ -38,6 +39,11 @@ public:
     // Initiate an outgoing call. Returns false if a call is already active or
     // if remoteUri is empty.
     bool makeCall(const QString &remoteUri);
+
+    // Emergency variant: outgoing call with per-call SIP options (custom headers,
+    // media policy).  Use EmergencyCallAdapter::toSipCallOptions() to build the
+    // options from an EmergencyInvite.  Returns false if a call is already active.
+    bool makeEmergencyCall(const QString &remoteUri, const SipCallOptions &options);
 
     // Answer an incoming call. Returns false if no incoming call is pending.
     bool answerCall();
@@ -163,6 +169,11 @@ private:
     void scheduleRetryIfEligible(int statusCode);
     void completePendingSwitch();
     void destroyActiveCall();
+
+    // Shared setup for makeCall() and makeEmergencyCall():
+    // guards, creates m_activeCall, wires signals, sets PJSIP handle.
+    // Returns false if rejected (active call, empty URI).
+    bool prepareOutgoingCall(const QString &remoteUri);
 
     // Reads the persisted mic/speaker selection from MediaDeviceSelectionModel
     // and applies it to PJSIP AudDevManager. No-op when PJSIP is not active.
