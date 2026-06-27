@@ -57,6 +57,10 @@ set(AUDIO_MEDIA_SOURCES
     ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceManager.cpp
     ${CMAKE_SOURCE_DIR}/src/media/MediaDeviceSelectionModel.cpp
     ${CMAKE_SOURCE_DIR}/src/media/QtMediaDeviceBackend.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/VideoQualityManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/VideoSettings.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/VideoStatistics.cpp
+    ${CMAKE_SOURCE_DIR}/src/media/VideoPipelineMonitor.cpp
 )
 
 # ---- test_sip_profile_manager ------------------------------------------
