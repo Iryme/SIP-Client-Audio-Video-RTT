@@ -4,7 +4,6 @@
 
 class DashboardPage;
 class NavRail;
-class CallPanel;
 class ContactsPanel;
 class VideoPanel;
 class RttPanel;
@@ -17,6 +16,7 @@ class QDialog;
 class QSplitter;
 class QStackedWidget;
 class QLabel;
+class QLineEdit;
 
 class MainWindow : public QMainWindow
 {
@@ -63,7 +63,6 @@ private:
     // Panels
     NavRail          *m_navRail{nullptr};
     QStackedWidget   *m_pageStack{nullptr};
-    CallPanel        *m_callPanel{nullptr};
     ContactsPanel    *m_contactsPanel{nullptr};
     VideoPanel       *m_clientsVideoPanel{nullptr};
     VideoPanel       *m_videoPanel{nullptr};
@@ -79,6 +78,8 @@ private:
     QAction *m_actExportConfig{nullptr};
     QAction *m_actAbout{nullptr};
     QAction *m_actDiagnosticsInfo{nullptr};
+
+    QLineEdit *m_clientsTargetInput{nullptr};
 
     // Splitters (saved for layout persistence)
     QSplitter *m_vertSplitter{nullptr};

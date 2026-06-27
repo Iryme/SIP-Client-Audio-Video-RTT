@@ -896,6 +896,26 @@ bool SipManager::isCallVideoMuted() const
     return m_activeCall ? m_activeCall->isVideoMuted() : false;
 }
 
+bool SipManager::requestCallVideo(bool enabled)
+{
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("requestCallVideo: no active call"));
+        return false;
+    }
+    return m_activeCall->requestVideo(enabled);
+}
+
+bool SipManager::requestCallRtt(bool enabled)
+{
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("requestCallRtt: no active call"));
+        return false;
+    }
+    return m_activeCall->requestRtt(enabled);
+}
+
 void SipManager::sendRttText(const QString &text)
 {
     if (!m_activeCall) {

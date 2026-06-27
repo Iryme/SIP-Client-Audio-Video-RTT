@@ -60,6 +60,14 @@ public:
     bool setVideoMuted(bool muted);
     bool isVideoMuted() const;
 
+    // Request / release negotiated video mid-call. Does not touch camera state.
+    // In PJSIP mode attempts a re-INVITE with updated video media counts.
+    bool requestVideo(bool enabled);
+
+    // Request / release negotiated RTT/text mid-call.
+    // In PJSIP mode attempts a re-INVITE with updated text media counts.
+    bool requestRtt(bool enabled);
+
     // True when a video stream is currently active (set/cleared alongside
     // videoMediaConnected / videoMediaDisconnected).
     bool isLocalVideoAvailable()  const;

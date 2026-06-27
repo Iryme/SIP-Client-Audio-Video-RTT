@@ -1017,6 +1017,76 @@ bool SipCall::setVideoMuted(bool muted)
     return true;
 }
 
+bool SipCall::requestVideo(bool enabled)
+{
+    const CallState state = m_stateMachine.state();
+    if (state != CallState::Active && state != CallState::Held && state != CallState::Connecting) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("requestVideo() rejected: call not negotiable (state=%1)")
+                .arg(callStateName(state)));
+        return false;
+    }
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Request video %1: call id=%2")
+            .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
+
+#ifdef HAVE_PJSIP
+    if (m_impl->pjCall) {
+        try {
+            pj::CallOpParam prm;
+            prm.opt.videoCount = enabled ? 1 : 0;
+            m_impl->pjCall->reinvite(prm);
+            return true;
+        } catch (const pj::Error &e) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("requestVideo() PJSIP error: %1")
+                    .arg(QString::fromStdString(e.reason)));
+            return false;
+        }
+    }
+#endif
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Request video will apply on next call (stub or backend unavailable)"));
+    return true;
+}
+
+bool SipCall::requestRtt(bool enabled)
+{
+    const CallState state = m_stateMachine.state();
+    if (state != CallState::Active && state != CallState::Held && state != CallState::Connecting) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("requestRtt() rejected: call not negotiable (state=%1)")
+                .arg(callStateName(state)));
+        return false;
+    }
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Request RTT %1: call id=%2")
+            .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
+
+#ifdef HAVE_PJSIP
+    if (m_impl->pjCall) {
+        try {
+            pj::CallOpParam prm;
+            prm.opt.textCount = enabled ? 1 : 0;
+            m_impl->pjCall->reinvite(prm);
+            return true;
+        } catch (const pj::Error &e) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("requestRtt() PJSIP error: %1")
+                    .arg(QString::fromStdString(e.reason)));
+            return false;
+        }
+    }
+#endif
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("RTT request will apply on next call (stub or backend unavailable)"));
+    return true;
+}
+
 bool SipCall::isVideoMuted()           const { return m_videoMuted; }
 bool SipCall::isLocalVideoAvailable()  const { return m_localVideoAvailable; }
 bool SipCall::isRemoteVideoAvailable() const { return m_remoteVideoAvailable; }

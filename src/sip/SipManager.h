@@ -74,6 +74,10 @@ public:
     bool setCallVideoMuted(bool muted);
     bool isCallVideoMuted() const;
 
+    // Request or release video / RTT mid-call via renegotiation when possible.
+    bool requestCallVideo(bool enabled);
+    bool requestCallRtt(bool enabled);
+
     // Send RTT text via the active call's T.140 text stream.
     // No-op if no call is active or RTT is not negotiated.
     void sendRttText(const QString &text);

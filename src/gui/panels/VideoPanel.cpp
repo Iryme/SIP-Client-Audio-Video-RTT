@@ -15,6 +15,7 @@
 #include <QVideoFrame>
 #include <QVideoSink>
 #include <QWidget>
+#include <QtGlobal>
 
 #include "core/Logger.h"
 #include "core/AppSettings.h"
@@ -326,7 +327,11 @@ void VideoPanel::repositionOverlays()
 
     // Local preview / PiP
     if (m_localPreview) {
-        if (!m_swapped) {
+        if (!m_autoStartIdlePreview) {
+            // Settings -> Video mode: local preview only, fill the panel.
+            m_localPreview->setFixedSize(qMax(1, w - margin * 2), qMax(1, h - margin * 2));
+            m_localPreview->move(margin, margin);
+        } else if (!m_swapped) {
             // Normal: local PiP bottom-right
             m_localPreview->setFixedSize(160, 90);
             m_localPreview->move(w - m_localPreview->width() - margin,
@@ -407,6 +412,11 @@ void VideoPanel::paintEvent(QPaintEvent *event)
 
     // Idle — dark background with placeholder crosshair
     p.fillRect(rect(), QColor(0x0d, 0x11, 0x1a));
+    if (!m_autoStartIdlePreview) {
+        p.setPen(QColor(0x2f, 0x3f, 0x58));
+        p.drawText(rect(), Qt::AlignCenter, tr("Camera preview"));
+        return;
+    }
     p.setPen(QColor(0x2a, 0x35, 0x50));
     p.drawLine(width() / 2, 0, width() / 2, height());
     p.drawLine(0, height() / 2, width(), height() / 2);

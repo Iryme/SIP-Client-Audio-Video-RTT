@@ -117,6 +117,12 @@ void VideoSettingsPanel::buildUi()
     m_overlayCheck = new QCheckBox(tr("Show debug overlay"), leftWidget);
     leftLayout->addWidget(m_overlayCheck);
 
+    m_cameraToggle = new QPushButton(tr("Camera Off"), leftWidget);
+    m_cameraToggle->setCheckable(true);
+    m_cameraToggle->setChecked(false);
+    m_cameraToggle->setFixedHeight(28);
+    leftLayout->addWidget(m_cameraToggle);
+
     // Buttons
     m_applyBtn = new QPushButton(tr("Apply"), leftWidget);
     m_applyBtn->setDefault(true);
@@ -158,6 +164,8 @@ void VideoSettingsPanel::buildUi()
             this, &VideoSettingsPanel::onBitrateChanged);
     connect(m_codecUp,   &QPushButton::clicked, this, &VideoSettingsPanel::onCodecUp);
     connect(m_codecDown, &QPushButton::clicked, this, &VideoSettingsPanel::onCodecDown);
+    connect(m_cameraToggle, &QPushButton::toggled,
+            this, &VideoSettingsPanel::onCameraToggled);
     connect(m_applyBtn,  &QPushButton::clicked, this, &VideoSettingsPanel::onApply);
     connect(m_resetBtn,  &QPushButton::clicked, this, &VideoSettingsPanel::onReset);
 }
@@ -343,6 +351,20 @@ void VideoSettingsPanel::onCameraChanged(int idx)
     populateResolutions(camId);
     const QSize res = m_resolutionCombo->currentData().value<QSize>();
     populateFps(camId, res);
+    if (m_cameraToggle && m_cameraToggle->isChecked() && m_preview)
+        m_preview->refreshIdlePreview();
+}
+
+void VideoSettingsPanel::onCameraToggled(bool on)
+{
+    if (m_cameraToggle)
+        m_cameraToggle->setText(on ? tr("Camera On") : tr("Camera Off"));
+    if (!m_preview)
+        return;
+    if (on)
+        m_preview->startIdlePreview();
+    else
+        m_preview->stopIdlePreview();
 }
 
 void VideoSettingsPanel::onBitrateChanged(int value)
@@ -382,7 +404,7 @@ void VideoSettingsPanel::onApply()
             QStringLiteral("VideoSettings changed during active call — "
                            "will apply on next call start"));
     } else {
-        if (m_preview && m_preview->isVisible())
+        if (m_preview && m_preview->isVisible() && m_cameraToggle && m_cameraToggle->isChecked())
             m_preview->refreshIdlePreview();
     }
 }
@@ -390,6 +412,8 @@ void VideoSettingsPanel::onApply()
 void VideoSettingsPanel::onReset()
 {
     loadFrom(VideoQualityManager::instance().current());
+    if (m_cameraToggle)
+        m_cameraToggle->setChecked(false);
 }
 
 void VideoSettingsPanel::onStatsUpdated(float fps, int drops)
@@ -415,8 +439,7 @@ void VideoSettingsPanel::showEvent(QShowEvent *event)
                 this, &VideoSettingsPanel::onStatsUpdated);
         m_statsConnected = true;
     }
-    if (m_preview)
-        m_preview->startIdlePreview();
+    onCameraToggled(m_cameraToggle && m_cameraToggle->isChecked());
 }
 
 void VideoSettingsPanel::hideEvent(QHideEvent *event)

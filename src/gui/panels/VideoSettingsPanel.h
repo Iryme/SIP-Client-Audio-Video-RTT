@@ -24,6 +24,7 @@ protected:
 
 private slots:
     void onCameraChanged(int idx);
+    void onCameraToggled(bool on);
     void onBitrateChanged(int value);
     void onCodecUp();
     void onCodecDown();
@@ -53,6 +54,7 @@ private:
     QPushButton *m_codecUp{nullptr};
     QPushButton *m_codecDown{nullptr};
     QCheckBox   *m_overlayCheck{nullptr};
+    QPushButton *m_cameraToggle{nullptr};
     QPushButton *m_applyBtn{nullptr};
     QPushButton *m_resetBtn{nullptr};
     QLabel      *m_statsLabel{nullptr};
