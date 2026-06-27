@@ -37,6 +37,10 @@ public:
     static void    saveSelectedCamera    (const QString &id) { settings().setValue("media/device/camera", id); }
     static QString loadSelectedCamera    ()                  { return settings().value("media/device/camera").toString(); }
 
+    // Theme (persisted as int matching AppTheme enum; 0 = Auto)
+    static int  savedThemeIndex()        { return settings().value(QStringLiteral("ui/theme"), 0).toInt(); }
+    static void saveThemeIndex(int idx)  { settings().setValue(QStringLiteral("ui/theme"), idx); settings().sync(); }
+
     // Emergency test mode — disabled by default; must be explicitly enabled in the INI file.
     // When false the 112 emergency button is hidden and no emergency call can be initiated.
     // To enable: set emergency/testMode=true in SIPClient.ini (user scope).

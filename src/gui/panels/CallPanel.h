@@ -14,6 +14,7 @@ class QLineEdit;
 class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
+class StatusCard;
 class EmergencyCallController;
 class StaticLocationProvider;
 
@@ -50,8 +51,13 @@ private slots:
     void onAudioMediaDisconnected();
     void onVideoMediaConnected();
     void onVideoMediaDisconnected();
+    void onLocalVideoStarted();
+    void onLocalVideoStopped();
+    void onRemoteVideoStarted();
+    void onRemoteVideoStopped();
     void onRttMediaConnected();
     void onRttMediaDisconnected();
+    void onVideoStatsUpdated(float fps, int dropsThisSec);
     void onDurationTick();
 
     // Emergency call slots
@@ -65,8 +71,8 @@ private slots:
 private:
     void applyCallState(CallState state);
     void populateDeviceCombos();
-    void updateInfoGrid();
-    void resetInfoGrid();
+    void updateStatusCards();
+    void resetStatusCards();
     QString formatDuration(int seconds) const;
 
     // Dial row
@@ -92,16 +98,24 @@ private:
     QPushButton *m_btnReject{nullptr};
     QPushButton *m_btnHangup{nullptr};
 
-    // Info grid labels (right column = values)
-    QLabel *m_infoState{nullptr};
-    QLabel *m_infoDuration{nullptr};
-    QLabel *m_infoRemoteUri{nullptr};
-    QLabel *m_infoLocalUri{nullptr};
-    QLabel *m_infoCallType{nullptr};
-    QLabel *m_infoNegotiated{nullptr};
-    QLabel *m_infoAudioConn{nullptr};
-    QLabel *m_infoVideoConn{nullptr};
-    QLabel *m_infoRttConn{nullptr};
+    // Status cards (17 tiles, replacing the old text info grid)
+    StatusCard *m_cardState{nullptr};
+    StatusCard *m_cardDuration{nullptr};
+    StatusCard *m_cardAudio{nullptr};
+    StatusCard *m_cardLocalVideo{nullptr};
+    StatusCard *m_cardRemoteVideo{nullptr};
+    StatusCard *m_cardRtt{nullptr};
+    StatusCard *m_cardLmpe{nullptr};
+    StatusCard *m_cardVideoCodec{nullptr};
+    StatusCard *m_cardAudioCodec{nullptr};
+    StatusCard *m_cardBitrate{nullptr};
+    StatusCard *m_cardResolution{nullptr};
+    StatusCard *m_cardFps{nullptr};
+    StatusCard *m_cardRemoteUri{nullptr};
+    StatusCard *m_cardLocalAccount{nullptr};
+    StatusCard *m_cardPacketLoss{nullptr};
+    StatusCard *m_cardJitter{nullptr};
+    StatusCard *m_cardLatency{nullptr};
 
     // Duration tracking
     QTimer  m_durationTimer;
@@ -110,6 +124,8 @@ private:
     // Media state
     bool m_audioConnected{false};
     bool m_videoConnected{false};
+    bool m_localVideoActive{false};
+    bool m_remoteVideoActive{false};
     bool m_rttConnected{false};
     QString m_remoteUri;
     CallType m_activeCallType{CallType::AudioOnly};

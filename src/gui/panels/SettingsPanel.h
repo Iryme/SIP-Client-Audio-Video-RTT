@@ -1,10 +1,13 @@
 #pragma once
 
 #include <QWidget>
+#include "gui/theme/ThemeManager.h"
 
 class SidebarPanel;
 class VideoSettingsPanel;
 class QCheckBox;
+class QComboBox;
+class QLabel;
 class QLineEdit;
 class QPushButton;
 
@@ -18,6 +21,7 @@ public:
 private slots:
     void onLoadDefaults();
     void onSave();
+    void onThemeChanged(int comboIndex);
 
 private:
     void load();
@@ -25,6 +29,8 @@ private:
 
     SidebarPanel      *m_accountsPanel{nullptr};
     VideoSettingsPanel *m_videoSettings{nullptr};
+
+    // Connection tab
     QLineEdit  *m_serverIp{nullptr};
     QLineEdit  *m_sipDomain{nullptr};
     QLineEdit  *m_sipPort{nullptr};
@@ -34,4 +40,7 @@ private:
     QCheckBox  *m_persistMedia{nullptr};
     QPushButton *m_save{nullptr};
     QPushButton *m_reset{nullptr};
+
+    // Appearance tab
+    QComboBox  *m_themeCombo{nullptr};
 };

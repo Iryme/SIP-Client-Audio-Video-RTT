@@ -1,12 +1,11 @@
 #include "Application.h"
 #include "gui/MainWindow.h"
+#include "gui/theme/ThemeManager.h"
 #include "media/MediaDeviceManager.h"
 #include "sip/SipManager.h"
 #include "core/Logger.h"
 #include "core/PerfScope.h"
 
-#include <QFile>
-#include <QStyleFactory>
 #include <QTimer>
 
 Application::Application(int &argc, char **argv)
@@ -83,9 +82,7 @@ Application::~Application()
 
 void Application::loadStyleSheet()
 {
-    QFile f(":/styles/dark_theme.qss");
-    if (f.open(QFile::ReadOnly)) {
-        setStyleSheet(QString::fromUtf8(f.readAll()));
-        f.close();
-    }
+    // Apply the theme saved in QSettings (default: Auto = Dark).
+    // ThemeManager calls QApplication::setStyleSheet() — no widgets are rebuilt.
+    ThemeManager::instance().applyFromSettings();
 }

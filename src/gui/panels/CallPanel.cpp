@@ -3,7 +3,6 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QFrame>
-#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -11,6 +10,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QVBoxLayout>
 
 #include "core/AppSettings.h"
@@ -21,33 +21,17 @@
 #include "emergency/EmergencyLocation.h"
 #include "emergency/PidfLoBuilder.h"
 #include "emergency/StaticLocationProvider.h"
+#include "gui/widgets/FlowLayout.h"
+#include "gui/widgets/StatusCard.h"
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoMediaManager.h"
+#include "media/VideoQualityManager.h"
+#include "media/VideoStatistics.h"
 #include "sip/SipManager.h"
 #include "sip/SipProfileManager.h"
 #include "sip/SipUriNormalizer.h"
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-static QLabel *infoKeyLabel(const QString &text, QWidget *parent)
-{
-    auto *lbl = new QLabel(text, parent);
-    lbl->setStyleSheet("color: #7a8aaa; font-size: 10px;");
-    lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    return lbl;
-}
-
-static QLabel *infoValLabel(const QString &text, QWidget *parent)
-{
-    auto *lbl = new QLabel(text, parent);
-    lbl->setStyleSheet("color: #d0dae8; font-size: 10px; font-family: monospace;");
-    lbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    return lbl;
-}
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -214,55 +198,55 @@ CallPanel::CallPanel(QWidget *parent)
         layout->addLayout(ctrlRow);
     }
 
-    // ── Info grid ─────────────────────────────────────────────────────────
+    // ── Status cards (flow grid) ──────────────────────────────────────────
     {
-        auto *grid = new QGridLayout();
-        grid->setSpacing(2);
-        grid->setColumnStretch(0, 0);
-        grid->setColumnStretch(1, 1);
-        grid->setColumnStretch(2, 0);
-        grid->setColumnStretch(3, 1);
+        auto makeCard = [this](const QString &title, const QString &tip) -> StatusCard * {
+            auto *c = new StatusCard(title, this);
+            c->setTooltipText(tip);
+            return c;
+        };
 
-        int row = 0;
+        m_cardState       = makeCard(tr("Call State"),    tr("Current SIP call state"));
+        m_cardDuration    = makeCard(tr("Duration"),      tr("Elapsed call time (hh:mm:ss)"));
+        m_cardAudio       = makeCard(tr("Audio"),         tr("Audio media channel"));
+        m_cardLocalVideo  = makeCard(tr("Local Video"),   tr("Local camera / video preview"));
+        m_cardRemoteVideo = makeCard(tr("Remote Video"),  tr("Incoming remote video stream"));
+        m_cardRtt         = makeCard(tr("RTT"),           tr("Real-Time Text channel"));
+        m_cardLmpe        = makeCard(tr("LMPE"),          tr("Location Management Protocol Extension"));
+        m_cardVideoCodec  = makeCard(tr("Video Codec"),   tr("Active / preferred video codec"));
+        m_cardAudioCodec  = makeCard(tr("Audio Codec"),   tr("Active audio codec (stub: —)"));
+        m_cardBitrate     = makeCard(tr("Bitrate"),       tr("Configured video bitrate"));
+        m_cardResolution  = makeCard(tr("Resolution"),    tr("Configured video resolution"));
+        m_cardFps         = makeCard(tr("FPS"),           tr("Local video frames per second"));
+        m_cardRemoteUri   = makeCard(tr("Remote URI"),    tr("SIP URI of the remote party"));
+        m_cardLocalAccount= makeCard(tr("Local Account"), tr("Active SIP account URI"));
+        m_cardPacketLoss  = makeCard(tr("Packet Loss"),   tr("Video frame drops this second"));
+        m_cardJitter      = makeCard(tr("Jitter"),        tr("RTP jitter (not available in stub)"));
+        m_cardLatency     = makeCard(tr("Latency"),       tr("Round-trip latency (not available in stub)"));
 
-        m_infoState    = infoValLabel(tr("Idle"), this);
-        m_infoDuration = infoValLabel(tr("00:00:00"), this);
-        grid->addWidget(infoKeyLabel(tr("State:"), this),    row, 0);
-        grid->addWidget(m_infoState,                         row, 1);
-        grid->addWidget(infoKeyLabel(tr("Duration:"), this), row, 2);
-        grid->addWidget(m_infoDuration,                      row, 3);
-        ++row;
+        // Scroll area so cards don't get clipped on small panels
+        auto *scrollArea = new QScrollArea(this);
+        scrollArea->setWidgetResizable(true);
+        scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        scrollArea->setFrameShape(QFrame::NoFrame);
+        scrollArea->setMinimumHeight(120);
 
-        m_infoRemoteUri = infoValLabel(tr("—"), this);
-        m_infoLocalUri  = infoValLabel(tr("—"), this);
-        grid->addWidget(infoKeyLabel(tr("Remote:"), this), row, 0);
-        grid->addWidget(m_infoRemoteUri,                   row, 1);
-        grid->addWidget(infoKeyLabel(tr("Local:"), this),  row, 2);
-        grid->addWidget(m_infoLocalUri,                    row, 3);
-        ++row;
+        auto *cardContainer = new QWidget();
+        auto *flow = new FlowLayout(cardContainer, 4, 5, 5);
 
-        m_infoCallType   = infoValLabel(tr("—"), this);
-        m_infoNegotiated = infoValLabel(tr("—"), this);
-        grid->addWidget(infoKeyLabel(tr("Call type:"), this),  row, 0);
-        grid->addWidget(m_infoCallType,                        row, 1);
-        grid->addWidget(infoKeyLabel(tr("Negotiated:"), this), row, 2);
-        grid->addWidget(m_infoNegotiated,                      row, 3);
-        ++row;
+        StatusCard *cards[] = {
+            m_cardState, m_cardDuration, m_cardAudio, m_cardLocalVideo,
+            m_cardRemoteVideo, m_cardRtt, m_cardLmpe, m_cardVideoCodec,
+            m_cardAudioCodec, m_cardBitrate, m_cardResolution, m_cardFps,
+            m_cardRemoteUri, m_cardLocalAccount, m_cardPacketLoss,
+            m_cardJitter, m_cardLatency
+        };
+        for (StatusCard *c : cards)
+            flow->addWidget(c);
 
-        m_infoAudioConn = infoValLabel(tr("—"), this);
-        m_infoVideoConn = infoValLabel(tr("—"), this);
-        grid->addWidget(infoKeyLabel(tr("Audio:"), this), row, 0);
-        grid->addWidget(m_infoAudioConn,                  row, 1);
-        grid->addWidget(infoKeyLabel(tr("Video:"), this), row, 2);
-        grid->addWidget(m_infoVideoConn,                  row, 3);
-        ++row;
-
-        m_infoRttConn = infoValLabel(tr("—"), this);
-        grid->addWidget(infoKeyLabel(tr("RTT:"), this), row, 0);
-        grid->addWidget(m_infoRttConn,                  row, 1);
-        ++row;
-
-        layout->addLayout(grid);
+        scrollArea->setWidget(cardContainer);
+        layout->addWidget(scrollArea, 1);  // take available vertical space
     }
 
     // ── Separator ─────────────────────────────────────────────────────────
@@ -464,6 +448,20 @@ CallPanel::CallPanel(QWidget *parent)
             this, &CallPanel::onRttMediaConnected);
     connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
             this, &CallPanel::onRttMediaDisconnected);
+
+    // Local / remote video lifecycle (from VideoMediaManager)
+    connect(&VideoMediaManager::instance(), &VideoMediaManager::localVideoStarted,
+            this, &CallPanel::onLocalVideoStarted);
+    connect(&VideoMediaManager::instance(), &VideoMediaManager::localVideoStopped,
+            this, &CallPanel::onLocalVideoStopped);
+    connect(&VideoMediaManager::instance(), &VideoMediaManager::remoteVideoStarted,
+            this, &CallPanel::onRemoteVideoStarted);
+    connect(&VideoMediaManager::instance(), &VideoMediaManager::remoteVideoStopped,
+            this, &CallPanel::onRemoteVideoStopped);
+
+    // Video statistics → FPS / packet-loss cards
+    connect(&VideoStatistics::instance(), &VideoStatistics::statsUpdated,
+            this, &CallPanel::onVideoStatsUpdated);
 
     // Dial row: Call button / Enter
     auto triggerCall = [this] {
@@ -683,68 +681,128 @@ void CallPanel::applyCallState(CallState state)
         }
     }
 
-    // Info grid state label
-    QString stateText = callStateDisplayText(state);
-    QString stateColor = QStringLiteral("#aaaaaa");
-    if (state == CallState::Active)
-        stateColor = QStringLiteral("#50c878");
-    else if (state == CallState::IncomingRinging || state == CallState::Ringing
-             || state == CallState::OutgoingInit || state == CallState::Connecting)
-        stateColor = QStringLiteral("#e0b850");
-    else if (state == CallState::Failed)
-        stateColor = QStringLiteral("#e05050");
-    else if (state == CallState::Held)
-        stateColor = QStringLiteral("#5090e0");
+    // State card
+    {
+        const QString stateText = callStateDisplayText(state);
+        QString status;
+        if (state == CallState::Active)
+            status = QStringLiteral("ok");
+        else if (state == CallState::IncomingRinging || state == CallState::Ringing
+                 || state == CallState::OutgoingInit || state == CallState::Connecting)
+            status = QStringLiteral("warn");
+        else if (state == CallState::Failed)
+            status = QStringLiteral("err");
+        else if (state == CallState::Held)
+            status = QStringLiteral("warn");
 
-    m_infoState->setText(stateText);
-    m_infoState->setStyleSheet(
-        QStringLiteral("color: %1; font-size: 10px; font-family: monospace;").arg(stateColor));
+        m_cardState->setValue(stateText);
+        m_cardState->setStatus(status);
+    }
 
     if (isIdle) {
         m_durationTimer.stop();
         m_durationSeconds = 0;
-        resetInfoGrid();
+        resetStatusCards();
     }
 }
 
-void CallPanel::updateInfoGrid()
+void CallPanel::updateStatusCards()
 {
-    m_infoRemoteUri->setText(m_remoteUri.isEmpty() ? tr("—") : m_remoteUri);
+    // Remote URI
+    m_cardRemoteUri->setValue(m_remoteUri.isEmpty() ? QStringLiteral("—") : m_remoteUri);
+    m_cardRemoteUri->setStatus(m_remoteUri.isEmpty() ? QString{} : QStringLiteral("ok"));
 
-    const SipProfile p = SipProfileManager::instance().activeProfile();
-    m_infoLocalUri->setText(p.isNull() ? tr("—") : p.effectiveSipUri());
+    // Local account
+    const SipProfile prof = SipProfileManager::instance().activeProfile();
+    const QString localUri = prof.isNull() ? QString{} : prof.effectiveSipUri();
+    m_cardLocalAccount->setValue(localUri.isEmpty() ? QStringLiteral("—") : localUri);
+    m_cardLocalAccount->setStatus(localUri.isEmpty() ? QString{} : QStringLiteral("ok"));
 
-    m_infoCallType->setText(callTypeName(m_activeCallType));
+    // Audio
+    m_cardAudio->setValue(m_audioConnected ? tr("Connected") : QStringLiteral("—"));
+    m_cardAudio->setStatus(m_audioConnected ? QStringLiteral("ok") : QString{});
 
-    QStringList negotiated;
-    if (m_audioConnected) negotiated << QStringLiteral("Audio");
-    if (m_videoConnected) negotiated << QStringLiteral("Video");
-    if (m_rttConnected)   negotiated << QStringLiteral("RTT");
-    m_infoNegotiated->setText(negotiated.isEmpty() ? tr("—") : negotiated.join(QStringLiteral(" + ")));
+    // Local video
+    m_cardLocalVideo->setValue(m_localVideoActive ? tr("Active") : QStringLiteral("—"));
+    m_cardLocalVideo->setStatus(m_localVideoActive ? QStringLiteral("ok") : QString{});
 
-    auto connected = [](bool v) -> QString {
-        return v ? QStringLiteral("Connected") : QStringLiteral("—");
-    };
-    m_infoAudioConn->setText(connected(m_audioConnected));
-    m_infoVideoConn->setText(connected(m_videoConnected));
-    m_infoRttConn->setText(connected(m_rttConnected));
+    // Remote video
+    m_cardRemoteVideo->setValue(m_remoteVideoActive ? tr("Active") : QStringLiteral("—"));
+    m_cardRemoteVideo->setStatus(m_remoteVideoActive ? QStringLiteral("ok") : QString{});
+
+    // RTT
+    m_cardRtt->setValue(m_rttConnected ? tr("Connected") : QStringLiteral("—"));
+    m_cardRtt->setStatus(m_rttConnected ? QStringLiteral("ok") : QString{});
+
+    // LMPE — only reflect if the active call type requested it
+    {
+        const CallMediaOptions opts = CallMediaOptions::fromType(m_activeCallType);
+        if (opts.enableLmpe) {
+            m_cardLmpe->setValue(tr("Enabled"));
+            m_cardLmpe->setStatus(QStringLiteral("ok"));
+        } else {
+            m_cardLmpe->setValue(QStringLiteral("—"));
+            m_cardLmpe->setStatus({});
+        }
+    }
+
+    // Video codec — preferred codec from settings (real data; negotiated codec not available in stub)
+    if (m_videoConnected || m_localVideoActive) {
+        const VideoSettings vs = VideoQualityManager::instance().current();
+        const QString codec = vs.codecOrder.isEmpty() ? QStringLiteral("—") : vs.codecOrder.first();
+        m_cardVideoCodec->setValue(codec);
+        m_cardVideoCodec->setStatus(QStringLiteral("ok"));
+
+        // Bitrate
+        m_cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
+        m_cardBitrate->setStatus(QStringLiteral("ok"));
+
+        // Resolution
+        m_cardResolution->setValue(QStringLiteral("%1x%2")
+            .arg(vs.resolution.width()).arg(vs.resolution.height()));
+        m_cardResolution->setStatus(QStringLiteral("ok"));
+    } else {
+        m_cardVideoCodec->setValue(QStringLiteral("—"));
+        m_cardVideoCodec->setStatus({});
+        m_cardBitrate->setValue(QStringLiteral("—"));
+        m_cardBitrate->setStatus({});
+        m_cardResolution->setValue(QStringLiteral("—"));
+        m_cardResolution->setStatus({});
+    }
+
+    // Audio codec — not exposed by the stub; never invented
+    m_cardAudioCodec->setValue(QStringLiteral("—"));
+    m_cardAudioCodec->setStatus({});
+
+    // Jitter / Latency — no source; never invented
+    m_cardJitter->setValue(QStringLiteral("—"));
+    m_cardJitter->setStatus({});
+    m_cardLatency->setValue(QStringLiteral("—"));
+    m_cardLatency->setStatus({});
 }
 
-void CallPanel::resetInfoGrid()
+void CallPanel::resetStatusCards()
 {
     m_remoteUri.clear();
-    m_audioConnected = false;
-    m_videoConnected = false;
-    m_rttConnected   = false;
+    m_audioConnected    = false;
+    m_videoConnected    = false;
+    m_localVideoActive  = false;
+    m_remoteVideoActive = false;
+    m_rttConnected      = false;
 
-    m_infoDuration->setText(tr("00:00:00"));
-    m_infoRemoteUri->setText(tr("—"));
-    m_infoLocalUri->setText(tr("—"));
-    m_infoCallType->setText(tr("—"));
-    m_infoNegotiated->setText(tr("—"));
-    m_infoAudioConn->setText(tr("—"));
-    m_infoVideoConn->setText(tr("—"));
-    m_infoRttConn->setText(tr("—"));
+    m_cardDuration->setValue(QStringLiteral("00:00:00"));
+    m_cardDuration->setStatus({});
+
+    StatusCard *allCards[] = {
+        m_cardAudio, m_cardLocalVideo, m_cardRemoteVideo, m_cardRtt, m_cardLmpe,
+        m_cardVideoCodec, m_cardAudioCodec, m_cardBitrate, m_cardResolution, m_cardFps,
+        m_cardRemoteUri, m_cardLocalAccount, m_cardPacketLoss, m_cardJitter, m_cardLatency
+    };
+    for (StatusCard *c : allCards) {
+        c->setValue(QStringLiteral("—"));
+        c->setStatus({});
+    }
+
     m_inputMeter->setValue(0);
     m_outputMeter->setValue(0);
 }
@@ -773,7 +831,7 @@ void CallPanel::onIncomingCall(const QString &remoteUri)
 {
     m_remoteUri = remoteUri;
     m_activeCallType = CallType::AudioOnly; // will be refined by media signals
-    updateInfoGrid();
+    updateStatusCards();
     applyCallState(CallState::IncomingRinging);
 }
 
@@ -782,7 +840,7 @@ void CallPanel::onCallConnected(const QString &remoteUri)
     m_remoteUri = remoteUri;
     m_durationSeconds = 0;
     m_durationTimer.start();
-    updateInfoGrid();
+    updateStatusCards();
     applyCallState(CallState::Active);
 }
 
@@ -817,43 +875,79 @@ void CallPanel::onMuteChanged(bool muted)
 void CallPanel::onAudioMediaConnected()
 {
     m_audioConnected = true;
-    updateInfoGrid();
+    updateStatusCards();
 }
 
 void CallPanel::onAudioMediaDisconnected()
 {
     m_audioConnected = false;
-    updateInfoGrid();
+    updateStatusCards();
 }
 
 void CallPanel::onVideoMediaConnected()
 {
     m_videoConnected = true;
-    updateInfoGrid();
+    updateStatusCards();
 }
 
 void CallPanel::onVideoMediaDisconnected()
 {
     m_videoConnected = false;
-    updateInfoGrid();
+    updateStatusCards();
+}
+
+void CallPanel::onLocalVideoStarted()
+{
+    m_localVideoActive = true;
+    updateStatusCards();
+}
+
+void CallPanel::onLocalVideoStopped()
+{
+    m_localVideoActive = false;
+    updateStatusCards();
+}
+
+void CallPanel::onRemoteVideoStarted()
+{
+    m_remoteVideoActive = true;
+    updateStatusCards();
+}
+
+void CallPanel::onRemoteVideoStopped()
+{
+    m_remoteVideoActive = false;
+    updateStatusCards();
 }
 
 void CallPanel::onRttMediaConnected()
 {
     m_rttConnected = true;
-    updateInfoGrid();
+    updateStatusCards();
 }
 
 void CallPanel::onRttMediaDisconnected()
 {
     m_rttConnected = false;
-    updateInfoGrid();
+    updateStatusCards();
+}
+
+void CallPanel::onVideoStatsUpdated(float fps, int dropsThisSec)
+{
+    if (m_videoConnected || m_localVideoActive) {
+        m_cardFps->setValue(QStringLiteral("%1 fps").arg(fps, 0, 'f', 1));
+        m_cardFps->setStatus(fps < 10.f ? QStringLiteral("warn") : QStringLiteral("ok"));
+        m_cardPacketLoss->setValue(QStringLiteral("%1 drops/s").arg(dropsThisSec));
+        m_cardPacketLoss->setStatus(dropsThisSec > 0 ? QStringLiteral("warn") : QStringLiteral("ok"));
+    }
 }
 
 void CallPanel::onDurationTick()
 {
     ++m_durationSeconds;
-    m_infoDuration->setText(formatDuration(m_durationSeconds));
+    const QString dur = formatDuration(m_durationSeconds);
+    m_cardDuration->setValue(dur);
+    m_cardDuration->setStatus(QStringLiteral("ok"));
 }
 
 void CallPanel::setDialTarget(const QString &uri)

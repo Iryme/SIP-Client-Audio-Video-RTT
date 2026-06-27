@@ -67,6 +67,9 @@ set(SOURCES
     src/gui/panels/SipLadderPage.cpp
     src/gui/SipLadderWidget.cpp
     src/gui/SipMessageDetailsDialog.cpp
+    src/gui/theme/ThemeManager.cpp
+    src/gui/widgets/FlowLayout.cpp
+    src/gui/widgets/StatusCard.cpp
     src/sip/SipTraceLogger.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
@@ -132,6 +135,9 @@ set(HEADERS
     src/gui/SipMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h
+    src/gui/theme/ThemeManager.h
+    src/gui/widgets/FlowLayout.h
+    src/gui/widgets/StatusCard.h
     src/gui/widgets/AppStatusBar.h
     src/gui/dialogs/SipProfileEditorDialog.h
     src/core/Logger.h
