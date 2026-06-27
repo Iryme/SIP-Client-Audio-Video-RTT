@@ -44,6 +44,7 @@ private:
     void buildMenuBar();
     void buildCentralWidget();
     void buildStatusBar();
+    void requestApplicationShutdown();
     void restoreLayout();
     void saveLayout();
     QWidget *buildDashboardPage();
@@ -80,6 +81,7 @@ private:
     QAction *m_actDiagnosticsInfo{nullptr};
 
     QLineEdit *m_clientsTargetInput{nullptr};
+    bool m_shutdownRequested{false};
 
     // Splitters (saved for layout persistence)
     QSplitter *m_vertSplitter{nullptr};

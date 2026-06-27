@@ -27,6 +27,8 @@
 #include "sip/SipUriNormalizer.h"
 
 #include <QAction>
+#include <QApplication>
+#include <QCoreApplication>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QFrame>
@@ -48,7 +50,9 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QList>
+#include <QEventLoop>
 #include <QSignalBlocker>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QMessageBox>
@@ -391,8 +395,13 @@ MainWindow::~MainWindow() = default;
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    saveLayout();
-    event->accept();
+    if (m_shutdownRequested) {
+        event->accept();
+        return;
+    }
+
+    event->ignore();
+    requestApplicationShutdown();
 }
 
 void MainWindow::buildMenuBar()
@@ -405,7 +414,7 @@ void MainWindow::buildMenuBar()
     m_actExportConfig = menuFile->addAction(tr("&Export configuration..."), this,
                                             &MainWindow::exportConfiguration);
     menuFile->addSeparator();
-    menuFile->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
+    menuFile->addAction(tr("E&xit"), this, &MainWindow::requestApplicationShutdown, QKeySequence::Quit);
 
     auto *menuHelp = mb->addMenu(tr("&Help"));
     m_actAbout = menuHelp->addAction(tr("&About"), this, &MainWindow::showAboutDialog);
@@ -1271,6 +1280,93 @@ void MainWindow::buildStatusBar()
 {
     m_statusBar = new AppStatusBar(this);
     setStatusBar(m_statusBar);
+}
+
+void MainWindow::requestApplicationShutdown()
+{
+    if (m_shutdownRequested)
+        return;
+    m_shutdownRequested = true;
+
+    auto &sip = SipManager::instance();
+    setEnabled(false);
+    saveLayout();
+
+    Logger::instance().info(LogCategory::App, QStringLiteral("Shutdown requested"));
+
+    const auto waitFor = [&sip](auto predicate, int timeoutMs) {
+        if (predicate())
+            return true;
+
+        QEventLoop loop;
+        QTimer timer;
+        timer.setSingleShot(true);
+        QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+
+        const auto callConn = QObject::connect(&sip, &SipManager::callStateChanged,
+                                               &loop, [&]() {
+            if (predicate())
+                loop.quit();
+        });
+        const auto regConn = QObject::connect(&sip, &SipManager::registrationStateChanged,
+                                              &loop, [&]() {
+            if (predicate())
+                loop.quit();
+        });
+
+        timer.start(timeoutMs);
+        loop.exec();
+
+        QObject::disconnect(callConn);
+        QObject::disconnect(regConn);
+        return predicate();
+    };
+
+    const CallState callState = sip.callState();
+    if (callState != CallState::Idle && callState != CallState::Failed) {
+        Logger::instance().info(LogCategory::App, QStringLiteral("Active call found"));
+        Logger::instance().info(LogCategory::App, QStringLiteral("Sending BYE"));
+        sip.hangupCall();
+        if (waitFor([&sip]() {
+                const CallState state = sip.callState();
+                return state == CallState::Idle || state == CallState::Failed;
+            }, 2000)) {
+            Logger::instance().info(LogCategory::App, QStringLiteral("Call terminated"));
+        } else {
+            Logger::instance().warn(LogCategory::App, QStringLiteral("BYE timeout"));
+        }
+    }
+
+    if (sip.rttSession() && sip.rttSession()->isActive()) {
+        sip.rttSession()->disable();
+        Logger::instance().info(LogCategory::App, QStringLiteral("RTT session closed"));
+        Logger::instance().info(LogCategory::App, QStringLiteral("LMPE session closed"));
+    }
+
+    if (m_clientsVideoPanel)
+        m_clientsVideoPanel->stopIdlePreview();
+    if (m_videoPanel)
+        m_videoPanel->stopIdlePreview();
+    Logger::instance().info(LogCategory::App, QStringLiteral("Media stopped"));
+    Logger::instance().info(LogCategory::App, QStringLiteral("Camera released"));
+
+    if (sip.registrationState() == RegistrationState::Registered
+        || sip.registrationState() == RegistrationState::Registering) {
+        Logger::instance().info(LogCategory::App, QStringLiteral("Sending SIP unregister"));
+        sip.unregisterActiveProfile();
+        if (waitFor([&sip]() {
+                return sip.registrationState() == RegistrationState::Unregistered;
+            }, 2000)) {
+            Logger::instance().info(LogCategory::App, QStringLiteral("Unregister successful"));
+        } else {
+            Logger::instance().warn(LogCategory::App, QStringLiteral("Unregister timeout"));
+        }
+    }
+
+    Logger::instance().info(LogCategory::App, QStringLiteral("Stopping SIP stack"));
+    sip.shutdown();
+    Logger::instance().info(LogCategory::App, QStringLiteral("Application exit"));
+    QTimer::singleShot(0, qApp, &QCoreApplication::quit);
 }
 
 void MainWindow::restoreLayout()
