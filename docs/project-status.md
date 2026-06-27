@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-27
-Current task count: 38 of N (Tasks 1–28.6 + Task 34–38 complete)
+Current task count: 39 of N (Tasks 1–28.6 + Task 34–39 complete)
 Active branch: `feature/project-handoff-002`
 
 ---
@@ -25,7 +25,7 @@ Active branch: `feature/project-handoff-002`
 | ETSI / NG112 Emergency SIP INVITE Builder | 36 | COMPLETE — declarative builder, no real call |
 | ETSI / NG112 PIDF-LO Builder + Manual Location Model | 37 | COMPLETE — PIDF-LO builder, not yet sent over SIP |
 | ETSI / NG112 Emergency SIP Integration Minimal | 38 | COMPLETE — SipCallOptions, header injection, EmergencyCallAdapter |
-| ETSI / NG112 Multipart INVITE + PIDF-LO body | 39 | NOT STARTED |
+| ETSI / NG112 Multipart INVITE + PIDF-LO body | 39 | COMPLETE — EmergencyMultipartBuilder, PJSIP multipart injection, SDP preserved |
 
 ---
 
@@ -71,6 +71,7 @@ Active branch: `feature/project-handoff-002`
 | 36 | Emergency SIP INVITE Builder — EmergencyInviteBuilder, EmergencyInvite, validation | feature/project-handoff-002 | COMPLETE — declarative builder, no real call |
 | 37 | PIDF-LO Builder + Manual Location — EmergencyLocation, PidfLoBuilder, StaticLocationProvider | feature/project-handoff-002 | COMPLETE — PIDF-LO builder, not yet sent over SIP |
 | 38 | Emergency SIP Integration Minimal — SipCallOptions, makeCallWithOptions, EmergencyCallAdapter | feature/project-handoff-002 | COMPLETE — header injection path, normal call untouched |
+| 39 | Emergency Multipart PIDF-LO Body — EmergencyMultipartBuilder, PJSIP multipart injection | feature/project-handoff-002 | COMPLETE — SDP preserved, PIDF-LO part attached, 24/24 CTest PASS |
 
 ---
 
@@ -132,6 +133,7 @@ Active branch: `feature/project-handoff-002`
 | SipCall::makeCallWithOptions | COMPLETE | INVITE + custom headers via pjsua2 txOption. Normal makeCall() unchanged. |
 | SipManager::makeEmergencyCall | COMPLETE | Emergency call entry point. Uses SipCallOptions. |
 | EmergencyCallAdapter | COMPLETE | Bridges EmergencyInvite → SipCallOptions. Generates Content-ID. |
+| EmergencyMultipartBuilder | COMPLETE | Declarative MIME part builder. PIDF-LO part with Content-ID header. No PJSIP. |
 | LMPE messaging | NOT STARTED | |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |
 | ETSI TS 103 480 | NOT STARTED | Blocked on Task 37–38 |

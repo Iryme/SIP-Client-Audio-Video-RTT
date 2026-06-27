@@ -675,6 +675,28 @@ bool SipCall::makeCallWithOptions(const QString &remoteUri, const SipCallOptions
                     QStringLiteral("PJSIP INVITE: %1 custom headers injected (emergency)")
                         .arg(opts.customHeaders.size()));
 
+            // Attach PIDF-LO as multipart/mixed part (emergency path).
+            // PJSIP merges the auto-generated SDP body with parts in
+            // multipartParts — SDP is NOT replaced; it is prepended by PJSIP.
+            if (opts.emergencyCall && !opts.body.isEmpty()) {
+                pj::SipMultipartPart pidfPart;
+                pidfPart.contentType.type    = "application";
+                pidfPart.contentType.subType = "pidf+xml";
+                pidfPart.body                = opts.body.toStdString();
+                if (!opts.contentId.isEmpty()) {
+                    pj::SipHeader cidHdr;
+                    cidHdr.hName  = "Content-ID";
+                    cidHdr.hValue = "<" + opts.contentId.toStdString() + ">";
+                    pidfPart.headers.push_back(cidHdr);
+                }
+                prm.txOption.multipartParts.push_back(pidfPart);
+                prm.txOption.multipartContentType.type    = "multipart";
+                prm.txOption.multipartContentType.subType = "mixed";
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("PJSIP INVITE: PIDF-LO multipart/mixed part attached, contentId=%1")
+                        .arg(opts.contentId));
+            }
+
             m_impl->pjCall->makeCall(m_remoteUri.toStdString(), prm);
             return true;
         } catch (const pj::Error &e) {

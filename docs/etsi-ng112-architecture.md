@@ -638,24 +638,120 @@ SipManager::instance().makeEmergencyCall(inv.requestUri, opts);
 
 | Item | Task |
 |---|---|
-| Multipart/mixed body builder (SDP + PIDF-LO) | Task 39 |
-| PIDF-LO body injection into real INVITE | Task 39 |
-| Windows Location API (`WindowsLocationProvider`) | Task 39+ |
+| ~~Multipart/mixed body builder (SDP + PIDF-LO)~~ | ~~Task 39~~ DONE |
+| ~~PIDF-LO body injection into real INVITE~~ | ~~Task 39~~ DONE |
+| Windows Location API (`WindowsLocationProvider`) | Task 40+ |
 | GUI: Emergency button in CallPanel | Task 40 |
 | ETSI TS 103 698 conformance validation | Task 40+ |
-| Live INVITE capture + header verification | Task 39 |
+| Live INVITE capture + header verification | Task 40 |
 
 ---
 
-## 12. Roadmap
+## 12. Emergency Multipart PIDF-LO Body (Task 39)
 
-### Task 39 — Multipart INVITE Body + PIDF-LO body injection
-- `multipart/mixed` builder: Part 1 = `application/sdp`, Part 2 = `application/pidf+xml`
-- `txOption.multipartParts` injection in `makeCallWithOptions()`
-- Windows Location API (COM) — `WindowsLocationProvider`
-- Live INVITE capture + Geolocation header + body verification
+**Status:** Complete — `EmergencyMultipartBuilder`, PJSIP multipart injection, 14 new tests.
+
+### 12.1 PJSIP API for multipart
+
+`pj::SipTxOption` supports:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `multipartContentType` | `SipMediaType {type, subType}` | Sets `Content-Type: multipart/mixed` on the INVITE |
+| `multipartParts` | `SipMultipartPartVector` | Array of additional MIME parts |
+
+**Key guarantee (from PJSIP docs):** "If the message already contains a body, the body will be added to the multipart bodies." PJSIP's auto-generated SDP becomes the first multipart part; our PIDF-LO is appended as the second part. The SDP is never lost.
+
+### 12.2 EmergencyMultipartBuilder
+
+**File:** `src/emergency/EmergencyMultipartBuilder.h` / `.cpp`
+
+Pure Qt/C++ builder — no PJSIP dependency.
+
+```cpp
+struct MultipartPart {
+    QString contentType;
+    QString contentId;                      // raw ID, no angle brackets
+    QList<QPair<QString,QString>> headers;  // includes Content-ID: <id>
+    QString body;
+
+    // Returns "<contentId>" per RFC 2183
+    QString contentIdHeaderValue() const;
+};
+
+class EmergencyMultipartBuilder {
+public:
+    EmergencyMultipartBuilder &addPidfLo(const QString &xml, const QString &contentId);
+    QList<MultipartPart> build() const;
+    bool isEmpty() const;
+};
+```
+
+Rules:
+- `addPidfLo()` is a no-op when `xml` is empty
+- Content-ID header value uses RFC 2183 format: `<pidflo-123@ng112.local>` (with angle brackets)
+- Raw `contentId` field has no angle brackets (used in Geolocation SIP header via `cid:` scheme)
+
+### 12.3 PJSIP multipart injection in SipCall
+
+Added to `SipCall::makeCallWithOptions()` after custom header injection:
+
+```cpp
+if (opts.emergencyCall && !opts.body.isEmpty()) {
+    pj::SipMultipartPart pidfPart;
+    pidfPart.contentType.type    = "application";
+    pidfPart.contentType.subType = "pidf+xml";   // note: subType (capital T)
+    pidfPart.body                = opts.body.toStdString();
+    if (!opts.contentId.isEmpty()) {
+        pj::SipHeader cidHdr;
+        cidHdr.hName  = "Content-ID";
+        cidHdr.hValue = "<" + opts.contentId.toStdString() + ">";
+        pidfPart.headers.push_back(cidHdr);
+    }
+    prm.txOption.multipartParts.push_back(pidfPart);
+    prm.txOption.multipartContentType.type    = "multipart";
+    prm.txOption.multipartContentType.subType = "mixed";
+}
+```
+
+**Guard:** only triggered when `opts.emergencyCall == true && !opts.body.isEmpty()`. Normal calls have `body.isEmpty()` — multipart is never activated for them.
+
+### 12.4 How SDP is preserved
+
+PJSIP's automatic SDP body (m=audio, m=text, m=video from `CallSetting`) is generated independently. When `multipartParts` is non-empty, PJSIP wraps the SDP + our parts into `multipart/mixed`. The SDP is the first part; PIDF-LO is the second. Audio/video/RTT codec negotiation is not affected.
+
+### 12.5 Content-ID wiring
+
+```
+PidfLoBuilder → contentId = "pidflo-<ms>@ng112.local"
+     │
+     ├── EmergencyInviteBuilder → Geolocation: <cid:pidflo-<ms>@ng112.local>  (SIP header)
+     │
+     └── SipCall multipart part → Content-ID: <pidflo-<ms>@ng112.local>        (MIME header)
+```
+
+The angle bracket rules:
+- SIP `Geolocation` header: `<cid:rawId>` (outer `<>` + `cid:` prefix — RFC 6442)
+- MIME `Content-ID` header: `<rawId>` (outer `<>` only — RFC 2183)
+- `SipCallOptions.contentId` / `EmergencyCallAdapter` fields: raw ID, no brackets
+
+### 12.6 What remains for subsequent tasks
+
+| Item | Task |
+|---|---|
+| Windows Location API (COM) — `WindowsLocationProvider` | Task 40+ |
+| GUI: Emergency button in CallPanel | Task 40 |
+| `EmergencyCallController::readyToDial` → `SipManager::makeEmergencyCall()` wiring | Task 40 |
+| Live INVITE capture — Wireshark / SIPp verification of multipart body | Task 40 |
+| ETSI TS 103 479 / TS 103 480 conformance checklist | Task 40+ |
+
+---
+
+## 13. Roadmap
 
 ### Task 40 — Real Emergency Call (ETSI TS 103 479 conformance)
 - GUI: Emergency button in `CallPanel`
 - `EmergencyCallController::readyToDial` → `SipManager::makeEmergencyCall()` wiring
+- Windows Location API (COM) — `WindowsLocationProvider`
+- Live INVITE capture + Wireshark verification: Geolocation header + multipart body
 - ETSI TS 103 479 / TS 103 480 conformance checklist

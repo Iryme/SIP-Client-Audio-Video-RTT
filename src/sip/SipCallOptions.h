@@ -11,7 +11,7 @@ struct SipCallOptions
     bool    emergencyCall    = false;
     QString requestUriOverride;                   // reserved — not yet wired
     QList<QPair<QString,QString>> customHeaders;  // injected into INVITE txOption
-    QString body;                                 // reserved for multipart body (Task 40)
+    QString body;                                 // PIDF-LO body for multipart/mixed INVITE
     QString contentType;
     QString contentId;
     bool    requireAudio = true;   // offer m=audio

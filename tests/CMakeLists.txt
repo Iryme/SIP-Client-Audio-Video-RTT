@@ -641,6 +641,23 @@ target_link_libraries(test_emergency_sip_integration PRIVATE
 
 add_test(NAME test_emergency_sip_integration COMMAND test_emergency_sip_integration)
 
+# ---- test_emergency_multipart_builder ----------------------------------
+qt_add_executable(test_emergency_multipart_builder
+    test_emergency_multipart_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyMultipartBuilder.cpp
+)
+
+target_include_directories(test_emergency_multipart_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_multipart_builder PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_multipart_builder COMMAND test_emergency_multipart_builder)
+
 if(BUILD_LIVE_VALIDATION_TOOLS)
     if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
         message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")
