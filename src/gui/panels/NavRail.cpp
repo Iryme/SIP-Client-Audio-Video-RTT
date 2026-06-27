@@ -1,7 +1,8 @@
 #include "NavRail.h"
-#include <QVBoxLayout>
-#include <QToolButton>
+
 #include <QSizePolicy>
+#include <QToolButton>
+#include <QVBoxLayout>
 
 NavRail::NavRail(QWidget *parent)
     : QWidget(parent)
@@ -14,16 +15,12 @@ NavRail::NavRail(QWidget *parent)
     layout->setSpacing(4);
     layout->setAlignment(Qt::AlignTop);
 
-    addNavButton(layout, "Accounts",  "accounts");
-    addNavButton(layout, "Contacts",  "contacts");
-    addNavButton(layout, "Dialpad",   "dialpad");
-    addNavButton(layout, "Settings",  "settings");
-
-    // Non-functional in this release — disabled so users know they are not active.
-    addNavButton(layout, "History",   "history");
-    addNavButton(layout, "Messages",  "messages");
-    setPageEnabled("history",  false);
-    setPageEnabled("messages", false);
+    addNavButton(layout, "Dash",     "dashboard");
+    addNavButton(layout, "Clients",  "clients");
+    addNavButton(layout, "Ladder",   "sipladder");
+    addNavButton(layout, "Logs",     "logs");
+    addNavButton(layout, "Media",    "media");
+    addNavButton(layout, "Settings", "settings");
 
     layout->addStretch(1);
 }
@@ -32,6 +29,13 @@ void NavRail::setPageEnabled(const QString &page, bool enabled)
 {
     if (auto *btn = m_buttons.value(page, nullptr))
         btn->setEnabled(enabled);
+}
+
+void NavRail::setPageActive(const QString &page)
+{
+    m_activePage = page;
+    for (auto it = m_buttons.begin(); it != m_buttons.end(); ++it)
+        it.value()->setChecked(it.key() == page);
 }
 
 QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
@@ -43,7 +47,7 @@ QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
     btn->setToolTip(label);
     btn->setCheckable(true);
     btn->setAutoExclusive(true);
-    btn->setFixedSize(56, 56);
+    btn->setFixedSize(64, 58);
     btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     btn->setObjectName("NavButton");
 

@@ -1,41 +1,64 @@
 #include "MainWindow.h"
-#include "panels/NavRail.h"
-#include "panels/SidebarPanel.h"
-#include "panels/ContactsPanel.h"
-#include "panels/CallPanel.h"
-#include "panels/VideoPanel.h"
-#include "panels/RttPanel.h"
-#include "panels/DiagnosticsPanel.h"
-#include "panels/MediaPanel.h"
-#include "widgets/AppStatusBar.h"
-#include <QDialog>
-#include <QVBoxLayout>
+
 #include "core/AppSettings.h"
 #include "core/Logger.h"
+#include "gui/panels/CallPanel.h"
+#include "gui/panels/ContactsPanel.h"
+#include "gui/panels/DiagnosticsPanel.h"
+#include "gui/panels/MediaPanel.h"
+#include "gui/panels/NavRail.h"
+#include "gui/panels/SettingsPanel.h"
+#include "gui/panels/SidebarPanel.h"
+#include "gui/panels/SipLadderPage.h"
+#include "gui/panels/VideoPanel.h"
+#include "gui/panels/RttPanel.h"
+#include "gui/widgets/AppStatusBar.h"
 #include "sip/SipManager.h"
 
 #include <QAction>
-#include <QMenuBar>
-#include <QMenu>
-#include <QSplitter>
+#include <QFrame>
+#include <QHeaderView>
 #include <QHBoxLayout>
+#include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
+#include <QPushButton>
+#include <QSplitter>
+#include <QStackedWidget>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <QWidget>
-#include <QStackedWidget>
+
+namespace {
+static QFrame *makeCard(QWidget *parent)
+{
+    auto *frame = new QFrame(parent);
+    frame->setFrameShape(QFrame::StyledPanel);
+    frame->setObjectName("DashboardCard");
+    return frame;
+}
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setWindowTitle("SIP Client - Audio / Video / RTT");
-    setMinimumSize(1024, 768);
-    resize(1440, 900);
+    setMinimumSize(1180, 820);
+    resize(1500, 960);
 
     buildMenuBar();
     buildCentralWidget();
     buildStatusBar();
+
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             m_statusBar, &AppStatusBar::setRegistrationStatus);
     restoreLayout();
+
+    if (m_navRail)
+        m_navRail->setPageActive(QStringLiteral("dashboard"));
+    if (m_pageStack)
+        m_pageStack->setCurrentIndex(0);
 
     Logger::instance().info(LogCategory::App, "Main window initialized");
 }
@@ -48,80 +71,234 @@ void MainWindow::closeEvent(QCloseEvent *event)
     event->accept();
 }
 
-// ---------------------------------------------------------------------------
-// Menu bar
-// ---------------------------------------------------------------------------
 void MainWindow::buildMenuBar()
 {
     auto *mb = menuBar();
 
-    // File
     auto *menuFile = mb->addMenu(tr("&File"));
-    m_actNewCall = menuFile->addAction(tr("&New Call…"), this, [this] {
-        // Switch to accounts page so profile is visible, then focus dial.
-        onNavPageRequested(QStringLiteral("dialpad"));
+    m_actNewCall = menuFile->addAction(tr("&New Call..."), this, [this] {
+        onNavPageRequested(QStringLiteral("clients"));
+        if (m_callPanel)
+            m_callPanel->focusDialInput();
     }, QKeySequence(Qt::CTRL | Qt::Key_N));
     menuFile->addSeparator();
     menuFile->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 
-    // Contacts
     auto *menuContacts = mb->addMenu(tr("&Contacts"));
-    m_actAddContact = menuContacts->addAction(tr("&Add Contact…"), this, [this] {
-        onNavPageRequested(QStringLiteral("contacts"));
-        if (m_contactsPanel)
-            QMetaObject::invokeMethod(m_contactsPanel, "onAddContact", Qt::QueuedConnection);
+    m_actAddContact = menuContacts->addAction(tr("&Add Contact..."), this, [this] {
+        onNavPageRequested(QStringLiteral("clients"));
     });
-    auto *actImport = menuContacts->addAction(tr("&Import Contacts…"));
+    auto *actImport = menuContacts->addAction(tr("&Import Contacts..."));
     actImport->setEnabled(false);
     actImport->setToolTip(tr("Not available in this release"));
 
-    // Calls
     auto *menuCalls = mb->addMenu(tr("Ca&lls"));
     auto *actHistory = menuCalls->addAction(tr("&Call History"));
     actHistory->setEnabled(false);
-    actHistory->setToolTip(tr("Not available in this release"));
     auto *actRedial = menuCalls->addAction(tr("&Redial"));
     actRedial->setEnabled(false);
-    actRedial->setToolTip(tr("Not available in this release"));
 
-    // View
     auto *menuView = mb->addMenu(tr("&View"));
-    menuView->addAction(tr("&Audio / Media Settings"), this, &MainWindow::showSettingsDialog);
+    menuView->addAction(tr("&Dashboard"), this, [this] { onNavPageRequested(QStringLiteral("dashboard")); });
+    menuView->addAction(tr("&Settings"), this, [this] { onNavPageRequested(QStringLiteral("settings")); });
     menuView->addSeparator();
     menuView->addAction(tr("&Full Screen"), this,
                         &QMainWindow::showFullScreen, QKeySequence::FullScreen);
 
-    // Messaging — placeholder, fully disabled
     auto *menuMsg = mb->addMenu(tr("&Messaging"));
-    auto *actRtt  = menuMsg->addAction(tr("&New RTT Session…"));
-    auto *actLmpe = menuMsg->addAction(tr("&New LMPE Message…"));
+    auto *actRtt  = menuMsg->addAction(tr("&New RTT Session..."));
+    auto *actLmpe = menuMsg->addAction(tr("&New LMPE Message..."));
     actRtt->setEnabled(false);
-    actRtt->setToolTip(tr("Not available in this release"));
     actLmpe->setEnabled(false);
-    actLmpe->setToolTip(tr("Not available in this release"));
 
-    // Tools
     auto *menuTools = mb->addMenu(tr("&Tools"));
-    auto *actPrefs  = menuTools->addAction(tr("&Preferences…"));
+    auto *actPrefs  = menuTools->addAction(tr("&Preferences..."));
     actPrefs->setEnabled(false);
-    actPrefs->setToolTip(tr("Not available in this release"));
-    menuTools->addAction(tr("&SIP Accounts…"), this, [this] {
-        onNavPageRequested(QStringLiteral("accounts"));
+    menuTools->addAction(tr("&SIP Accounts..."), this, [this] {
+        onNavPageRequested(QStringLiteral("clients"));
     });
     menuTools->addSeparator();
-    auto *actDebug = menuTools->addAction(tr("Export &Debug Bundle…"));
+    auto *actDebug = menuTools->addAction(tr("Export &Debug Bundle..."));
     actDebug->setEnabled(false);
-    actDebug->setToolTip(tr("Not available in this release"));
 
-    // Help
     auto *menuHelp = mb->addMenu(tr("&Help"));
     auto *actAbout = menuHelp->addAction(tr("&About SIP Client"));
     actAbout->setEnabled(false);
 }
 
-// ---------------------------------------------------------------------------
-// Central widget layout
-// ---------------------------------------------------------------------------
+QWidget *MainWindow::buildDashboardPage()
+{
+    auto *page = new QWidget(this);
+    auto *root = new QVBoxLayout(page);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(10);
+
+    auto *title = new QLabel(tr("Dashboard"), page);
+    title->setStyleSheet("font-size: 18px; font-weight: 600;");
+    root->addWidget(title);
+
+    auto *subtitle = new QLabel(
+        tr("Live overview of the SIP backend, current registration, and recent events."),
+        page);
+    subtitle->setStyleSheet("color: #b7c4d6;");
+    subtitle->setWordWrap(true);
+    root->addWidget(subtitle);
+
+    auto *cardRow = new QHBoxLayout();
+    cardRow->setSpacing(8);
+
+    auto addCard = [&](const QString &label, const QString &value) -> QLabel* {
+        auto *card = makeCard(page);
+        auto *lay = new QVBoxLayout(card);
+        lay->setContentsMargins(10, 10, 10, 10);
+        lay->setSpacing(2);
+        auto *lbl = new QLabel(label, card);
+        lbl->setStyleSheet("color: #8899aa; font-size: 11px;");
+        auto *val = new QLabel(value, card);
+        val->setWordWrap(true);
+        val->setStyleSheet("font-size: 16px; font-weight: 600;");
+        lay->addWidget(lbl);
+        lay->addWidget(val);
+        cardRow->addWidget(card, 1);
+        return val;
+    };
+
+    QLabel *backendValue = addCard(tr("Backend / WS"), tr("Initializing..."));
+    QLabel *registrationValue = addCard(tr("Registered users"), tr("0"));
+    QLabel *callsValue = addCard(tr("Active calls"), tr("0"));
+    QLabel *eventValue = addCard(tr("Last SIP event"), tr("Waiting for activity"));
+
+    root->addLayout(cardRow);
+
+    auto *logCard = makeCard(page);
+    auto *logLayout = new QVBoxLayout(logCard);
+    logLayout->setContentsMargins(10, 10, 10, 10);
+    logLayout->setSpacing(6);
+    auto *logTitle = new QLabel(tr("Recent SIP / backend events"), logCard);
+    logTitle->setStyleSheet("font-weight: 600;");
+    logLayout->addWidget(logTitle);
+
+    auto *logTable = new QTableWidget(0, 3, logCard);
+    logTable->setHorizontalHeaderLabels({tr("Time"), tr("Level"), tr("Message")});
+    logTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    logTable->setSelectionBehavior(QTableWidget::SelectRows);
+    logTable->setEditTriggers(QTableWidget::NoEditTriggers);
+    logTable->setWordWrap(false);
+    logTable->verticalHeader()->setVisible(false);
+    logLayout->addWidget(logTable, 1);
+    root->addWidget(logCard, 1);
+
+    auto updateStatus = [backendValue, registrationValue, callsValue, eventValue]() {
+        const auto &sip = SipManager::instance();
+        backendValue->setText(QStringLiteral("%1 (%2)")
+            .arg(sip.backendName(),
+                 sip.isInitialized() ? QStringLiteral("ready") : QStringLiteral("inactive")));
+        registrationValue->setText(!sip.registeredProfileId().isEmpty()
+            && sip.registrationState() == RegistrationState::Registered
+                ? QStringLiteral("1")
+                : QStringLiteral("0"));
+        callsValue->setText(sip.callState() == CallState::Idle ? QStringLiteral("0") : QStringLiteral("1"));
+    };
+    updateStatus();
+
+    connect(&SipManager::instance(), &SipManager::initialized, page, updateStatus);
+    connect(&SipManager::instance(), &SipManager::shutdownComplete, page, updateStatus);
+    connect(&SipManager::instance(), &SipManager::callStateChanged, page, [updateStatus]() { updateStatus(); });
+    connect(&SipManager::instance(), &SipManager::registrationStateChanged, page, [updateStatus]() { updateStatus(); });
+
+    connect(&Logger::instance(), &Logger::entryAdded, page,
+            [logTable, eventValue](const LogEntry &entry) {
+        if (logTable->rowCount() >= 8)
+            logTable->removeRow(logTable->rowCount() - 1);
+        logTable->insertRow(0);
+        logTable->setItem(0, 0, new QTableWidgetItem(entry.timestamp.toString("hh:mm:ss")));
+        logTable->setItem(0, 1, new QTableWidgetItem(Logger::levelName(entry.level)));
+        logTable->setItem(0, 2, new QTableWidgetItem(entry.message));
+        if (entry.category == LogCategory::Sip)
+            eventValue->setText(entry.message);
+    });
+
+    return page;
+}
+
+QWidget *MainWindow::buildClientsPage()
+{
+    auto *page = new QWidget(this);
+    auto *root = new QHBoxLayout(page);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->setSpacing(0);
+
+    m_sidebar = new SidebarPanel(page);
+    root->addWidget(m_sidebar, 0);
+
+    auto *right = new QWidget(page);
+    auto *rightLayout = new QVBoxLayout(right);
+    rightLayout->setContentsMargins(12, 12, 12, 12);
+    rightLayout->setSpacing(8);
+
+    auto *header = new QLabel(tr("SIP Clients"), right);
+    header->setStyleSheet("font-size: 18px; font-weight: 600;");
+    rightLayout->addWidget(header);
+
+    auto *desc = new QLabel(
+        tr("Manage SIP profiles, quick registration, dialing and session controls."),
+        right);
+    desc->setStyleSheet("color: #b7c4d6;");
+    desc->setWordWrap(true);
+    rightLayout->addWidget(desc);
+
+    m_callPanel = new CallPanel(right);
+    rightLayout->addWidget(m_callPanel);
+
+    m_rttPanel = new RttPanel(right);
+    rightLayout->addWidget(m_rttPanel, 1);
+
+    root->addWidget(right, 1);
+
+    m_rttPanel->setRttSession(SipManager::instance().rttSession());
+    return page;
+}
+
+QWidget *MainWindow::buildLogsPage()
+{
+    m_diagnostics = new DiagnosticsPanel(this);
+    m_diagnostics->showLogsTab();
+    return m_diagnostics;
+}
+
+QWidget *MainWindow::buildMediaPage()
+{
+    auto *page = new QWidget(this);
+    auto *root = new QVBoxLayout(page);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(8);
+
+    auto *title = new QLabel(tr("Media / Devices"), page);
+    title->setStyleSheet("font-size: 18px; font-weight: 600;");
+    root->addWidget(title);
+
+    auto *desc = new QLabel(
+        tr("Audio, camera and preview settings are kept here. The preview panel remains stable across resize."),
+        page);
+    desc->setStyleSheet("color: #b7c4d6;");
+    desc->setWordWrap(true);
+    root->addWidget(desc);
+
+    auto *split = new QSplitter(Qt::Vertical, page);
+    split->setChildrenCollapsible(false);
+    m_videoPanel = new VideoPanel(split);
+    m_videoPanel->setMinimumHeight(360);
+    split->addWidget(m_videoPanel);
+
+    auto *mediaPanel = new MediaPanel(split);
+    split->addWidget(mediaPanel);
+    split->setStretchFactor(0, 3);
+    split->setStretchFactor(1, 1);
+
+    root->addWidget(split, 1);
+    return page;
+}
+
 void MainWindow::buildCentralWidget()
 {
     auto *central = new QWidget(this);
@@ -129,145 +306,74 @@ void MainWindow::buildCentralWidget()
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    // Left navigation rail (fixed 64 px)
     m_navRail = new NavRail(central);
-    m_navRail->setFixedWidth(64);
+    m_navRail->setFixedWidth(72);
     connect(m_navRail, &NavRail::pageRequested,
             this, &MainWindow::onNavPageRequested);
     rootLayout->addWidget(m_navRail);
 
-    // Vertical splitter: [main content area] over [diagnostics panel]
-    m_vertSplitter = new QSplitter(Qt::Vertical, central);
-    m_vertSplitter->setChildrenCollapsible(false);
-    m_vertSplitter->setHandleWidth(4);
-    rootLayout->addWidget(m_vertSplitter, 1);
+    m_pageStack = new QStackedWidget(central);
+    rootLayout->addWidget(m_pageStack, 1);
 
-    // --- Top part of vertical splitter ---
-    m_horzSplitter = new QSplitter(Qt::Horizontal, m_vertSplitter);
-    m_horzSplitter->setChildrenCollapsible(false);
-    m_horzSplitter->setHandleWidth(4);
-    m_vertSplitter->addWidget(m_horzSplitter);
-
-    // Stacked sidebar: Accounts | Contacts  (switched by NavRail)
-    m_sidebarStack = new QStackedWidget(m_horzSplitter);
-    m_sidebarStack->setMinimumWidth(220);
-
-    m_sidebar = new SidebarPanel(m_sidebarStack);
-    m_sidebarStack->addWidget(m_sidebar);          // index 0 — accounts
-
-    m_contactsPanel = new ContactsPanel(m_sidebarStack);
-    m_sidebarStack->addWidget(m_contactsPanel);    // index 1 — contacts
-
-    m_sidebarStack->setCurrentIndex(0);
-    m_horzSplitter->addWidget(m_sidebarStack);
-
-    // Center area: call panel + video
-    auto *centerWidget = new QWidget(m_horzSplitter);
-    centerWidget->setMinimumWidth(420);
-    auto *centerLayout = new QVBoxLayout(centerWidget);
-    centerLayout->setContentsMargins(0, 0, 0, 0);
-    centerLayout->setSpacing(0);
-
-    m_callPanel = new CallPanel(centerWidget);
-    centerLayout->addWidget(m_callPanel);
-
-    m_videoPanel = new VideoPanel(centerWidget);
-    centerLayout->addWidget(m_videoPanel, 1);
-
-    m_horzSplitter->addWidget(centerWidget);
-
-    // Right RTT panel — wired to SipManager::rttSession()
-    m_rttPanel = new RttPanel(m_horzSplitter);
-    m_rttPanel->setMinimumWidth(260);
-    m_rttPanel->setRttSession(SipManager::instance().rttSession());
-    m_horzSplitter->addWidget(m_rttPanel);
-
-    // Initial splitter proportions: sidebar=260, center=flexible, right=320
-    m_horzSplitter->setSizes({260, 800, 320});
-
-    // --- Bottom part of vertical splitter: diagnostics ---
-    m_diagnostics = new DiagnosticsPanel(m_vertSplitter);
-    m_diagnostics->setMinimumHeight(160);
-    m_vertSplitter->addWidget(m_diagnostics);
-
-    // Vertical split: main area gets most space, diagnostics ~220px
-    m_vertSplitter->setSizes({10000, 220});
+    m_pageStack->addWidget(buildDashboardPage());
+    m_pageStack->addWidget(buildClientsPage());
+    m_ladderPage = new SipLadderPage(m_pageStack);
+    m_pageStack->addWidget(m_ladderPage);
+    m_pageStack->addWidget(buildLogsPage());
+    m_pageStack->addWidget(buildMediaPage());
+    m_settingsPanel = new SettingsPanel(m_pageStack);
+    m_pageStack->addWidget(m_settingsPanel);
 
     setCentralWidget(central);
 
-    // Wire contacts → dial (m_callPanel now exists)
-    connect(m_contactsPanel, &ContactsPanel::dialRequested,
-            m_callPanel, &CallPanel::setDialTarget);
 }
 
-// ---------------------------------------------------------------------------
-// Settings dialog (lazy, reused across invocations)
-// ---------------------------------------------------------------------------
 void MainWindow::showSettingsDialog()
 {
-    if (!m_settingsDialog) {
-        m_settingsDialog = new QDialog(this);
-        m_settingsDialog->setWindowTitle(tr("Audio / Media Settings"));
-        m_settingsDialog->setMinimumSize(400, 300);
-        auto *dlgLayout = new QVBoxLayout(m_settingsDialog);
-        dlgLayout->setContentsMargins(8, 8, 8, 8);
-        dlgLayout->addWidget(new MediaPanel(m_settingsDialog));
-    }
-    m_settingsDialog->show();
-    m_settingsDialog->raise();
-    m_settingsDialog->activateWindow();
+    onNavPageRequested(QStringLiteral("settings"));
 }
 
-// ---------------------------------------------------------------------------
-// NavRail page handler
-// ---------------------------------------------------------------------------
 void MainWindow::onNavPageRequested(const QString &page)
 {
-    if (page == QLatin1String("accounts")) {
-        m_sidebarStack->setCurrentIndex(0);
-    } else if (page == QLatin1String("contacts")) {
-        m_sidebarStack->setCurrentIndex(1);
-    } else if (page == QLatin1String("dialpad")) {
-        // Don't switch sidebar — just focus the dial input in the call panel.
-        m_callPanel->focusDialInput();
+    QString activePage = page;
+    if (page == QLatin1String("dashboard")) {
+        m_pageStack->setCurrentIndex(0);
+    } else if (page == QLatin1String("clients") || page == QLatin1String("accounts")
+               || page == QLatin1String("contacts") || page == QLatin1String("dialpad")) {
+        m_pageStack->setCurrentIndex(1);
+        activePage = QStringLiteral("clients");
+        if (page == QLatin1String("dialpad") && m_callPanel)
+            m_callPanel->focusDialInput();
+    } else if (page == QLatin1String("sipladder")) {
+        m_pageStack->setCurrentIndex(2);
+    } else if (page == QLatin1String("logs")) {
+        m_pageStack->setCurrentIndex(3);
+    } else if (page == QLatin1String("media")) {
+        m_pageStack->setCurrentIndex(4);
     } else if (page == QLatin1String("settings")) {
-        showSettingsDialog();
+        m_pageStack->setCurrentIndex(5);
     }
-    // "history" and "messages" buttons are disabled; no-op if somehow reached.
+
+    if (m_navRail)
+        m_navRail->setPageActive(activePage);
 }
 
-// ---------------------------------------------------------------------------
-// Status bar
-// ---------------------------------------------------------------------------
 void MainWindow::buildStatusBar()
 {
     m_statusBar = new AppStatusBar(this);
     setStatusBar(m_statusBar);
 }
 
-// ---------------------------------------------------------------------------
-// Layout persistence
-// ---------------------------------------------------------------------------
 void MainWindow::restoreLayout()
 {
     auto geom = AppSettings::loadWindowGeometry();
     if (!geom.isEmpty())
         restoreGeometry(geom);
-
-    auto hState = AppSettings::loadSplitterState("horizontal");
-    if (!hState.isEmpty())
-        m_horzSplitter->restoreState(hState);
-
-    auto vState = AppSettings::loadSplitterState("vertical");
-    if (!vState.isEmpty())
-        m_vertSplitter->restoreState(vState);
 }
 
 void MainWindow::saveLayout()
 {
     AppSettings::saveWindowGeometry(saveGeometry());
-    AppSettings::saveSplitterState("horizontal", m_horzSplitter->saveState());
-    AppSettings::saveSplitterState("vertical",   m_vertSplitter->saveState());
 }
 
 void MainWindow::updateSipBackendStatus()

@@ -8,6 +8,7 @@ class QLineEdit;
 class QPushButton;
 class QHBoxLayout;
 class QScrollArea;
+class QTabWidget;
 class SipLadderWidget;
 
 class DiagnosticsPanel : public QWidget
@@ -15,6 +16,13 @@ class DiagnosticsPanel : public QWidget
     Q_OBJECT
 public:
     explicit DiagnosticsPanel(QWidget *parent = nullptr);
+
+    void showLogsTab();
+    void showLadderTab();
+    void setActiveTab(int index);
+
+    QTableWidget *logTable() const;
+    SipLadderWidget *ladderWidget() const;
 
 private slots:
     void onEntryAdded(const LogEntry &entry);
@@ -30,6 +38,7 @@ private:
     void addRow(const LogEntry &entry);
     bool isLevelVisible(LogLevel level) const;
 
+    QTabWidget      *m_tabs{nullptr};
     QTableWidget    *m_table{nullptr};
     QLineEdit       *m_search{nullptr};
     SipLadderWidget *m_ladder{nullptr};

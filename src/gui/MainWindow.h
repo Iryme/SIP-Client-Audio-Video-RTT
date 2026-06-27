@@ -9,6 +9,8 @@ class CallPanel;
 class VideoPanel;
 class RttPanel;
 class DiagnosticsPanel;
+class SettingsPanel;
+class SipLadderPage;
 class AppStatusBar;
 class QAction;
 class QDialog;
@@ -39,16 +41,22 @@ private:
     void buildStatusBar();
     void restoreLayout();
     void saveLayout();
+    QWidget *buildDashboardPage();
+    QWidget *buildClientsPage();
+    QWidget *buildLogsPage();
+    QWidget *buildMediaPage();
 
     // Panels
     NavRail          *m_navRail{nullptr};
-    QStackedWidget   *m_sidebarStack{nullptr};
+    QStackedWidget   *m_pageStack{nullptr};
     SidebarPanel     *m_sidebar{nullptr};
     ContactsPanel    *m_contactsPanel{nullptr};
     CallPanel        *m_callPanel{nullptr};
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};
     DiagnosticsPanel *m_diagnostics{nullptr};
+    SettingsPanel    *m_settingsPanel{nullptr};
+    SipLadderPage    *m_ladderPage{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
     QDialog          *m_settingsDialog{nullptr};
 

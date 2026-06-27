@@ -1,20 +1,31 @@
 #include "SipLadderWidget.h"
 
+#include <QMouseEvent>
+#include <QPaintEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPaintEvent>
+#include <QStringList>
+#include <QToolTip>
 #include <QFontMetrics>
+
+namespace {
+static QString normalizedKey(const QString &value)
+{
+    return value.trimmed().toLower();
+}
+}
 
 SipLadderWidget::SipLadderWidget(QWidget *parent)
     : QWidget(parent)
 {
+    setMouseTracking(true);
     setMinimumHeight(contentHeight());
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 }
 
 int SipLadderWidget::contentHeight() const
 {
-    return kHeaderH + static_cast<int>(m_traces.size()) * kRowHeight + kPadBottom;
+    return kHeaderH + visibleTraceIndices().size() * kRowHeight + kPadBottom;
 }
 
 QSize SipLadderWidget::sizeHint() const
@@ -38,9 +49,156 @@ void SipLadderWidget::onMessageLogged(const SipMessageTrace &trace)
 void SipLadderWidget::onCleared()
 {
     m_traces.clear();
+    m_rowRects.clear();
+    m_hoverIndex = -1;
+    QToolTip::hideText();
     setMinimumHeight(contentHeight());
     updateGeometry();
     update();
+}
+
+void SipLadderWidget::setCallIdFilter(const QString &callId)
+{
+    m_filterCallId = callId;
+    setMinimumHeight(contentHeight());
+    updateGeometry();
+    update();
+}
+
+void SipLadderWidget::setMethodFilter(const QString &method)
+{
+    m_filterMethod = method;
+    setMinimumHeight(contentHeight());
+    updateGeometry();
+    update();
+}
+
+void SipLadderWidget::setDirectionFilter(const QString &direction)
+{
+    m_filterDirection = direction;
+    setMinimumHeight(contentHeight());
+    updateGeometry();
+    update();
+}
+
+QList<int> SipLadderWidget::visibleTraceIndices() const
+{
+    QList<int> indices;
+    const QString callIdFilter = normalizedKey(m_filterCallId);
+    const QString methodFilter = normalizedKey(m_filterMethod);
+    const QString directionFilter = normalizedKey(m_filterDirection);
+
+    for (int i = 0; i < m_traces.size(); ++i) {
+        const SipMessageTrace &t = m_traces[i];
+
+        if (!callIdFilter.isEmpty()
+            && !normalizedKey(t.callId).contains(callIdFilter))
+            continue;
+
+        if (!methodFilter.isEmpty()) {
+            const QString traceMethod = normalizedKey(t.statusCode > 0
+                ? QStringLiteral("%1 %2").arg(t.statusCode).arg(t.statusText)
+                : t.method);
+            if (!traceMethod.contains(methodFilter))
+                continue;
+        }
+
+        if (!directionFilter.isEmpty()) {
+            const QString traceDirection = t.direction == SipMessageTrace::Direction::Outbound
+                ? QStringLiteral("outbound") : QStringLiteral("inbound");
+            if (!traceDirection.contains(directionFilter))
+                continue;
+        }
+
+        indices.append(i);
+    }
+    return indices;
+}
+
+int SipLadderWidget::traceIndexAt(const QPoint &pos) const
+{
+    for (int i = 0; i < m_rowRects.size(); ++i) {
+        if (m_rowRects[i].contains(pos))
+            return i;
+    }
+    return -1;
+}
+
+QString SipLadderWidget::tooltipForTrace(const SipMessageTrace &trace)
+{
+    const QString direction = trace.direction == SipMessageTrace::Direction::Outbound
+        ? QObject::tr("Outbound")
+        : QObject::tr("Inbound");
+    const QString method = trace.statusCode > 0
+        ? QStringLiteral("%1 %2").arg(trace.statusCode).arg(trace.statusText)
+        : trace.method;
+    const QString timestamp = trace.timestamp.isValid()
+        ? trace.timestamp.toString(Qt::ISODateWithMs)
+        : QObject::tr("Unknown");
+
+    QStringList parts;
+    parts << QStringLiteral("Direction: %1").arg(direction);
+    parts << QStringLiteral("Method/Status: %1").arg(method);
+    parts << QStringLiteral("From: %1").arg(trace.fromUri.isEmpty() ? QObject::tr("Not available") : trace.fromUri);
+    parts << QStringLiteral("To: %1").arg(trace.toUri.isEmpty() ? QObject::tr("Not available") : trace.toUri);
+    parts << QStringLiteral("Call-ID: %1").arg(trace.callId.isEmpty() ? QObject::tr("Not available") : trace.callId);
+    parts << QStringLiteral("CSeq: %1").arg(trace.cSeq.isEmpty() ? QObject::tr("Not available") : trace.cSeq);
+    parts << QStringLiteral("Timestamp: %1").arg(timestamp);
+    return parts.join('\n');
+}
+
+void SipLadderWidget::updateHoverTip(const QPoint &pos)
+{
+    const int index = traceIndexAt(pos);
+    if (index < 0 || index >= m_rowRects.size()) {
+        if (m_hoverIndex != -1) {
+            m_hoverIndex = -1;
+            QToolTip::hideText();
+        }
+        return;
+    }
+
+    if (m_hoverIndex == index)
+        return;
+
+    m_hoverIndex = index;
+    const QList<int> visible = visibleTraceIndices();
+    if (index < 0 || index >= visible.size())
+        return;
+
+    const SipMessageTrace &trace = m_traces[visible[index]];
+    QToolTip::showText(mapToGlobal(pos), tooltipForTrace(trace), this);
+}
+
+void SipLadderWidget::mouseMoveEvent(QMouseEvent *event)
+{
+    updateHoverTip(event->pos());
+    QWidget::mouseMoveEvent(event);
+}
+
+void SipLadderWidget::leaveEvent(QEvent *event)
+{
+    Q_UNUSED(event)
+    m_hoverIndex = -1;
+    QToolTip::hideText();
+}
+
+void SipLadderWidget::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    const int index = traceIndexAt(event->pos());
+    if (index < 0)
+        return;
+
+    const QList<int> visible = visibleTraceIndices();
+    if (index >= visible.size())
+        return;
+
+    emit traceActivated(m_traces[visible[index]]);
 }
 
 void SipLadderWidget::paintEvent(QPaintEvent *)
@@ -50,6 +208,9 @@ void SipLadderWidget::paintEvent(QPaintEvent *)
     p.setRenderHint(QPainter::TextAntialiasing);
 
     const int W = width();
+    const QList<int> visible = visibleTraceIndices();
+    m_rowRects.clear();
+    m_rowRects.reserve(visible.size());
 
     // Entity column centres
     const int x1 = W * 27 / 100;   // Local UA
@@ -80,13 +241,13 @@ void SipLadderWidget::paintEvent(QPaintEvent *)
 
     // Vertical timeline dashed lines
     const int lineTop = 38 + 12;
-    const int lineBot = kHeaderH + static_cast<int>(m_traces.size()) * kRowHeight;
+    const int lineBot = kHeaderH + visible.size() * kRowHeight;
     QPen dashPen(QColor("#2e2e2e"), 1, Qt::DashLine);
     p.setPen(dashPen);
     p.drawLine(x1, lineTop, x1, lineBot);
     p.drawLine(x2, lineTop, x2, lineBot);
 
-    if (m_traces.isEmpty()) {
+    if (visible.isEmpty()) {
         p.setPen(QColor("#555555"));
         QFont ph = p.font();
         ph.setBold(false);
@@ -112,9 +273,11 @@ void SipLadderWidget::paintEvent(QPaintEvent *)
         annFont.setPointSizeF(annPt * 0.82);
     const QFontMetrics afm(annFont);
 
-    for (int i = 0; i < m_traces.size(); ++i) {
-        const SipMessageTrace &t = m_traces[i];
-        const int rowMid = kHeaderH + i * kRowHeight + kRowHeight / 2;
+    for (int row = 0; row < visible.size(); ++row) {
+        const SipMessageTrace &t = m_traces[visible[row]];
+        const int rowMid = kHeaderH + row * kRowHeight + kRowHeight / 2;
+        const QRect rowRect(0, kHeaderH + row * kRowHeight, W, kRowHeight);
+        m_rowRects.append(rowRect);
 
         const bool outbound = (t.direction == SipMessageTrace::Direction::Outbound);
         const int srcX = outbound ? x1 : x2;

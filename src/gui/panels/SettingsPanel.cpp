@@ -1,0 +1,127 @@
+#include "SettingsPanel.h"
+
+#include "core/AppSettings.h"
+#include "core/Logger.h"
+
+#include <QCheckBox>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QVBoxLayout>
+
+SettingsPanel::SettingsPanel(QWidget *parent)
+    : QWidget(parent)
+{
+    setObjectName("SettingsPanel");
+
+    auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(10);
+
+    auto *title = new QLabel(tr("Settings"), this);
+    title->setStyleSheet("font-size: 18px; font-weight: 600;");
+    root->addWidget(title);
+
+    auto *subtitle = new QLabel(
+        tr("Connection, SIP and logging preferences are stored locally and restored on restart."),
+        this);
+    subtitle->setWordWrap(true);
+    subtitle->setStyleSheet("color: #b7c4d6;");
+    root->addWidget(subtitle);
+
+    auto *group = new QGroupBox(tr("Connection"), this);
+    auto *form = new QFormLayout(group);
+    form->setLabelAlignment(Qt::AlignLeft);
+    form->setFormAlignment(Qt::AlignTop);
+
+    m_serverIp = new QLineEdit(group);
+    m_serverIp->setPlaceholderText(tr("10.0.0.1"));
+    form->addRow(tr("IP server"), m_serverIp);
+
+    m_sipDomain = new QLineEdit(group);
+    m_sipDomain->setPlaceholderText(tr("example.com"));
+    form->addRow(tr("SIP domain"), m_sipDomain);
+
+    m_sipPort = new QLineEdit(group);
+    m_sipPort->setPlaceholderText(tr("5060"));
+    form->addRow(tr("SIP port"), m_sipPort);
+
+    m_wsUrl = new QLineEdit(group);
+    m_wsUrl->setPlaceholderText(tr("ws://localhost:8080"));
+    form->addRow(tr("WebSocket URL"), m_wsUrl);
+
+    m_debugSIP = new QCheckBox(tr("Enable SIP debug log"), group);
+    form->addRow(QString(), m_debugSIP);
+
+    m_rawSIP = new QCheckBox(tr("Enable raw SIP capture"), group);
+    form->addRow(QString(), m_rawSIP);
+
+    m_persistMedia = new QCheckBox(tr("Persist media selection locally"), group);
+    m_persistMedia->setChecked(true);
+    form->addRow(QString(), m_persistMedia);
+
+    root->addWidget(group);
+    root->addStretch(1);
+
+    auto *buttons = new QHBoxLayout();
+    buttons->addStretch();
+    m_reset = new QPushButton(tr("Reset"), this);
+    m_save = new QPushButton(tr("Save"), this);
+    buttons->addWidget(m_reset);
+    buttons->addWidget(m_save);
+    root->addLayout(buttons);
+
+    connect(m_reset, &QPushButton::clicked, this, &SettingsPanel::onLoadDefaults);
+    connect(m_save, &QPushButton::clicked, this, &SettingsPanel::onSave);
+    connect(m_debugSIP, &QCheckBox::toggled, this, &SettingsPanel::applyDebugToggle);
+    connect(m_rawSIP, &QCheckBox::toggled, this, &SettingsPanel::applyDebugToggle);
+
+    load();
+}
+
+void SettingsPanel::load()
+{
+    auto &s = AppSettings::settings();
+    m_serverIp->setText(s.value(QStringLiteral("connection/serverIp"), QStringLiteral("")).toString());
+    m_sipDomain->setText(s.value(QStringLiteral("connection/sipDomain"), QStringLiteral("")).toString());
+    m_sipPort->setText(s.value(QStringLiteral("connection/sipPort"), QStringLiteral("5060")).toString());
+    m_wsUrl->setText(s.value(QStringLiteral("connection/wsUrl"), QStringLiteral("")).toString());
+    m_debugSIP->setChecked(s.value(QStringLiteral("connection/debugSip"), false).toBool());
+    m_rawSIP->setChecked(s.value(QStringLiteral("connection/rawSip"), false).toBool());
+    m_persistMedia->setChecked(s.value(QStringLiteral("connection/persistMedia"), true).toBool());
+    applyDebugToggle(m_debugSIP->isChecked());
+}
+
+void SettingsPanel::applyDebugToggle(bool enabled)
+{
+    Logger::instance().setLevelEnabled(LogLevel::Raw, m_rawSIP->isChecked() || enabled);
+}
+
+void SettingsPanel::onLoadDefaults()
+{
+    m_serverIp->clear();
+    m_sipDomain->clear();
+    m_sipPort->setText(QStringLiteral("5060"));
+    m_wsUrl->clear();
+    m_debugSIP->setChecked(false);
+    m_rawSIP->setChecked(false);
+    m_persistMedia->setChecked(true);
+    applyDebugToggle(false);
+}
+
+void SettingsPanel::onSave()
+{
+    auto &s = AppSettings::settings();
+    s.setValue(QStringLiteral("connection/serverIp"), m_serverIp->text().trimmed());
+    s.setValue(QStringLiteral("connection/sipDomain"), m_sipDomain->text().trimmed());
+    s.setValue(QStringLiteral("connection/sipPort"), m_sipPort->text().trimmed());
+    s.setValue(QStringLiteral("connection/wsUrl"), m_wsUrl->text().trimmed());
+    s.setValue(QStringLiteral("connection/debugSip"), m_debugSIP->isChecked());
+    s.setValue(QStringLiteral("connection/rawSip"), m_rawSIP->isChecked());
+    s.setValue(QStringLiteral("connection/persistMedia"), m_persistMedia->isChecked());
+    s.sync();
+    applyDebugToggle(m_debugSIP->isChecked());
+}

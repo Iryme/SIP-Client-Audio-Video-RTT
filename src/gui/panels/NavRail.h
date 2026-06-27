@@ -14,6 +14,7 @@ public:
 
     // Enable or disable a nav button by page id.
     void setPageEnabled(const QString &page, bool enabled);
+    void setPageActive(const QString &page);
 
 signals:
     void pageRequested(const QString &page);
@@ -22,4 +23,5 @@ private:
     QToolButton *addNavButton(QVBoxLayout *layout, const QString &label, const QString &page);
 
     QMap<QString, QToolButton *> m_buttons;
+    QString m_activePage;
 };

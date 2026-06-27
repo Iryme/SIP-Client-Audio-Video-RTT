@@ -32,13 +32,13 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget *parent)
     rootLayout->setContentsMargins(4, 4, 4, 4);
     rootLayout->setSpacing(4);
 
-    auto *tabs = new QTabWidget(this);
-    tabs->setDocumentMode(true);
+    m_tabs = new QTabWidget(this);
+    m_tabs->setDocumentMode(true);
 
     // -----------------------------------------------------------------------
     // Tab 0: Log
     // -----------------------------------------------------------------------
-    auto *logTab = new QWidget(tabs);
+    auto *logTab = new QWidget(m_tabs);
     auto *logLayout = new QVBoxLayout(logTab);
     logLayout->setContentsMargins(0, 4, 0, 0);
     logLayout->setSpacing(4);
@@ -90,12 +90,12 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget *parent)
     connect(btnExport, &QPushButton::clicked, this, &DiagnosticsPanel::onExportVisible);
     connect(btnBundle, &QPushButton::clicked, this, &DiagnosticsPanel::onExportBundle);
 
-    tabs->addTab(logTab, tr("Log"));
+    m_tabs->addTab(logTab, tr("Log"));
 
     // -----------------------------------------------------------------------
     // Tab 1: SIP Ladder
     // -----------------------------------------------------------------------
-    auto *ladderTab = new QWidget(tabs);
+    auto *ladderTab = new QWidget(m_tabs);
     auto *ladderLayout = new QVBoxLayout(ladderTab);
     ladderLayout->setContentsMargins(0, 4, 0, 0);
     ladderLayout->setSpacing(4);
@@ -163,9 +163,37 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget *parent)
                     }, Qt::QueuedConnection);
             });
 
-    tabs->addTab(ladderTab, tr("SIP Ladder"));
+    m_tabs->addTab(ladderTab, tr("SIP Ladder"));
 
-    rootLayout->addWidget(tabs, 1);
+    rootLayout->addWidget(m_tabs, 1);
+}
+
+void DiagnosticsPanel::showLogsTab()
+{
+    if (m_tabs)
+        m_tabs->setCurrentIndex(0);
+}
+
+void DiagnosticsPanel::showLadderTab()
+{
+    if (m_tabs)
+        m_tabs->setCurrentIndex(1);
+}
+
+void DiagnosticsPanel::setActiveTab(int index)
+{
+    if (m_tabs)
+        m_tabs->setCurrentIndex(index);
+}
+
+QTableWidget *DiagnosticsPanel::logTable() const
+{
+    return m_table;
+}
+
+SipLadderWidget *DiagnosticsPanel::ladderWidget() const
+{
+    return m_ladder;
 }
 
 // ---------------------------------------------------------------------------
