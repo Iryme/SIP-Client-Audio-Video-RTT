@@ -2,6 +2,7 @@
 
 #include <QWidget>
 
+class SidebarPanel;
 class QCheckBox;
 class QLineEdit;
 class QPushButton;
@@ -11,6 +12,7 @@ class SettingsPanel : public QWidget
     Q_OBJECT
 public:
     explicit SettingsPanel(QWidget *parent = nullptr);
+    void reload();
 
 private slots:
     void onLoadDefaults();
@@ -20,6 +22,7 @@ private:
     void load();
     void applyDebugToggle(bool enabled);
 
+    SidebarPanel *m_accountsPanel{nullptr};
     QLineEdit  *m_serverIp{nullptr};
     QLineEdit  *m_sipDomain{nullptr};
     QLineEdit  *m_sipPort{nullptr};

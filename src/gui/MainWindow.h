@@ -3,8 +3,6 @@
 #include <QCloseEvent>
 
 class NavRail;
-class SidebarPanel;
-class ContactsPanel;
 class CallPanel;
 class VideoPanel;
 class RttPanel;
@@ -34,6 +32,10 @@ protected:
 private slots:
     void onNavPageRequested(const QString &page);
     void showSettingsDialog();
+    void exportConfiguration();
+    void importConfiguration();
+    void showAboutDialog();
+    void showDiagnosticsInfo();
 
 private:
     void buildMenuBar();
@@ -49,9 +51,8 @@ private:
     // Panels
     NavRail          *m_navRail{nullptr};
     QStackedWidget   *m_pageStack{nullptr};
-    SidebarPanel     *m_sidebar{nullptr};
-    ContactsPanel    *m_contactsPanel{nullptr};
     CallPanel        *m_callPanel{nullptr};
+    VideoPanel       *m_clientsVideoPanel{nullptr};
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};
     DiagnosticsPanel *m_diagnostics{nullptr};
@@ -61,8 +62,10 @@ private:
     QDialog          *m_settingsDialog{nullptr};
 
     // Menu actions that need to be stored
-    QAction *m_actNewCall{nullptr};
-    QAction *m_actAddContact{nullptr};
+    QAction *m_actImportConfig{nullptr};
+    QAction *m_actExportConfig{nullptr};
+    QAction *m_actAbout{nullptr};
+    QAction *m_actDiagnosticsInfo{nullptr};
 
     // Splitters (saved for layout persistence)
     QSplitter *m_vertSplitter{nullptr};

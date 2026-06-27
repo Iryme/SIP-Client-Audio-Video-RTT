@@ -2,6 +2,7 @@
 
 #include "core/AppSettings.h"
 #include "core/Logger.h"
+#include "gui/panels/SidebarPanel.h"
 
 #include <QCheckBox>
 #include <QFormLayout>
@@ -9,7 +10,9 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QList>
 #include <QPushButton>
+#include <QSplitter>
 #include <QVBoxLayout>
 
 SettingsPanel::SettingsPanel(QWidget *parent)
@@ -32,7 +35,24 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     subtitle->setStyleSheet("color: #b7c4d6;");
     root->addWidget(subtitle);
 
-    auto *group = new QGroupBox(tr("Connection"), this);
+    auto *split = new QSplitter(Qt::Horizontal, this);
+    split->setChildrenCollapsible(false);
+    split->setHandleWidth(8);
+
+    auto *leftWrap = new QWidget(split);
+    auto *leftLayout = new QVBoxLayout(leftWrap);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(0);
+    m_accountsPanel = new SidebarPanel(leftWrap);
+    leftLayout->addWidget(m_accountsPanel);
+    split->addWidget(leftWrap);
+
+    auto *rightWrap = new QWidget(split);
+    auto *rightLayout = new QVBoxLayout(rightWrap);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(10);
+
+    auto *group = new QGroupBox(tr("Connection"), rightWrap);
     auto *form = new QFormLayout(group);
     form->setLabelAlignment(Qt::AlignLeft);
     form->setFormAlignment(Qt::AlignTop);
@@ -63,8 +83,15 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_persistMedia->setChecked(true);
     form->addRow(QString(), m_persistMedia);
 
-    root->addWidget(group);
-    root->addStretch(1);
+    rightLayout->addWidget(group);
+    rightLayout->addStretch(1);
+    split->addWidget(rightWrap);
+
+    split->setStretchFactor(0, 1);
+    split->setStretchFactor(1, 2);
+    split->setSizes(QList<int>{360, 700});
+
+    root->addWidget(split, 1);
 
     auto *buttons = new QHBoxLayout();
     buttons->addStretch();
@@ -79,6 +106,11 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     connect(m_debugSIP, &QCheckBox::toggled, this, &SettingsPanel::applyDebugToggle);
     connect(m_rawSIP, &QCheckBox::toggled, this, &SettingsPanel::applyDebugToggle);
 
+    load();
+}
+
+void SettingsPanel::reload()
+{
     load();
 }
 
