@@ -40,6 +40,18 @@
 #include <QMessageBox>
 
 namespace {
+
+static QWidget *makePlaceholder(const QString &name, QWidget *parent)
+{
+    auto *w = new QWidget(parent);
+    auto *lay = new QVBoxLayout(w);
+    auto *lbl = new QLabel(QStringLiteral("Loading %1…").arg(name), w);
+    lbl->setAlignment(Qt::AlignCenter);
+    lbl->setStyleSheet("color: #555566; font-size: 14px;");
+    lay->addWidget(lbl);
+    return w;
+}
+
 static QFrame *makeCard(QWidget *parent)
 {
     auto *frame = new QFrame(parent);
@@ -619,6 +631,8 @@ void MainWindow::importConfiguration()
 
     if (m_settingsPanel)
         m_settingsPanel->reload();
+    // If Settings page hasn't been visited yet (still a placeholder),
+    // skip reload — construction will read the latest settings on first visit.
 
     QMessageBox::information(this, tr("Import configuration"),
                              tr("Configuration imported successfully.\n%1").arg(path));
@@ -675,22 +689,73 @@ void MainWindow::buildCentralWidget()
     m_pageStack = new QStackedWidget(central);
     rootLayout->addWidget(m_pageStack, 1);
 
-    { PerfScope s("buildDashboardPage");  m_pageStack->addWidget(buildDashboardPage()); }
-    { PerfScope s("buildClientsPage");    m_pageStack->addWidget(buildClientsPage());   }
-    {
-        PerfScope s("SipLadderPage constructor");
-        m_ladderPage = new SipLadderPage(m_pageStack);
-        m_pageStack->addWidget(m_ladderPage);
-    }
-    { PerfScope s("buildLogsPage");       m_pageStack->addWidget(buildLogsPage());      }
-    { PerfScope s("buildMediaPage");      m_pageStack->addWidget(buildMediaPage());     }
-    {
-        PerfScope s("SettingsPanel constructor");
-        m_settingsPanel = new SettingsPanel(m_pageStack);
-        m_pageStack->addWidget(m_settingsPanel);
+    // All 6 pages start as lightweight placeholders — real content is built lazily
+    // on first navigation via ensurePage(). This keeps the constructor fast so
+    // MainWindow::show() is called before any heavy page construction.
+    static const char *const kPageNames[] = {
+        "Dashboard", "Clients", "SIP Ladder", "Logs", "Media", "Settings"
+    };
+    for (int i = 0; i < kPageCount; ++i) {
+        m_pageStack->addWidget(makePlaceholder(tr(kPageNames[i]), m_pageStack));
+        m_pageBuilt[i] = false;
     }
 
     setCentralWidget(central);
+
+    // Dashboard is the default visible page — build it on the first event-loop
+    // tick (after show() has returned) so the placeholder is briefly visible
+    // and the window paints before any heavy widget construction runs.
+    QTimer::singleShot(0, this, [this]() {
+        ensurePage(0);
+        m_pageStack->setCurrentIndex(0);
+    });
+}
+
+void MainWindow::ensurePage(int index)
+{
+    if (index < 0 || index >= kPageCount || m_pageBuilt[index])
+        return;
+
+    m_pageBuilt[index] = true;
+
+    const qint64 tStart = PerfScope::msecsSinceAppStart();
+    Logger::instance().info(LogCategory::Perf,
+        QStringLiteral("[PERF] lazy build start: page[%1] at T+%2 ms")
+            .arg(index).arg(tStart));
+
+    QElapsedTimer t;
+    t.start();
+
+    QWidget *real = nullptr;
+    switch (index) {
+    case 0: real = buildDashboardPage();                         break;
+    case 1: real = buildClientsPage();                           break;
+    case 2:
+        m_ladderPage = new SipLadderPage(m_pageStack);
+        real = m_ladderPage;
+        break;
+    case 3: real = buildLogsPage();                              break;
+    case 4: real = buildMediaPage();                             break;
+    case 5:
+        m_settingsPanel = new SettingsPanel(m_pageStack);
+        real = m_settingsPanel;
+        break;
+    default:
+        return;
+    }
+
+    // Replace the placeholder at 'index' with the real page.
+    // insertWidget(index, real) shifts the old placeholder to index+1;
+    // removeWidget then pulls it back out, restoring stable indices.
+    QWidget *old = m_pageStack->widget(index);
+    m_pageStack->insertWidget(index, real);
+    m_pageStack->removeWidget(old);
+    old->deleteLater();
+
+    const qint64 elapsed = t.elapsed();
+    Logger::instance().info(LogCategory::Perf,
+        QStringLiteral("[PERF] lazy build done: page[%1] in %2 ms (T+%3 ms)")
+            .arg(index).arg(elapsed).arg(PerfScope::msecsSinceAppStart()));
 }
 
 void MainWindow::showSettingsDialog()
@@ -701,23 +766,34 @@ void MainWindow::showSettingsDialog()
 void MainWindow::onNavPageRequested(const QString &page)
 {
     QString activePage = page;
+    int pageIndex = -1;
+
     if (page == QLatin1String("dashboard")) {
-        m_pageStack->setCurrentIndex(0);
+        pageIndex = 0;
     } else if (page == QLatin1String("clients") || page == QLatin1String("accounts")
                || page == QLatin1String("contacts") || page == QLatin1String("dialpad")) {
-        m_pageStack->setCurrentIndex(1);
+        pageIndex = 1;
         activePage = QStringLiteral("clients");
-        if (page == QLatin1String("dialpad") && m_callPanel)
-            m_callPanel->focusDialInput();
     } else if (page == QLatin1String("sipladder")) {
-        m_pageStack->setCurrentIndex(2);
+        pageIndex = 2;
     } else if (page == QLatin1String("logs")) {
-        m_pageStack->setCurrentIndex(3);
+        pageIndex = 3;
     } else if (page == QLatin1String("media")) {
-        m_pageStack->setCurrentIndex(4);
+        pageIndex = 4;
     } else if (page == QLatin1String("settings")) {
-        m_pageStack->setCurrentIndex(5);
+        pageIndex = 5;
     }
+
+    if (pageIndex >= 0) {
+        Logger::instance().info(LogCategory::Perf,
+            QStringLiteral("[PERF] page requested: %1 (index %2) at T+%3 ms")
+                .arg(page).arg(pageIndex).arg(PerfScope::msecsSinceAppStart()));
+        ensurePage(pageIndex);
+        m_pageStack->setCurrentIndex(pageIndex);
+    }
+
+    if (page == QLatin1String("dialpad") && m_callPanel)
+        m_callPanel->focusDialInput();
 
     if (m_navRail)
         m_navRail->setPageActive(activePage);

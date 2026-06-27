@@ -49,6 +49,13 @@ private:
     QWidget *buildLogsPage();
     QWidget *buildMediaPage();
 
+    // Build page[index] on first request and replace its placeholder.
+    void ensurePage(int index);
+
+    // Tracks which pages have been built (false = still a placeholder).
+    static constexpr int kPageCount = 6;
+    bool m_pageBuilt[kPageCount]{};
+
     // Panels
     NavRail          *m_navRail{nullptr};
     QStackedWidget   *m_pageStack{nullptr};
