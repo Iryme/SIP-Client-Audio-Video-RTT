@@ -2,6 +2,7 @@
 
 #include "core/AppSettings.h"
 #include "core/Logger.h"
+#include "core/PerfScope.h"
 #include "gui/panels/CallPanel.h"
 #include "gui/panels/DiagnosticsPanel.h"
 #include "gui/panels/MediaPanel.h"
@@ -332,17 +333,23 @@ static bool importProfilesJson(const QJsonObject &root, QString *errorMessage)
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    PerfScope total("MainWindow constructor total");
+    Logger::instance().info(LogCategory::Perf,
+        QStringLiteral("[PERF] MainWindow constructor start at T+%1 ms")
+            .arg(PerfScope::msecsSinceAppStart()));
+
     setWindowTitle("SIP Client - Audio / Video / RTT");
     setMinimumSize(1180, 820);
     resize(1500, 960);
 
-    buildMenuBar();
-    buildCentralWidget();
-    buildStatusBar();
+    { PerfScope s("MainWindow::buildMenuBar");     buildMenuBar();     }
+    { PerfScope s("MainWindow::buildCentralWidget"); buildCentralWidget(); }
+    { PerfScope s("MainWindow::buildStatusBar");   buildStatusBar();   }
 
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             m_statusBar, &AppStatusBar::setRegistrationStatus);
-    restoreLayout();
+
+    { PerfScope s("MainWindow::restoreLayout"); restoreLayout(); }
 
     if (m_navRail)
         m_navRail->setPageActive(QStringLiteral("dashboard"));
@@ -668,17 +675,22 @@ void MainWindow::buildCentralWidget()
     m_pageStack = new QStackedWidget(central);
     rootLayout->addWidget(m_pageStack, 1);
 
-    m_pageStack->addWidget(buildDashboardPage());
-    m_pageStack->addWidget(buildClientsPage());
-    m_ladderPage = new SipLadderPage(m_pageStack);
-    m_pageStack->addWidget(m_ladderPage);
-    m_pageStack->addWidget(buildLogsPage());
-    m_pageStack->addWidget(buildMediaPage());
-    m_settingsPanel = new SettingsPanel(m_pageStack);
-    m_pageStack->addWidget(m_settingsPanel);
+    { PerfScope s("buildDashboardPage");  m_pageStack->addWidget(buildDashboardPage()); }
+    { PerfScope s("buildClientsPage");    m_pageStack->addWidget(buildClientsPage());   }
+    {
+        PerfScope s("SipLadderPage constructor");
+        m_ladderPage = new SipLadderPage(m_pageStack);
+        m_pageStack->addWidget(m_ladderPage);
+    }
+    { PerfScope s("buildLogsPage");       m_pageStack->addWidget(buildLogsPage());      }
+    { PerfScope s("buildMediaPage");      m_pageStack->addWidget(buildMediaPage());     }
+    {
+        PerfScope s("SettingsPanel constructor");
+        m_settingsPanel = new SettingsPanel(m_pageStack);
+        m_pageStack->addWidget(m_settingsPanel);
+    }
 
     setCentralWidget(central);
-
 }
 
 void MainWindow::showSettingsDialog()
@@ -736,4 +748,10 @@ void MainWindow::updateSipBackendStatus()
     m_statusBar->setRegistrationStatus(sip.registrationState(),
                                        sip.registrationStatusText(),
                                        sip.registrationStatusCode());
+}
+
+void MainWindow::setInitializingStatus(const QString &message)
+{
+    if (m_statusBar)
+        m_statusBar->setSipBackend(message, false);
 }

@@ -3,6 +3,7 @@
 #include <QPointer>
 
 #include "core/Logger.h"
+#include "core/PerfScope.h"
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
@@ -170,16 +171,19 @@ bool SipManager::initialize()
     m_lastError.clear();
 
 #ifdef HAVE_PJSIP
-    if (!initPjsip(m_ep, m_lastError)) {
-        Logger::instance().error(LogCategory::Sip,
-            QStringLiteral("SIP backend initialization failed: %1").arg(m_lastError));
-        emit initializationFailed(m_lastError);
-        return false;
+    {
+        PerfScope s("PJSIP libCreate+libInit+libStart+GDI renderer");
+        if (!initPjsip(m_ep, m_lastError)) {
+            Logger::instance().error(LogCategory::Sip,
+                QStringLiteral("SIP backend initialization failed: %1").arg(m_lastError));
+            emit initializationFailed(m_lastError);
+            return false;
+        }
     }
-    PjsipAudioMapper::logAllDevices();
-    logVideoDevices();
-    CodecManager::instance().initialize();
-    applyPersistedAudioDevices();
+    { PerfScope s("PjsipAudioMapper::logAllDevices"); PjsipAudioMapper::logAllDevices(); }
+    { PerfScope s("logVideoDevices");                 logVideoDevices();                 }
+    { PerfScope s("CodecManager::initialize");        CodecManager::instance().initialize(); }
+    { PerfScope s("applyPersistedAudioDevices");      applyPersistedAudioDevices();      }
 #else
     Logger::instance().warn(LogCategory::Sip,
         QStringLiteral("PJSIP unavailable - running stub SIP backend"));

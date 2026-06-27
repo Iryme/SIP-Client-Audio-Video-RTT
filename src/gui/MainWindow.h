@@ -25,6 +25,7 @@ public:
 
 public:
     void updateSipBackendStatus();
+    void setInitializingStatus(const QString &message);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

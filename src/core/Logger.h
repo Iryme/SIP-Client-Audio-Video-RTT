@@ -20,7 +20,8 @@ enum class LogCategory {
     Rtt,
     Lmpe,
     Etsi,
-    Platform
+    Platform,
+    Perf
 };
 
 struct LogEntry {

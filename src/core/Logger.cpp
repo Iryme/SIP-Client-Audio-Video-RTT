@@ -74,6 +74,7 @@ QString Logger::categoryName(LogCategory c)
     case LogCategory::Lmpe:     return "LMPE";
     case LogCategory::Etsi:     return "ETSI";
     case LogCategory::Platform: return "PLATFORM";
+    case LogCategory::Perf:     return "PERF";
     }
     return "?";
 }
