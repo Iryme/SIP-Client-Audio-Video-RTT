@@ -24,7 +24,8 @@ public:
     MediaDevice defaultSpeaker()    const;
     MediaDevice defaultCamera()     const;
 
-    // Re-enumerate all devices; emits devicesChanged()
+    // Re-enumerate all devices asynchronously; emits devicesChanged() on completion.
+    // Non-blocking: returns immediately and runs enumeration on a worker thread.
     void refreshDevices();
 
     // Find a device by id within a type's list (null if not found)
@@ -33,8 +34,13 @@ public:
     // Backend injection — use in tests before any other call
     void setBackend(std::unique_ptr<IMediaDeviceBackend> backend);
 
+    bool isLoaded()     const { return m_loaded;     }
+    bool isRefreshing() const { return m_refreshing; }
+
 signals:
     void devicesChanged();
+    void refreshStarted();
+    void refreshFinished();
 
 private:
     MediaDeviceManager();
@@ -45,6 +51,7 @@ private:
     mutable QList<MediaDevice> m_speakers;
     mutable QList<MediaDevice> m_cameras;
     bool m_loaded{false};
+    bool m_refreshing{false};
 
     void ensureLoaded() const;
     void loadAll();

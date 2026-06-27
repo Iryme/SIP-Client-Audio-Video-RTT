@@ -1,6 +1,9 @@
 #include "MediaDeviceManager.h"
 #include "media/QtMediaDeviceBackend.h"
 #include "core/Logger.h"
+#include <QDateTime>
+#include <QThread>
+#include <QTimer>
 
 MediaDeviceManager &MediaDeviceManager::instance()
 {
@@ -25,8 +28,9 @@ void MediaDeviceManager::setBackend(std::unique_ptr<IMediaDeviceBackend> backend
 
 void MediaDeviceManager::ensureLoaded() const
 {
-    if (!m_loaded)
-        const_cast<MediaDeviceManager *>(this)->loadAll();
+    if (m_loaded)    return;
+    if (m_refreshing) return; // async refresh in progress — caller gets empty/stale cache
+    const_cast<MediaDeviceManager *>(this)->loadAll();
 }
 
 void MediaDeviceManager::loadAll()
@@ -45,9 +49,77 @@ void MediaDeviceManager::loadAll()
 
 void MediaDeviceManager::refreshDevices()
 {
-    m_loaded = false;
-    loadAll();
-    emit devicesChanged();
+    if (m_refreshing) {
+        Logger::instance().info(LogCategory::Media,
+            "MediaDeviceManager: refresh already in progress, skipping");
+        return;
+    }
+    if (!m_backend) {
+        Logger::instance().warn(LogCategory::Media,
+            "MediaDeviceManager: no backend installed");
+        return;
+    }
+
+    m_refreshing = true;
+    m_loaded     = false;
+    emit refreshStarted();
+    Logger::instance().info(LogCategory::Media,
+        "MediaDeviceManager: audio/video device enumeration started");
+
+    const qint64 startMs = QDateTime::currentMSecsSinceEpoch();
+
+    // Run enumeration on a worker thread so the UI thread stays responsive.
+    // QMediaDevices static functions are safe to call from non-UI threads in Qt6
+    // (internally mutex-protected). Results are posted back via QueuedConnection.
+    auto *thread = QThread::create([this, startMs]() {
+        const qint64 t0 = QDateTime::currentMSecsSinceEpoch();
+        auto mics = m_backend->microphones();
+        const qint64 t1 = QDateTime::currentMSecsSinceEpoch();
+        auto spk  = m_backend->speakers();
+        const qint64 t2 = QDateTime::currentMSecsSinceEpoch();
+        auto cams = m_backend->cameras();
+        const qint64 t3 = QDateTime::currentMSecsSinceEpoch();
+
+        QMetaObject::invokeMethod(this, [this, mics, spk, cams, t0, t1, t2, t3, startMs]() {
+            if (!m_refreshing) {
+                Logger::instance().warn(LogCategory::Media,
+                    "MediaDeviceManager: enumeration completed after timeout, results discarded");
+                return;
+            }
+            m_microphones = mics;
+            m_speakers    = spk;
+            m_cameras     = cams;
+            m_loaded      = true;
+            m_refreshing  = false;
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Audio input enumeration finished: %1 device(s) in %2ms")
+                    .arg(mics.size()).arg(t1 - t0));
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Audio output enumeration finished: %1 device(s) in %2ms")
+                    .arg(spk.size()).arg(t2 - t1));
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Video device enumeration finished: %1 device(s) in %2ms")
+                    .arg(cams.size()).arg(t3 - t2));
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("MediaDeviceManager: total enumeration time %1ms")
+                    .arg(t3 - startMs));
+            emit devicesChanged();
+            emit refreshFinished();
+        }, Qt::QueuedConnection);
+    });
+
+    thread->setObjectName("DeviceEnumThread");
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+
+    // Defensive timeout: if the worker doesn't finish within 5 s, unblock the UI.
+    QTimer::singleShot(5000, this, [this]() {
+        if (!m_refreshing) return;
+        m_refreshing = false;
+        Logger::instance().warn(LogCategory::Media,
+            "MediaDeviceManager: device enumeration timeout after 5000ms");
+        emit refreshFinished();
+    });
 }
 
 QList<MediaDevice> MediaDeviceManager::listMicrophones() const

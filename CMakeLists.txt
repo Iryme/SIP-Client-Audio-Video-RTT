@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 
+# NMake + MSVC can generate malformed compiler dependency files in this
+# environment. Fall back to CMake's legacy dependency discovery so the
+# generated makefiles stay readable by nmake.
+set(CMAKE_DEPENDS_USE_COMPILER FALSE CACHE BOOL
+    "Use CMake dependency discovery instead of compiler-generated deps" FORCE)
+
 project(SIPClient
     VERSION 0.1.0
     DESCRIPTION "Generic SIP Multimedia Client - Audio / Video / RTT"

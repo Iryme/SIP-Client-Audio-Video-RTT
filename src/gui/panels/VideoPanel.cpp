@@ -190,7 +190,11 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
             this, [this]() {
         populateCameraCombo();
-        refreshIdlePreview();
+        // Only auto-refresh the idle preview when this panel is configured to
+        // do so (e.g. the call panel). The media-settings preview panel uses
+        // autoStartIdlePreview=false and must be started explicitly by the user.
+        if (m_autoStartIdlePreview)
+            refreshIdlePreview();
     });
     if (m_autoStartIdlePreview) {
         connect(&SipManager::instance(), &SipManager::initialized,
@@ -406,8 +410,13 @@ void VideoPanel::populateCameraCombo()
 
 void VideoPanel::startIdlePreview()
 {
-    if (m_idlePreviewRunning || m_videoActive)
+    Logger::instance().info(LogCategory::Media, "VideoPanel: preview start requested");
+    if (m_idlePreviewRunning || m_videoActive) {
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("VideoPanel: preview start skipped (running=%1 videoActive=%2)")
+                .arg(m_idlePreviewRunning).arg(m_videoActive));
         return;
+    }
     if (!m_localPreview)
         return;
 
@@ -430,7 +439,7 @@ void VideoPanel::startIdlePreview()
 
     if (qtDev.isNull()) {
         Logger::instance().warn(LogCategory::Media,
-            QStringLiteral("Idle Qt preview: no camera device found"));
+            "VideoPanel: preview start failed — no camera device found");
         m_noVideoDeviceAvailable = true;
         applyVideoState();
         return;
@@ -447,11 +456,11 @@ void VideoPanel::startIdlePreview()
             this, &VideoPanel::onIdlePreviewFrame, Qt::QueuedConnection);
 
     m_previewCamera->start();
-    m_idlePreviewRunning   = true;
+    m_idlePreviewRunning     = true;
     m_noVideoDeviceAvailable = false;
 
     Logger::instance().info(LogCategory::Media,
-        QStringLiteral("Idle Qt preview started: camera='%1'")
+        QStringLiteral("VideoPanel: preview started — camera='%1'")
             .arg(qtDev.description()));
     applyVideoState();
 }
@@ -476,8 +485,7 @@ void VideoPanel::stopIdlePreview()
 
     m_localPreview->setPixmap(QPixmap());
 
-    Logger::instance().info(LogCategory::Media,
-        QStringLiteral("Idle Qt preview stopped"));
+    Logger::instance().info(LogCategory::Media, "VideoPanel: preview stopped");
     applyVideoState();
 }
 

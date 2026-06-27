@@ -9,12 +9,15 @@
 #include "gui/panels/VideoPanel.h"
 
 #include <QComboBox>
+#include <QElapsedTimer>
 #include <QFrame>
+#include <QShowEvent>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QList>
 #include <QPushButton>
 #include <QSplitter>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -45,12 +48,14 @@ static QWidget *makeZone(QWidget *parent, const QString &title, const QString &s
 MediaPanel::MediaPanel(QWidget *parent)
     : QWidget(parent)
 {
+    Logger::instance().info(LogCategory::Media, "MediaPanel constructed");
+
     m_manager = &MediaDeviceManager::instance();
     m_selectionModel = new MediaDeviceSelectionModel(m_manager, this);
 
     buildUi();
-    refreshAll();
 
+    // Selection model → update UI and backend managers
     connect(m_selectionModel, &MediaDeviceSelectionModel::microphoneSelectionChanged,
             this, &MediaPanel::onMicrophoneSelectionChanged);
     connect(m_selectionModel, &MediaDeviceSelectionModel::speakerSelectionChanged,
@@ -62,7 +67,6 @@ MediaPanel::MediaPanel(QWidget *parent)
                 if (!dev.isNull())
                     VideoMediaManager::instance().setCamera(dev.id);
             });
-
     connect(m_selectionModel, &MediaDeviceSelectionModel::microphoneSelectionChanged,
             this, [](const MediaDevice &dev) {
                 if (!dev.isNull())
@@ -74,8 +78,15 @@ MediaPanel::MediaPanel(QWidget *parent)
                     AudioMediaManager::instance().setSpeaker(dev.id);
             });
 
+    // Device manager signals
     connect(m_manager, &MediaDeviceManager::devicesChanged,
             this, &MediaPanel::onDevicesChanged);
+    connect(m_manager, &MediaDeviceManager::refreshStarted,
+            this, &MediaPanel::onRefreshStarted);
+    connect(m_manager, &MediaDeviceManager::refreshFinished,
+            this, &MediaPanel::onRefreshFinished);
+
+    // Level meters
     connect(&VideoMediaManager::instance(), &VideoMediaManager::cameraChanged,
             this, [this](const QString &) { updateStatuses(); });
     connect(&AudioMediaManager::instance(), &AudioMediaManager::inputLevelChanged,
@@ -92,6 +103,22 @@ MediaPanel::MediaPanel(QWidget *parent)
                     m_speakerLevel->setVisible(true);
                 }
             });
+
+    // Trigger initial async device enumeration after the UI has been shown.
+    // Using singleShot(0) so the widget renders before we start the (potentially
+    // slow) device enumeration. The enumeration itself runs on a worker thread
+    // inside MediaDeviceManager::refreshDevices(), keeping the UI responsive.
+    QTimer::singleShot(0, this, [this]() {
+        Logger::instance().info(LogCategory::Media,
+            "MediaPanel: triggering initial async device enumeration");
+        m_manager->refreshDevices();
+    });
+}
+
+void MediaPanel::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    Logger::instance().info(LogCategory::Media, "MediaPanel: media page activated");
 }
 
 void MediaPanel::buildUi()
@@ -115,14 +142,17 @@ void MediaPanel::buildUi()
     split->setChildrenCollapsible(false);
     split->setHandleWidth(8);
 
+    // --- Audio Input zone ---------------------------------------------------
     auto *inputZone = makeZone(split, tr("Audio Input"),
                                tr("Microphones available on this system."));
     auto *inputLayout = qobject_cast<QVBoxLayout *>(inputZone->layout());
     m_micCombo = new QComboBox(inputZone);
     m_micCombo->setObjectName("MicrophoneCombo");
+    m_micCombo->addItem(tr("Loading devices..."));
+    m_micCombo->setEnabled(false);
     inputLayout->addWidget(new QLabel(tr("Microphone"), inputZone));
     inputLayout->addWidget(m_micCombo);
-    m_inputStatus = new QLabel(inputZone);
+    m_inputStatus = new QLabel(tr("Enumerating devices..."), inputZone);
     m_inputStatus->setWordWrap(true);
     m_inputStatus->setStyleSheet("color: #9aa8b8;");
     inputLayout->addWidget(m_inputStatus);
@@ -134,14 +164,17 @@ void MediaPanel::buildUi()
     inputLayout->addStretch();
     split->addWidget(inputZone);
 
+    // --- Audio Output zone --------------------------------------------------
     auto *outputZone = makeZone(split, tr("Audio Output"),
                                 tr("Speakers and headsets."));
     auto *outputLayout = qobject_cast<QVBoxLayout *>(outputZone->layout());
     m_speakerCombo = new QComboBox(outputZone);
     m_speakerCombo->setObjectName("SpeakerCombo");
+    m_speakerCombo->addItem(tr("Loading devices..."));
+    m_speakerCombo->setEnabled(false);
     outputLayout->addWidget(new QLabel(tr("Speaker / Headset"), outputZone));
     outputLayout->addWidget(m_speakerCombo);
-    m_outputStatus = new QLabel(outputZone);
+    m_outputStatus = new QLabel(tr("Enumerating devices..."), outputZone);
     m_outputStatus->setWordWrap(true);
     m_outputStatus->setStyleSheet("color: #9aa8b8;");
     outputLayout->addWidget(m_outputStatus);
@@ -155,18 +188,22 @@ void MediaPanel::buildUi()
     outputLayout->addStretch();
     split->addWidget(outputZone);
 
+    // --- Video zone ---------------------------------------------------------
     auto *videoZone = makeZone(split, tr("Video Device"),
                                tr("Camera selection with explicit preview start."));
     auto *videoLayout = qobject_cast<QVBoxLayout *>(videoZone->layout());
     m_cameraCombo = new QComboBox(videoZone);
     m_cameraCombo->setObjectName("CameraCombo");
+    m_cameraCombo->addItem(tr("Loading devices..."));
+    m_cameraCombo->setEnabled(false);
     videoLayout->addWidget(new QLabel(tr("Camera"), videoZone));
     videoLayout->addWidget(m_cameraCombo);
-    m_videoStatus = new QLabel(videoZone);
+    m_videoStatus = new QLabel(tr("Enumerating devices..."), videoZone);
     m_videoStatus->setWordWrap(true);
     m_videoStatus->setStyleSheet("color: #9aa8b8;");
     videoLayout->addWidget(m_videoStatus);
     m_startPreviewBtn = new QPushButton(tr("Start preview"), videoZone);
+    m_startPreviewBtn->setEnabled(false);
     videoLayout->addWidget(m_startPreviewBtn);
     m_videoFallback = new QLabel(tr("No video device available"), videoZone);
     m_videoFallback->setAlignment(Qt::AlignCenter);
@@ -174,8 +211,10 @@ void MediaPanel::buildUi()
     m_videoFallback->setMinimumHeight(160);
     m_videoFallback->setStyleSheet(
         "color: #aab4c4; background: #0f141d; border: 1px dashed #34455d; padding: 12px;");
+    // autoStartIdlePreview=false: preview must be explicitly started by the user.
     m_previewPanel = new VideoPanel(videoZone, false);
     m_previewPanel->setMinimumHeight(240);
+    m_previewPanel->setVisible(false);
     videoLayout->addWidget(m_videoFallback);
     videoLayout->addWidget(m_previewPanel, 1);
     videoLayout->addStretch();
@@ -234,24 +273,39 @@ void MediaPanel::populateCombo(QComboBox *combo,
 
 void MediaPanel::refreshAll()
 {
+    Logger::instance().info(LogCategory::Media, "MediaPanel: refreshAll started");
+    QElapsedTimer t;
+    t.start();
+
     populateCombo(m_micCombo, m_manager->listMicrophones(),
                   m_selectionModel->selectedMicrophone().id, true);
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("MediaPanel: audio input populated in %1ms").arg(t.elapsed()));
+
     populateCombo(m_speakerCombo, m_manager->listSpeakers(),
                   m_selectionModel->selectedSpeaker().id, true);
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("MediaPanel: audio output populated in %1ms").arg(t.elapsed()));
+
     populateCombo(m_cameraCombo, m_manager->listCameras(),
                   m_selectionModel->selectedCamera().id, false);
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("MediaPanel: video devices populated in %1ms").arg(t.elapsed()));
+
     updateStatuses();
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("MediaPanel: refreshAll complete in %1ms").arg(t.elapsed()));
 }
 
 void MediaPanel::updateStatuses()
 {
-    const auto mics = m_manager->listMicrophones();
+    const auto mics     = m_manager->listMicrophones();
     const auto speakers = m_manager->listSpeakers();
-    const auto cams = m_manager->listCameras();
+    const auto cams     = m_manager->listCameras();
 
-    const MediaDevice mic = m_selectionModel->selectedMicrophone();
+    const MediaDevice mic     = m_selectionModel->selectedMicrophone();
     const MediaDevice speaker = m_selectionModel->selectedSpeaker();
-    const MediaDevice cam = m_selectionModel->selectedCamera();
+    const MediaDevice cam     = m_selectionModel->selectedCamera();
 
     if (m_inputStatus) {
         m_inputStatus->setText(mics.isEmpty()
@@ -305,13 +359,44 @@ void MediaPanel::onCameraChanged(int index)
 
 void MediaPanel::onRefreshClicked()
 {
+    Logger::instance().info(LogCategory::Media, "MediaPanel: refresh devices requested by user");
     m_manager->refreshDevices();
 }
 
 void MediaPanel::onStartPreviewClicked()
 {
+    Logger::instance().info(LogCategory::Media, "MediaPanel: preview start requested by user");
     if (m_previewPanel)
         m_previewPanel->startIdlePreview();
+}
+
+void MediaPanel::onRefreshStarted()
+{
+    Logger::instance().info(LogCategory::Media, "MediaPanel: device refresh started");
+    if (m_refreshBtn) {
+        m_refreshBtn->setEnabled(false);
+        m_refreshBtn->setText(tr("Refreshing..."));
+    }
+    if (m_inputStatus)  m_inputStatus->setText(tr("Enumerating audio input devices..."));
+    if (m_outputStatus) m_outputStatus->setText(tr("Enumerating audio output devices..."));
+    if (m_videoStatus)  m_videoStatus->setText(tr("Enumerating video devices..."));
+}
+
+void MediaPanel::onRefreshFinished()
+{
+    Logger::instance().info(LogCategory::Media, "MediaPanel: device refresh finished");
+    if (m_refreshBtn) {
+        m_refreshBtn->setText(tr("Refresh devices"));
+        m_refreshBtn->setEnabled(true);
+    }
+    // If devicesChanged did not fire (timeout path), show a clear message.
+    if (!m_manager->isLoaded()) {
+        Logger::instance().warn(LogCategory::Media,
+            "MediaPanel: devices not loaded after refresh — showing timeout message");
+        if (m_inputStatus)  m_inputStatus->setText(tr("Device enumeration timeout"));
+        if (m_outputStatus) m_outputStatus->setText(tr("Device enumeration timeout"));
+        if (m_videoStatus)  m_videoStatus->setText(tr("Device enumeration timeout"));
+    }
 }
 
 void MediaPanel::onMicrophoneSelectionChanged(const MediaDevice &device)
@@ -334,5 +419,7 @@ void MediaPanel::onCameraSelectionChanged(const MediaDevice &device)
 
 void MediaPanel::onDevicesChanged()
 {
+    Logger::instance().info(LogCategory::Media,
+        "MediaPanel: devicesChanged received, refreshing UI");
     refreshAll();
 }

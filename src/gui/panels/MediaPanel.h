@@ -5,6 +5,8 @@
 #include <QString>
 #include "media/MediaDevice.h"
 
+class QShowEvent;
+
 class QLabel;
 class QComboBox;
 class QPushButton;
@@ -18,6 +20,9 @@ class MediaPanel : public QWidget
 public:
     explicit MediaPanel(QWidget *parent = nullptr);
 
+protected:
+    void showEvent(QShowEvent *event) override;
+
 private slots:
     void onMicrophoneChanged(int index);
     void onSpeakerChanged(int index);
@@ -29,6 +34,8 @@ private slots:
     void onSpeakerSelectionChanged(const MediaDevice &device);
     void onCameraSelectionChanged(const MediaDevice &device);
     void onDevicesChanged();
+    void onRefreshStarted();
+    void onRefreshFinished();
 
 private:
     void buildUi();
