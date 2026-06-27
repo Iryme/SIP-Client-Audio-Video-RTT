@@ -658,6 +658,27 @@ target_link_libraries(test_emergency_multipart_builder PRIVATE
 
 add_test(NAME test_emergency_multipart_builder COMMAND test_emergency_multipart_builder)
 
+# ---- test_emergency_protocol_validation (Task 40) ----------------------
+qt_add_executable(test_emergency_protocol_validation
+    test_emergency_protocol_validation.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallAdapter.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyInviteBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+)
+
+target_include_directories(test_emergency_protocol_validation PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_protocol_validation PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_protocol_validation COMMAND test_emergency_protocol_validation)
+
 if(BUILD_LIVE_VALIDATION_TOOLS)
     if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
         message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")
@@ -727,5 +748,44 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
 
     if(WIN32)
         target_link_libraries(live_audio_call_probe PRIVATE Advapi32)
+    endif()
+
+    # ---- live_emergency_call_probe (Task 40) --------------------------------
+    qt_add_executable(live_emergency_call_probe
+        live_emergency_call_probe.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+        ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+        ${CALL_SOURCES}
+        ${CODEC_MANAGER_SOURCES}
+        ${AUDIO_MEDIA_SOURCES}
+        ${PJSIP_AUDIO_MAPPER_SOURCES}
+        ${SECURITY_SOURCES}
+        ${SECURITY_HEADERS}
+        ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallAdapter.cpp
+        ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+        ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyInviteBuilder.cpp
+        ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
+        ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+    )
+
+    target_include_directories(live_emergency_call_probe PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(live_emergency_call_probe PRIVATE
+        Qt6::Core
+        Qt6::Multimedia
+        PJSIP::pjsua2
+        ${CALL_SOURCES_EXTRA_LIBS}
+    )
+
+    if(WIN32)
+        target_link_libraries(live_emergency_call_probe PRIVATE Advapi32)
     endif()
 endif()

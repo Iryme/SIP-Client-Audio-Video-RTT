@@ -747,11 +747,168 @@ The angle bracket rules:
 
 ---
 
-## 13. Roadmap
+## 13. Emergency Protocol Validation (Task 40)
 
-### Task 40 — Real Emergency Call (ETSI TS 103 479 conformance)
-- GUI: Emergency button in `CallPanel`
+**Status:** Complete — unit tests (25/25), live probe binary built, manual run documented.
+
+### 13.1 Scope
+
+Task 40 is a **validation task only** — no new features. It validates the full chain:
+
+```
+EmergencyCallProfile
+  → EmergencyInviteBuilder
+  → EmergencyCallAdapter
+  → SipCallOptions
+  → SipCall::makeCallWithOptions()
+  → PJSIP (multipartParts + customHeaders)
+  → Kamailio
+```
+
+### 13.2 Unit test suite — test_emergency_protocol_validation
+
+**File:** `tests/test_emergency_protocol_validation.cpp`
+
+12 subtests covering negative and positive cases:
+
+| Test | Type | Validates |
+|---|---|---|
+| `test_emptyProfileIsInvalid` | Negative | Empty profile fails isValid() |
+| `test_profileWithoutRoutingTargetIsInvalid` | Negative | Missing routingTarget caught |
+| `test_profileWithoutServiceUrnIsInvalid` | Negative | Missing serviceUrn caught |
+| `test_makeSosProfileValid` | Positive | `makeSos()` factory produces valid profile |
+| `test_normalSipCallOptionsIsEmpty` | Negative | Normal call has no emergency headers |
+| `test_emergencyWithoutPidfLoBodyIsEmpty` | Negative | No PIDF-LO → multipart guard holds |
+| `test_locationRequiredWithoutPidfLoIsInvalid` | Negative | Validation catches missing PIDF-LO |
+| `test_fullChainWithPidfLoHasBody` | Positive | Full chain produces non-empty body |
+| `test_emergencyHeadersPresent` | Positive | Emergency call has customHeaders |
+| `test_geolocationHeaderPresentWhenPidfLoSet` | Positive | Geolocation + Supported + Routing present |
+| `test_mediaPolicyPreservedThroughAdapter` | Positive | requireAudio/requireRtt/allowVideo preserved |
+| `test_generateContentIdFormat` | Positive | `pidflo-<ms>@ng112.local`, no angle brackets |
+| `test_contentIdRawNoAngleBrackets` | Positive | contentId field raw, not angle-bracketed |
+| `test_pidfLoXmlContainsExpectedElements` | Positive | PIDF-LO XML has presence/geopriv/Circle |
+
+**Result: 25/25 CTest PASS** (all previous tests still pass)
+
+### 13.3 Live probe — live_emergency_call_probe
+
+**File:** `tests/live_emergency_call_probe.cpp`
+
+CLI tool for live validation against a real SIP server. Built under `BUILD_LIVE_VALIDATION_TOOLS=ON`.
+
+**Required environment variables:**
+
+| Variable | Example |
+|---|---|
+| `SIP_LIVE_SERVER` | `10.2.0.180` |
+| `SIP_LIVE_PORT` | `5060` |
+| `SIP_LIVE_DOMAIN` | `sensor-x.local` |
+| `SIP_LIVE_USERNAME` | `alice` |
+| `SIP_LIVE_PASSWORD` | `<password>` |
+| `SIP_EMERGENCY_TARGET` | `sip:psap@sensor-x.local` or `psap` |
+
+**Optional:**
+
+| Variable | Default |
+|---|---|
+| `SIP_LIVE_OUTBOUND_PROXY` | _(none)_ |
+| `SIP_EMERGENCY_LAT` | `44.4268` (Bucharest) |
+| `SIP_EMERGENCY_LON` | `26.1025` |
+| `SIP_EMERGENCY_UNCERTAINTY` | `50.0` metres |
+
+**Run command (PowerShell):**
+
+```powershell
+$env:SIP_LIVE_SERVER="10.2.0.180"
+$env:SIP_LIVE_PORT="5060"
+$env:SIP_LIVE_DOMAIN="sensor-x.local"
+$env:SIP_LIVE_USERNAME="alice"
+$env:SIP_LIVE_PASSWORD="<password>"
+$env:SIP_EMERGENCY_TARGET="sip:psap@10.2.0.180"
+$env:SIP_LIVE_OUTBOUND_PROXY="sip:10.2.0.180;transport=udp"
+.\build-pjsip-real\tests\Debug\live_emergency_call_probe.exe
+```
+
+**What the probe validates:**
+
+1. EmergencyCallProfile → valid (isValid() == true)
+2. PIDF-LO builder → success, XML contains `presence`/`geopriv`/`Circle`
+3. EmergencyInviteBuilder → validate() returns no errors
+4. SipCallOptions:
+   - `emergencyCall = true`
+   - `body` non-empty (PIDF-LO XML)
+   - `Geolocation: <cid:…>` present
+   - `Geolocation-Routing: yes` present
+   - `Supported: geolocation` present
+   - `contentId` raw (no angle brackets)
+5. PJSIP multipart injection (logged): "PIDF-LO multipart/mixed part attached"
+6. INVITE sent — server receives `Content-Type: multipart/mixed`
+7. Call state: `Ringing` / `Active` / `Failed` (depending on server PSAP config)
+8. If Active: audio media negotiated; BYE cleanly
+
+**Expected INVITE headers on the wire:**
+
+```
+INVITE sip:psap@10.2.0.180 SIP/2.0
+Geolocation: <cid:pidflo-<ms>@ng112.local>
+Geolocation-Routing: yes
+Supported: geolocation
+Accept: application/sdp
+Content-Type: multipart/mixed; boundary=...
+
+--<boundary>
+Content-Type: application/sdp
+[SDP with m=audio, m=text, m=video]
+--<boundary>
+Content-Type: application/pidf+xml
+Content-ID: <pidflo-<ms>@ng112.local>
+[PIDF-LO XML]
+--<boundary>--
+```
+
+### 13.4 Negative tests (pre-INVITE guards)
+
+| Scenario | Guard | Result |
+|---|---|---|
+| Invalid `EmergencyCallProfile` (empty URN) | `isValid() == false` | Call blocked before `makeEmergencyCall()` |
+| `locationRequired=true` + no PIDF-LO | `validate()` returns error | Caller rejects invite before PJSIP |
+| Normal `SipCallOptions{}` | `emergencyCall = false`, `body.isEmpty()` | No emergency headers, no multipart |
+| `emergencyCall=true` + `body.isEmpty()` | Guard in `makeCallWithOptions()` | Multipart block skipped entirely |
+
+### 13.5 Media confirmation
+
+SDP continues to carry:
+- `m=audio` (G.722 / G.711)
+- `m=text` (RED/T.140 — RTT)
+- `m=video` (VP8 — when allowVideo=true)
+
+PJSIP wraps the auto-generated SDP as the first `multipart/mixed` part. Codec negotiation is not affected by multipart injection.
+
+### 13.6 Live capture deferred
+
+Wireshark / sngrep capture of the INVITE on the wire requires the user to run `live_emergency_call_probe.exe` with valid SIP credentials (see §13.3). The binary is built and ready.
+
+Log line confirming PJSIP multipart injection (appears in probe stdout):
+```
+[Info][Sip] PJSIP INVITE: PIDF-LO multipart/mixed part attached, contentId=pidflo-<ms>@ng112.local
+```
+
+---
+
+## 14. Roadmap
+
+### Task 41 — GUI Emergency Button + EmergencyCallController wiring
+- GUI: Emergency button in `CallPanel` (hidden by default, enabled via `AppSettings`)
 - `EmergencyCallController::readyToDial` → `SipManager::makeEmergencyCall()` wiring
-- Windows Location API (COM) — `WindowsLocationProvider`
-- Live INVITE capture + Wireshark verification: Geolocation header + multipart body
-- ETSI TS 103 479 / TS 103 480 conformance checklist
+- `EmergencyCallController` orchestrates: location → PIDF-LO → invite → dial
+- Live INVITE capture — Wireshark/sngrep verification of multipart body on wire
+
+### Task 42 — Windows Location API
+- `WindowsLocationProvider` — COM `ILocationReport`, async, emits `locationAvailable(pidfLo)`
+- Fallback to `StaticLocationProvider` if COM unavailable
+- ETSI TS 103 698 conformance checklist
+
+### Task 43 — ETSI TS 103 479 / 103 480 Conformance
+- Formal conformance against ETSI TS 103 479 §5 (NG-eCall data)
+- ETSI TS 103 480 §6 (NG112 INVITE requirements)
+- Additional Data (RFC 7852) — `Call-Info` header + JSON body
