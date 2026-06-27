@@ -9,6 +9,8 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QFont>
+#include <QFontComboBox>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -17,6 +19,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QTabWidget>
+#include <QSpinBox>
 #include <QVBoxLayout>
 
 SettingsPanel::SettingsPanel(QWidget *parent)
@@ -56,11 +59,11 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(10);
 
-    auto *tabs = new QTabWidget(rightWrap);
+    m_tabs = new QTabWidget(rightWrap);
 
     // ── Connection tab ─────────────────────────────────────────────────────
     {
-        auto *group = new QGroupBox(tr("Connection"), tabs);
+        auto *group = new QGroupBox(tr("Connection"), m_tabs);
         auto *form = new QFormLayout(group);
         form->setLabelAlignment(Qt::AlignLeft);
         form->setFormAlignment(Qt::AlignTop);
@@ -91,16 +94,16 @@ SettingsPanel::SettingsPanel(QWidget *parent)
         m_persistMedia->setChecked(true);
         form->addRow(QString(), m_persistMedia);
 
-        tabs->addTab(group, tr("Connection"));
+        m_tabs->addTab(group, tr("Connection"));
     }
 
     // ── Video tab ──────────────────────────────────────────────────────────
-    m_videoSettings = new VideoSettingsPanel(tabs);
-    tabs->addTab(m_videoSettings, tr("Video"));
+    m_videoSettings = new VideoSettingsPanel(m_tabs);
+    m_tabs->addTab(m_videoSettings, tr("Video"));
 
     // ── Appearance tab ─────────────────────────────────────────────────────
     {
-        auto *appearWidget = new QWidget(tabs);
+        auto *appearWidget = new QWidget(m_tabs);
         auto *appearLayout = new QVBoxLayout(appearWidget);
         appearLayout->setContentsMargins(12, 12, 12, 12);
         appearLayout->setSpacing(10);
@@ -139,10 +142,48 @@ SettingsPanel::SettingsPanel(QWidget *parent)
         appearLayout->addWidget(appearGroup);
         appearLayout->addStretch();
 
-        tabs->addTab(appearWidget, tr("Appearance"));
+        m_tabs->addTab(appearWidget, tr("Appearance"));
     }
 
-    rightLayout->addWidget(tabs, 1);
+    // â”€â”€ Text / Accessibility tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    {
+        auto *textWidget = new QWidget(m_tabs);
+        auto *textLayout = new QVBoxLayout(textWidget);
+        textLayout->setContentsMargins(12, 12, 12, 12);
+        textLayout->setSpacing(10);
+
+        auto *rttGroup = new QGroupBox(tr("RTT"), textWidget);
+        auto *rttForm = new QFormLayout(rttGroup);
+        m_rttFontFamily = new QFontComboBox(rttGroup);
+        m_rttFontSize = new QSpinBox(rttGroup);
+        m_rttFontSize->setRange(8, 24);
+        m_rttBold = new QCheckBox(tr("Bold"), rttGroup);
+        m_rttHighContrast = new QCheckBox(tr("High contrast"), rttGroup);
+        rttForm->addRow(tr("Font family:"), m_rttFontFamily);
+        rttForm->addRow(tr("Font size:"), m_rttFontSize);
+        rttForm->addRow(QString(), m_rttBold);
+        rttForm->addRow(QString(), m_rttHighContrast);
+
+        auto *lmpeGroup = new QGroupBox(tr("LMPE"), textWidget);
+        auto *lmpeForm = new QFormLayout(lmpeGroup);
+        m_lmpeFontFamily = new QFontComboBox(lmpeGroup);
+        m_lmpeFontSize = new QSpinBox(lmpeGroup);
+        m_lmpeFontSize->setRange(8, 24);
+        m_lmpeBold = new QCheckBox(tr("Bold"), lmpeGroup);
+        m_lmpeHighContrast = new QCheckBox(tr("High contrast"), lmpeGroup);
+        lmpeForm->addRow(tr("Font family:"), m_lmpeFontFamily);
+        lmpeForm->addRow(tr("Font size:"), m_lmpeFontSize);
+        lmpeForm->addRow(QString(), m_lmpeBold);
+        lmpeForm->addRow(QString(), m_lmpeHighContrast);
+
+        textLayout->addWidget(rttGroup);
+        textLayout->addWidget(lmpeGroup);
+        textLayout->addStretch();
+
+        m_tabs->addTab(textWidget, tr("Text / Accessibility"));
+    }
+
+    rightLayout->addWidget(m_tabs, 1);
     split->addWidget(rightWrap);
 
     split->setStretchFactor(0, 1);
@@ -187,6 +228,7 @@ void SettingsPanel::load()
     m_rawSIP->setChecked(s.value(QStringLiteral("connection/rawSip"), false).toBool());
     m_persistMedia->setChecked(s.value(QStringLiteral("connection/persistMedia"), true).toBool());
     applyDebugToggle(m_debugSIP->isChecked());
+    loadTextAppearance();
 
     // Sync theme combo to whatever is currently active
     if (m_themeCombo) {
@@ -199,6 +241,26 @@ void SettingsPanel::load()
             }
         }
     }
+}
+
+void SettingsPanel::loadTextAppearance()
+{
+    auto &s = AppSettings::settings();
+    const auto load = [&s](const QString &prefix, QFontComboBox *family, QSpinBox *size,
+                           QCheckBox *bold, QCheckBox *contrast) {
+        if (family)
+            family->setCurrentFont(QFont(s.value(prefix + QStringLiteral("/fontFamily"),
+                                                 family->currentFont().family()).toString()));
+        if (size)
+            size->setValue(s.value(prefix + QStringLiteral("/fontSize"), 12).toInt());
+        if (bold)
+            bold->setChecked(s.value(prefix + QStringLiteral("/bold"), false).toBool());
+        if (contrast)
+            contrast->setChecked(s.value(prefix + QStringLiteral("/highContrast"), false).toBool());
+    };
+
+    load(QStringLiteral("text/rtt"), m_rttFontFamily, m_rttFontSize, m_rttBold, m_rttHighContrast);
+    load(QStringLiteral("text/lmpe"), m_lmpeFontFamily, m_lmpeFontSize, m_lmpeBold, m_lmpeHighContrast);
 }
 
 void SettingsPanel::applyDebugToggle(bool enabled)
@@ -215,6 +277,14 @@ void SettingsPanel::onLoadDefaults()
     m_debugSIP->setChecked(false);
     m_rawSIP->setChecked(false);
     m_persistMedia->setChecked(true);
+    if (m_rttFontFamily) m_rttFontFamily->setCurrentFont(QFont(QStringLiteral("Segoe UI")));
+    if (m_rttFontSize) m_rttFontSize->setValue(12);
+    if (m_rttBold) m_rttBold->setChecked(false);
+    if (m_rttHighContrast) m_rttHighContrast->setChecked(false);
+    if (m_lmpeFontFamily) m_lmpeFontFamily->setCurrentFont(QFont(QStringLiteral("Segoe UI")));
+    if (m_lmpeFontSize) m_lmpeFontSize->setValue(12);
+    if (m_lmpeBold) m_lmpeBold->setChecked(false);
+    if (m_lmpeHighContrast) m_lmpeHighContrast->setChecked(false);
     applyDebugToggle(false);
 }
 
@@ -228,8 +298,35 @@ void SettingsPanel::onSave()
     s.setValue(QStringLiteral("connection/debugSip"), m_debugSIP->isChecked());
     s.setValue(QStringLiteral("connection/rawSip"), m_rawSIP->isChecked());
     s.setValue(QStringLiteral("connection/persistMedia"), m_persistMedia->isChecked());
+    saveTextAppearance();
     s.sync();
     applyDebugToggle(m_debugSIP->isChecked());
+}
+
+void SettingsPanel::saveTextAppearance()
+{
+    auto &s = AppSettings::settings();
+    const auto save = [&s](const QString &prefix, QFontComboBox *family, QSpinBox *size,
+                           QCheckBox *bold, QCheckBox *contrast) {
+        if (family)
+            s.setValue(prefix + QStringLiteral("/fontFamily"), family->currentFont().family());
+        if (size)
+            s.setValue(prefix + QStringLiteral("/fontSize"), size->value());
+        if (bold)
+            s.setValue(prefix + QStringLiteral("/bold"), bold->isChecked());
+        if (contrast)
+            s.setValue(prefix + QStringLiteral("/highContrast"), contrast->isChecked());
+    };
+
+    save(QStringLiteral("text/rtt"), m_rttFontFamily, m_rttFontSize, m_rttBold, m_rttHighContrast);
+    save(QStringLiteral("text/lmpe"), m_lmpeFontFamily, m_lmpeFontSize, m_lmpeBold, m_lmpeHighContrast);
+}
+
+void SettingsPanel::focusVideoTab()
+{
+    if (!m_tabs)
+        return;
+    m_tabs->setCurrentWidget(m_videoSettings);
 }
 
 void SettingsPanel::onThemeChanged(int comboIndex)

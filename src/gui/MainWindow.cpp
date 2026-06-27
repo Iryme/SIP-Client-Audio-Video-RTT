@@ -5,8 +5,8 @@
 #include "core/PerfScope.h"
 #include "gui/dashboard/DashboardPage.h"
 #include "gui/panels/CallPanel.h"
+#include "gui/panels/ContactsPanel.h"
 #include "gui/panels/DiagnosticsPanel.h"
-#include "gui/panels/MediaPanel.h"
 #include "gui/panels/NavRail.h"
 #include "gui/panels/SettingsPanel.h"
 #include "gui/panels/SipLadderPage.h"
@@ -414,7 +414,7 @@ QWidget *MainWindow::buildClientsPage()
     outerSplit->setChildrenCollapsible(false);
     outerSplit->setHandleWidth(6);
 
-    // Left vertical splitter: [VideoPanel (top 50%) | CallPanel (bottom 50%)]
+    // Left vertical splitter: video preview, contacts, call controls.
     auto *leftSplit = new QSplitter(Qt::Vertical, outerSplit);
     leftSplit->setChildrenCollapsible(false);
     leftSplit->setHandleWidth(6);
@@ -423,9 +423,12 @@ QWidget *MainWindow::buildClientsPage()
     m_clientsVideoPanel->setObjectName("ClientsVideoPanel");
     leftSplit->addWidget(m_clientsVideoPanel);
 
+    m_contactsPanel = new ContactsPanel(leftSplit);
+    leftSplit->addWidget(m_contactsPanel);
+
     m_callPanel = new CallPanel(leftSplit);
     leftSplit->addWidget(m_callPanel);
-    leftSplit->setSizes({480, 480});
+    leftSplit->setSizes({420, 240, 300});
 
     outerSplit->addWidget(leftSplit);
 
@@ -437,11 +440,18 @@ QWidget *MainWindow::buildClientsPage()
 
     root->addWidget(outerSplit);
 
-    // Start/Stop local video preview from the call panel buttons
-    connect(m_callPanel, &CallPanel::startLocalVideoRequested,
-            m_clientsVideoPanel, &VideoPanel::startIdlePreview);
-    connect(m_callPanel, &CallPanel::stopLocalVideoRequested,
-            m_clientsVideoPanel, &VideoPanel::stopIdlePreview);
+    connect(m_contactsPanel, &ContactsPanel::dialRequested,
+            m_callPanel, &CallPanel::setDialTarget);
+    connect(m_contactsPanel, &ContactsPanel::dialRequested,
+            m_callPanel, &CallPanel::placeCall);
+
+    connect(m_callPanel, &CallPanel::requestVideoToggled,
+            this, [this](bool enabled) {
+                if (enabled)
+                    m_clientsVideoPanel->startIdlePreview();
+                else
+                    m_clientsVideoPanel->stopIdlePreview();
+            });
 
     m_rttPanel->setRttSession(SipManager::instance().rttSession());
     return page;
@@ -451,11 +461,6 @@ QWidget *MainWindow::buildLogsPage()
 {
     m_diagnostics = new DiagnosticsPanel(this);
     return m_diagnostics;
-}
-
-QWidget *MainWindow::buildMediaPage()
-{
-    return new MediaPanel(this);
 }
 
 void MainWindow::exportConfiguration()
@@ -600,7 +605,7 @@ void MainWindow::buildCentralWidget()
     // on first navigation via ensurePage(). This keeps the constructor fast so
     // MainWindow::show() is called before any heavy page construction.
     static const char *const kPageNames[] = {
-        "Dashboard", "Clients", "SIP Ladder", "Logs", "Media", "Settings"
+        "Dashboard", "Clients", "SIP Ladder", "Logs", "Settings"
     };
     for (int i = 0; i < kPageCount; ++i) {
         m_pageStack->addWidget(makePlaceholder(tr(kPageNames[i]), m_pageStack));
@@ -642,8 +647,7 @@ void MainWindow::ensurePage(int index)
         real = m_ladderPage;
         break;
     case 3: real = buildLogsPage();                              break;
-    case 4: real = buildMediaPage();                             break;
-    case 5:
+    case 4:
         m_settingsPanel = new SettingsPanel(m_pageStack);
         real = m_settingsPanel;
         break;
@@ -685,10 +689,11 @@ void MainWindow::onNavPageRequested(const QString &page)
         pageIndex = 2;
     } else if (page == QLatin1String("logs")) {
         pageIndex = 3;
-    } else if (page == QLatin1String("media")) {
-        pageIndex = 4;
     } else if (page == QLatin1String("settings")) {
-        pageIndex = 5;
+        pageIndex = 4;
+    } else if (page == QLatin1String("settings-video")) {
+        pageIndex = 4;
+        activePage = QStringLiteral("settings");
     }
 
     if (pageIndex >= 0) {
@@ -697,6 +702,8 @@ void MainWindow::onNavPageRequested(const QString &page)
                 .arg(page).arg(pageIndex).arg(PerfScope::msecsSinceAppStart()));
         ensurePage(pageIndex);
         m_pageStack->setCurrentIndex(pageIndex);
+        if (page == QLatin1String("settings-video") && m_settingsPanel)
+            m_settingsPanel->focusVideoTab();
     }
 
     if (page == QLatin1String("dialpad") && m_callPanel)

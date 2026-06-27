@@ -70,6 +70,7 @@ private:
     // Control overlay (shown only during a call)
     QWidget     *m_controlOverlay{nullptr};
     QComboBox   *m_cameraSelector{nullptr};
+    QPushButton *m_btnCameraToggle{nullptr};
     QPushButton *m_btnVideoMute{nullptr};
     QPushButton *m_btnSwap{nullptr};
 

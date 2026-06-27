@@ -104,6 +104,8 @@ ContactsPanel::ContactsPanel(QWidget *parent)
     connect(m_list, &QListWidget::currentRowChanged, this, [this](int row) {
         const bool valid = (row >= 0);
         m_removeBtn->setEnabled(valid);
+        if (valid)
+            m_targetEdit->setText(selectedContactUri());
         syncActionButtons();
     });
     connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *) {
@@ -131,6 +133,8 @@ void ContactsPanel::refresh()
 
     if (prevRow >= 0 && prevRow < m_list->count())
         m_list->setCurrentRow(prevRow);
+    else if (m_list->count() > 0)
+        m_list->setCurrentRow(0);
 
     const bool hasContacts = (m_list->count() > 0);
     m_emptyState->setVisible(!hasContacts);

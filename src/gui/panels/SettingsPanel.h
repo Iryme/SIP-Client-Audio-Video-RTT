@@ -5,11 +5,14 @@
 
 class SidebarPanel;
 class VideoSettingsPanel;
+class QTabWidget;
 class QCheckBox;
 class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QFontComboBox;
+class QSpinBox;
 
 class SettingsPanel : public QWidget
 {
@@ -17,6 +20,7 @@ class SettingsPanel : public QWidget
 public:
     explicit SettingsPanel(QWidget *parent = nullptr);
     void reload();
+    void focusVideoTab();
 
 private slots:
     void onLoadDefaults();
@@ -26,9 +30,12 @@ private slots:
 private:
     void load();
     void applyDebugToggle(bool enabled);
+    void loadTextAppearance();
+    void saveTextAppearance();
 
     SidebarPanel      *m_accountsPanel{nullptr};
     VideoSettingsPanel *m_videoSettings{nullptr};
+    QTabWidget        *m_tabs{nullptr};
 
     // Connection tab
     QLineEdit  *m_serverIp{nullptr};
@@ -43,4 +50,14 @@ private:
 
     // Appearance tab
     QComboBox  *m_themeCombo{nullptr};
+
+    // Text / Accessibility tab
+    QFontComboBox *m_rttFontFamily{nullptr};
+    QSpinBox      *m_rttFontSize{nullptr};
+    QCheckBox     *m_rttBold{nullptr};
+    QCheckBox     *m_rttHighContrast{nullptr};
+    QFontComboBox *m_lmpeFontFamily{nullptr};
+    QSpinBox      *m_lmpeFontSize{nullptr};
+    QCheckBox     *m_lmpeBold{nullptr};
+    QCheckBox     *m_lmpeHighContrast{nullptr};
 };

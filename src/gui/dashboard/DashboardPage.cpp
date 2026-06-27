@@ -151,9 +151,9 @@ void DashboardPage::buildShortcutCards(QLayout *layout)
     logsCard->setStatus(tr("Tap to open"));
 
     m_mediaCard = new DashboardShortcutCard(
-        QStringLiteral("\U0001F3A4"), tr("Media"),
+        QStringLiteral("\U0001F3A4"), tr("Video"),
         tr("Camera preview & devices"),
-        QStringLiteral("media"), this);
+        QStringLiteral("settings-video"), this);
     m_mediaCard->setStatus(
         totalDevices > 0
             ? tr("%1 device(s) detected").arg(totalDevices)

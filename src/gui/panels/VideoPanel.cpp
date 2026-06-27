@@ -112,6 +112,16 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
         "QComboBox { background: rgba(0,0,0,160); color: #ffffff; border: 1px solid #555; "
         "border-radius: 3px; padding: 1px 4px; }");
 
+    m_btnCameraToggle = new QPushButton(tr("Camera On"), m_controlOverlay);
+    m_btnCameraToggle->setObjectName("CameraToggleBtn");
+    m_btnCameraToggle->setCheckable(true);
+    m_btnCameraToggle->setChecked(true);
+    m_btnCameraToggle->setFixedHeight(24);
+    m_btnCameraToggle->setStyleSheet(
+        "QPushButton { background: rgba(0,0,0,160); color: #ffffff; border: 1px solid #555; "
+        "border-radius: 3px; padding: 1px 8px; }"
+        "QPushButton:checked { background: rgba(40,120,70,180); }");
+
     m_btnVideoMute = new QPushButton(tr("Mute Video"), m_controlOverlay);
     m_btnVideoMute->setObjectName("VideoMuteBtn");
     m_btnVideoMute->setCheckable(true);
@@ -122,6 +132,7 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
         "QPushButton:checked { background: rgba(180,50,50,180); }");
 
     overlayLayout->addWidget(m_cameraSelector);
+    overlayLayout->addWidget(m_btnCameraToggle);
     overlayLayout->addWidget(m_btnVideoMute);
     overlayLayout->addStretch();
 
@@ -145,6 +156,17 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
         if (!id.isEmpty())
             VideoMediaManager::instance().setCamera(id);
         refreshIdlePreview();
+    });
+    connect(m_btnCameraToggle, &QPushButton::toggled, this, [this](bool on) {
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("Camera %1").arg(on ? QStringLiteral("ON") : QStringLiteral("OFF")));
+        if (on) {
+            Logger::instance().info(LogCategory::Media, QStringLiteral("Camera acquired"));
+            startIdlePreview();
+        } else {
+            stopIdlePreview();
+            Logger::instance().info(LogCategory::Media, QStringLiteral("Camera released"));
+        }
     });
 
     // Video mute button → VideoMediaManager
@@ -542,6 +564,7 @@ void VideoPanel::startIdlePreview()
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("VideoPanel: preview started — camera='%1' in %2 ms")
             .arg(qtDev.description()).arg(startTimer.elapsed()));
+    Logger::instance().info(LogCategory::Media, QStringLiteral("Camera acquired"));
     applyVideoState();
 }
 
@@ -570,6 +593,7 @@ void VideoPanel::stopIdlePreview()
 
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("VideoPanel: preview stopped in %1 ms").arg(stopTimer.elapsed()));
+    Logger::instance().info(LogCategory::Media, QStringLiteral("Camera released"));
     applyVideoState();
 }
 

@@ -5,6 +5,7 @@
 class DashboardPage;
 class NavRail;
 class CallPanel;
+class ContactsPanel;
 class VideoPanel;
 class RttPanel;
 class DiagnosticsPanel;
@@ -48,13 +49,12 @@ private:
     QWidget *buildDashboardPage();
     QWidget *buildClientsPage();
     QWidget *buildLogsPage();
-    QWidget *buildMediaPage();
 
     // Build page[index] on first request and replace its placeholder.
     void ensurePage(int index);
 
     // Tracks which pages have been built (false = still a placeholder).
-    static constexpr int kPageCount = 6;
+    static constexpr int kPageCount = 5;
     bool m_pageBuilt[kPageCount]{};
 
     // Dashboard page (kept for signal wiring in buildDashboardPage)
@@ -64,6 +64,7 @@ private:
     NavRail          *m_navRail{nullptr};
     QStackedWidget   *m_pageStack{nullptr};
     CallPanel        *m_callPanel{nullptr};
+    ContactsPanel    *m_contactsPanel{nullptr};
     VideoPanel       *m_clientsVideoPanel{nullptr};
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};

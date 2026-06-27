@@ -30,8 +30,7 @@ signals:
     void hangupRequested();
     void answerRequested();
     void rejectRequested();
-    void startLocalVideoRequested();
-    void stopLocalVideoRequested();
+    void requestVideoToggled(bool enabled);
 
 public slots:
     void setDialTarget(const QString &uri);
@@ -92,8 +91,7 @@ private:
     // Call control buttons
     QPushButton *m_btnMute{nullptr};
     QPushButton *m_btnHold{nullptr};
-    QPushButton *m_btnStartVideo{nullptr};
-    QPushButton *m_btnStopVideo{nullptr};
+    QPushButton *m_btnRequestVideo{nullptr};
     QPushButton *m_btnAnswer{nullptr};
     QPushButton *m_btnReject{nullptr};
     QPushButton *m_btnHangup{nullptr};

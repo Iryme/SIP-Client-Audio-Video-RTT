@@ -2,6 +2,7 @@
 #include <QWidget>
 #include <QMap>
 #include <QString>
+#include <QIcon>
 
 class QVBoxLayout;
 class QToolButton;
@@ -20,7 +21,8 @@ signals:
     void pageRequested(const QString &page);
 
 private:
-    QToolButton *addNavButton(QVBoxLayout *layout, const QString &label, const QString &page);
+    QToolButton *addNavButton(QVBoxLayout *layout, const QIcon &icon,
+                              const QString &label, const QString &page);
 
     QMap<QString, QToolButton *> m_buttons;
     QString m_activePage;

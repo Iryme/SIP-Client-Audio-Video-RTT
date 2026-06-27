@@ -1,5 +1,7 @@
 #include "NavRail.h"
 
+#include <QApplication>
+#include <QStyle>
 #include <QSizePolicy>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -15,12 +17,17 @@ NavRail::NavRail(QWidget *parent)
     layout->setSpacing(4);
     layout->setAlignment(Qt::AlignTop);
 
-    addNavButton(layout, "Dash",     "dashboard");
-    addNavButton(layout, "Clients",  "clients");
-    addNavButton(layout, "Ladder",   "sipladder");
-    addNavButton(layout, "Logs",     "logs");
-    addNavButton(layout, "Media",    "media");
-    addNavButton(layout, "Settings", "settings");
+    auto *style = qApp ? qApp->style() : nullptr;
+    addNavButton(layout, style ? style->standardIcon(QStyle::SP_DesktopIcon)
+                               : QIcon(), "Dashboard", "dashboard");
+    addNavButton(layout, style ? style->standardIcon(QStyle::SP_DirHomeIcon)
+                               : QIcon(), "Clients", "clients");
+    addNavButton(layout, style ? style->standardIcon(QStyle::SP_FileDialogDetailedView)
+                               : QIcon(), "SIP Ladder", "sipladder");
+    addNavButton(layout, style ? style->standardIcon(QStyle::SP_MessageBoxInformation)
+                               : QIcon(), "Logs", "logs");
+    addNavButton(layout, style ? style->standardIcon(QStyle::SP_FileDialogContentsView)
+                               : QIcon(), "Settings", "settings");
 
     layout->addStretch(1);
 }
@@ -39,11 +46,13 @@ void NavRail::setPageActive(const QString &page)
 }
 
 QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
+                                    const QIcon &icon,
                                     const QString &label,
                                     const QString &page)
 {
     auto *btn = new QToolButton(this);
     btn->setText(label);
+    btn->setIcon(icon);
     btn->setToolTip(label);
     btn->setCheckable(true);
     btn->setAutoExclusive(true);

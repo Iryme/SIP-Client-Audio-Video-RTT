@@ -172,24 +172,21 @@ CallPanel::CallPanel(QWidget *parent)
             return btn;
         };
 
-        m_btnMute       = makeBtn(tr("Mute"),          true);
-        m_btnHold       = makeBtn(tr("Hold"),          true);
-        m_btnStartVideo = makeBtn(tr("Start Video"),   false);
-        m_btnStopVideo  = makeBtn(tr("Stop Video"),    false);
-        m_btnAnswer     = makeBtn(tr("Answer"),        false);
-        m_btnReject     = makeBtn(tr("Reject"),        false);
-        m_btnHangup     = makeBtn(tr("Hangup"),        false);
+        m_btnMute         = makeBtn(tr("Mute"),        true);
+        m_btnHold         = makeBtn(tr("Hold"),        true);
+        m_btnRequestVideo = makeBtn(tr("Request Video"), true);
+        m_btnAnswer       = makeBtn(tr("Answer"),      false);
+        m_btnReject       = makeBtn(tr("Reject"),      false);
+        m_btnHangup       = makeBtn(tr("Hangup"),      false);
 
         m_btnAnswer->setObjectName("AnswerBtn");
         m_btnReject->setObjectName("RejectBtn");
         m_btnHangup->setObjectName("HangupBtn");
-        m_btnStartVideo->setObjectName("StartVideoBtn");
-        m_btnStopVideo->setObjectName("StopVideoBtn");
+        m_btnRequestVideo->setObjectName("RequestVideoBtn");
 
         ctrlRow->addWidget(m_btnMute);
         ctrlRow->addWidget(m_btnHold);
-        ctrlRow->addWidget(m_btnStartVideo);
-        ctrlRow->addWidget(m_btnStopVideo);
+        ctrlRow->addWidget(m_btnRequestVideo);
         ctrlRow->addStretch();
         ctrlRow->addWidget(m_btnAnswer);
         ctrlRow->addWidget(m_btnReject);
@@ -412,8 +409,22 @@ CallPanel::CallPanel(QWidget *parent)
     connect(m_btnHangup, &QPushButton::clicked, []{ SipManager::instance().hangupCall(); });
 
     // Start/Stop Video → signals for MainWindow to wire to VideoPanel
-    connect(m_btnStartVideo, &QPushButton::clicked, this, &CallPanel::startLocalVideoRequested);
-    connect(m_btnStopVideo,  &QPushButton::clicked, this, &CallPanel::stopLocalVideoRequested);
+    connect(m_btnRequestVideo, &QPushButton::toggled, this, [this](bool checked) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Request Video %1").arg(checked ? QStringLiteral("ON") : QStringLiteral("OFF")));
+        const CallState state = SipManager::instance().callState();
+        if (state == CallState::Idle || state == CallState::Failed) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Video change will apply on next call"));
+            emit requestVideoToggled(checked);
+            return;
+        }
+        if (!SipManager::instance().setCallVideoMuted(!checked)) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Request Video change rejected"));
+        }
+        emit requestVideoToggled(checked);
+    });
 
     // Device combos → AudioMediaManager
     connect(m_micSelector, &QComboBox::currentIndexChanged, this, [this](int idx) {
