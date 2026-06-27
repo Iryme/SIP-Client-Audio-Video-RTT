@@ -81,6 +81,7 @@ CallPanel::CallPanel(QWidget *parent)
         m_btnCall->setFixedHeight(30);
         m_btnCall->setMinimumWidth(64);
         m_btnCall->setEnabled(false);
+        m_btnCall->setProperty("callRole", QStringLiteral("call"));
 
         dialH->addWidget(m_dialInput, 1);
         dialH->addWidget(m_callTypeCombo);
@@ -183,6 +184,12 @@ CallPanel::CallPanel(QWidget *parent)
         m_btnReject->setObjectName("RejectBtn");
         m_btnHangup->setObjectName("HangupBtn");
         m_btnRequestVideo->setObjectName("RequestVideoBtn");
+
+        // callRole properties drive theme-aware coloring from QSS
+        m_btnAnswer->setProperty("callRole", QStringLiteral("answer"));
+        m_btnReject->setProperty("callRole", QStringLiteral("reject"));
+        m_btnHangup->setProperty("callRole", QStringLiteral("hangup"));
+        m_btnHold->setProperty("callRole",   QStringLiteral("hold"));
 
         ctrlRow->addWidget(m_btnMute);
         ctrlRow->addWidget(m_btnHold);
@@ -397,10 +404,34 @@ CallPanel::CallPanel(QWidget *parent)
     connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
             this, &CallPanel::onOutputLevelChanged);
 
-    // Hold → SipManager
-    connect(m_btnHold, &QPushButton::toggled, [](bool held) {
-        if (held) SipManager::instance().holdCall();
-        else      SipManager::instance().resumeCall();
+    // Hold / Unhold — pending text on click, confirmed by callStateChanged
+    connect(m_btnHold, &QPushButton::clicked, this, [this](bool checked) {
+        if (checked) {
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("Hold button clicked"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP hold requested"));
+            m_btnHold->setText(tr("Holding…"));
+            const bool ok = SipManager::instance().holdCall();
+            if (!ok) {
+                Logger::instance().warn(LogCategory::Sip, QStringLiteral("SIP hold failed"));
+                QSignalBlocker b(m_btnHold);
+                m_btnHold->setChecked(false);
+                m_btnHold->setText(tr("Hold"));
+            }
+        } else {
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("Unhold button clicked"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP unhold requested"));
+            m_btnHold->setText(tr("Unholding…"));
+            const bool ok = SipManager::instance().resumeCall();
+            if (!ok) {
+                Logger::instance().warn(LogCategory::Sip, QStringLiteral("SIP unhold failed"));
+                QSignalBlocker b(m_btnHold);
+                m_btnHold->setChecked(true);
+                m_btnHold->setText(tr("Unhold"));
+                m_btnHold->setProperty("callRole", QStringLiteral("hold"));
+                m_btnHold->style()->unpolish(m_btnHold);
+                m_btnHold->style()->polish(m_btnHold);
+            }
+        }
     });
 
     // Answer / Reject / Hangup → SipManager
@@ -408,20 +439,31 @@ CallPanel::CallPanel(QWidget *parent)
     connect(m_btnReject, &QPushButton::clicked, []{ SipManager::instance().rejectCall(); });
     connect(m_btnHangup, &QPushButton::clicked, []{ SipManager::instance().hangupCall(); });
 
-    // Start/Stop Video → signals for MainWindow to wire to VideoPanel
+    // Request Video: sends re-INVITE to add video when enabling.
+    // When disabling, we do NOT send re-INVITE to avoid removing remote video stream.
     connect(m_btnRequestVideo, &QPushButton::toggled, this, [this](bool checked) {
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Request Video %1").arg(checked ? QStringLiteral("ON") : QStringLiteral("OFF")));
         const CallState state = SipManager::instance().callState();
         if (state == CallState::Idle || state == CallState::Failed) {
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Video change will apply on next call"));
+                QStringLiteral("Video renegotiation unsupported in current call; will apply on next call"));
             emit requestVideoToggled(checked);
             return;
         }
-        if (!SipManager::instance().setCallVideoMuted(!checked)) {
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("Request Video change rejected"));
+        if (checked) {
+            // Enable video: send re-INVITE with video m-line
+            if (!SipManager::instance().requestCallVideo(true)) {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("Request Video ON rejected by SipManager"));
+                QSignalBlocker b(m_btnRequestVideo);
+                m_btnRequestVideo->setChecked(false);
+            }
+        } else {
+            // Disable video toggle: do NOT send re-INVITE — that would send m=video 0
+            // and eliminate remote video. Just update state locally.
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Request Video OFF — not sending re-INVITE to preserve remote video stream"));
         }
         emit requestVideoToggled(checked);
     });
@@ -672,6 +714,23 @@ void CallPanel::applyCallState(CallState state)
     m_btnHangup->setVisible(!isIncoming && hasCall);
     m_btnHold->setEnabled(isActive);
     m_btnMute->setEnabled(state == CallState::Active);
+
+    // Sync hold button visual state from actual call state (not just click)
+    {
+        const bool isHeld = (state == CallState::Held);
+        QSignalBlocker b(m_btnHold);
+        m_btnHold->setChecked(isHeld);
+        if (isHeld) {
+            m_btnHold->setText(tr("Unhold"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP hold confirmed"));
+        } else if (state == CallState::Active) {
+            m_btnHold->setText(tr("Hold"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP unhold confirmed"));
+        }
+        // Repolish so :checked pseudo-state orange color applies
+        m_btnHold->style()->unpolish(m_btnHold);
+        m_btnHold->style()->polish(m_btnHold);
+    }
 
     // Dial row visible when no active call
     const bool showDial = isIdle || isFailed;

@@ -26,7 +26,6 @@
 #include "sip/SipManager.h"
 #include "sip/SipUriNormalizer.h"
 
-#include <QAction>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QComboBox>
@@ -42,8 +41,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
-#include <QMenu>
-#include <QMenuBar>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
@@ -374,7 +371,8 @@ MainWindow::MainWindow(QWidget *parent)
     setMinimumSize(1180, 820);
     resize(1500, 960);
 
-    { PerfScope s("MainWindow::buildMenuBar");     buildMenuBar();     }
+    // Remove the old menu bar — all actions live in the NavRail sidebar now.
+    setMenuBar(nullptr);
     { PerfScope s("MainWindow::buildCentralWidget"); buildCentralWidget(); }
     { PerfScope s("MainWindow::buildStatusBar");   buildStatusBar();   }
 
@@ -404,23 +402,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
     requestApplicationShutdown();
 }
 
-void MainWindow::buildMenuBar()
-{
-    auto *mb = menuBar();
-
-    auto *menuFile = mb->addMenu(tr("&File"));
-    m_actImportConfig = menuFile->addAction(tr("&Import configuration..."), this,
-                                            &MainWindow::importConfiguration);
-    m_actExportConfig = menuFile->addAction(tr("&Export configuration..."), this,
-                                            &MainWindow::exportConfiguration);
-    menuFile->addSeparator();
-    menuFile->addAction(tr("E&xit"), this, &MainWindow::requestApplicationShutdown, QKeySequence::Quit);
-
-    auto *menuHelp = mb->addMenu(tr("&Help"));
-    m_actAbout = menuHelp->addAction(tr("&About"), this, &MainWindow::showAboutDialog);
-    m_actDiagnosticsInfo = menuHelp->addAction(tr("&Diagnostics info"), this,
-                                               &MainWindow::showDiagnosticsInfo);
-}
 
 QWidget *MainWindow::buildDashboardPage()
 {
@@ -581,6 +562,7 @@ QWidget *MainWindow::buildClientsPage()
     auto *cardPacketLoss  = makeStatusCard(tr("Packet Loss"), tr("Frame drops this second"), cardsHost);
     auto *cardJitter      = makeStatusCard(tr("Jitter"), tr("RTP jitter"), cardsHost);
     auto *cardLatency     = makeStatusCard(tr("Latency"), tr("Round-trip latency"), cardsHost);
+    auto *cardCamera      = makeStatusCard(tr("Camera"), tr("Hardware camera state"), cardsHost);
 
     auto callStartTime = std::make_shared<QDateTime>();
     auto *durationTimer = new QTimer(page);
@@ -588,11 +570,14 @@ QWidget *MainWindow::buildClientsPage()
 
     StatusCard *allCards[] = {
         cardState, cardDuration, cardAudio, cardVideo, cardRtt, cardLmpe, cardLocalVideo,
-        cardRemoteVideo, cardVideoCodec, cardBitrate, cardResolution, cardFps,
+        cardRemoteVideo, cardCamera, cardVideoCodec, cardBitrate, cardResolution, cardFps,
         cardRemoteUri, cardLocalAccount, cardPacketLoss, cardJitter, cardLatency
     };
     for (StatusCard *card : allCards)
         cardsFlow->addWidget(card);
+
+    cardCamera->setValue(tr("On"));
+    cardCamera->setStatus(QStringLiteral("ok"));
 
     cardsArea->setWidget(cardsHost);
     statusLayout->addWidget(cardsArea);
@@ -616,6 +601,20 @@ QWidget *MainWindow::buildClientsPage()
     deviceRow->addWidget(cameraLabel);
     deviceRow->addWidget(cameraCombo, 1);
     statusLayout->addLayout(deviceRow);
+
+    // Camera On/Off button: controls local hardware camera (NOT SIP video negotiation)
+    auto *cameraCtrlRow = new QHBoxLayout();
+    cameraCtrlRow->setSpacing(6);
+    auto *cameraOnOffBtn = new QPushButton(tr("Camera Off"), statusGroup);
+    cameraOnOffBtn->setObjectName(QStringLiteral("CameraOnOffBtn"));
+    cameraOnOffBtn->setCheckable(true);
+    cameraOnOffBtn->setChecked(false); // starts as "camera is on, click to turn off"
+    cameraOnOffBtn->setMinimumHeight(32);
+    cameraOnOffBtn->setProperty("callRole", QStringLiteral("cameraOff"));
+    cameraCtrlRow->addWidget(new QLabel(tr("Hardware Camera:"), statusGroup));
+    cameraCtrlRow->addWidget(cameraOnOffBtn);
+    cameraCtrlRow->addStretch(1);
+    statusLayout->addLayout(cameraCtrlRow);
 
     centerLayout->addWidget(statusGroup, 0);
 
@@ -812,6 +811,54 @@ QWidget *MainWindow::buildClientsPage()
     });
     connect(cameraCombo, &QComboBox::currentIndexChanged, this, [cameraCombo](int idx) {
         VideoMediaManager::instance().setCamera(cameraCombo->itemData(idx).toString());
+    });
+
+    // Camera On/Off: controls hardware camera — stops/starts local preview and releases device
+    connect(cameraOnOffBtn, &QPushButton::clicked, this,
+            [this, cameraOnOffBtn, cardLocalVideo, cardCamera](bool checked) {
+        if (checked) {
+            // Button checked = Camera Off requested
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Clients Camera Off requested"));
+            if (m_clientsVideoPanel) {
+                m_clientsVideoPanel->stopIdlePreview();
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Camera device released — LED should be off after release"));
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Local preview stopped"));
+            }
+            const CallState cs = SipManager::instance().callState();
+            if (cs == CallState::Active || cs == CallState::Held) {
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Camera stopped locally; video inactive update not supported in current stub mode"));
+            }
+            cameraOnOffBtn->setText(tr("Camera On"));
+            cameraOnOffBtn->setProperty("callRole", QStringLiteral("cameraOff"));
+            cardCamera->setValue(tr("Off"));
+            cardCamera->setStatus(QStringLiteral("warn"));
+            cardLocalVideo->setValue(tr("Off"));
+            cardLocalVideo->setStatus({});
+        } else {
+            // Button unchecked = Camera On requested
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Clients Camera On requested"));
+            if (m_clientsVideoPanel) {
+                m_clientsVideoPanel->startIdlePreview();
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Camera device acquired"));
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("Local preview started"));
+            }
+            cameraOnOffBtn->setText(tr("Camera Off"));
+            cameraOnOffBtn->setProperty("callRole", QStringLiteral("cameraOn"));
+            cardCamera->setValue(tr("On"));
+            cardCamera->setStatus(QStringLiteral("ok"));
+            cardLocalVideo->setValue(tr("On"));
+            cardLocalVideo->setStatus(QStringLiteral("ok"));
+        }
+        // Repolish the button so the new callRole property takes effect.
+        cameraOnOffBtn->style()->unpolish(cameraOnOffBtn);
+        cameraOnOffBtn->style()->polish(cameraOnOffBtn);
     });
 
     auto refreshCards = [=]() {
@@ -1157,8 +1204,12 @@ void MainWindow::buildCentralWidget()
 
     m_navRail = new NavRail(central);
     m_navRail->setFixedWidth(72);
-    connect(m_navRail, &NavRail::pageRequested,
-            this, &MainWindow::onNavPageRequested);
+    connect(m_navRail, &NavRail::pageRequested,        this, &MainWindow::onNavPageRequested);
+    connect(m_navRail, &NavRail::importConfigRequested, this, &MainWindow::importConfiguration);
+    connect(m_navRail, &NavRail::exportConfigRequested, this, &MainWindow::exportConfiguration);
+    connect(m_navRail, &NavRail::aboutRequested,        this, &MainWindow::showAboutDialog);
+    connect(m_navRail, &NavRail::helpRequested,         this, &MainWindow::showDiagnosticsInfo);
+    connect(m_navRail, &NavRail::exitRequested,         this, &MainWindow::requestApplicationShutdown);
     rootLayout->addWidget(m_navRail);
 
     m_pageStack = new QStackedWidget(central);

@@ -185,6 +185,25 @@ QMenu::separator { height: 1px; background: __B1__; margin: 4px 0; }
 #NavButton:hover   { background-color: __NAVH__; color: __T0__; }
 #NavButton:checked { background-color: __NAVS__; color: __NTS__; }
 
+#NavActionConfig, #NavActionHelp {
+    background-color: transparent;
+    color: __NT__;
+    border: none;
+    border-radius: 6px;
+    font-size: 9px;
+}
+#NavActionConfig:hover, #NavActionHelp:hover { background-color: __NAVH__; color: __T0__; }
+
+#NavActionExit {
+    background-color: transparent;
+    color: __ER__;
+    border: none;
+    border-radius: 6px;
+    font-size: 9px;
+    font-weight: bold;
+}
+#NavActionExit:hover { background-color: __HBG__; color: __ER__; }
+
 /* --- Sidebar --- */
 #SidebarPanel { background-color: __BG1__; border-right: 1px solid __B0__; }
 #AccountCard  { background-color: __BG2__; border: 1px solid __B1__; border-radius: 6px; }
@@ -345,6 +364,24 @@ QPushButton[callRole="requestRtt"]:disabled {
     font-size: 11px;
 }
 #StartVideoBtn:hover, #StopVideoBtn:hover { background-color: __BG2__; }
+
+QPushButton[callRole="cameraOff"] {
+    background-color: __HBG__;
+    color: __ER__;
+    border: 1px solid __ER__;
+    border-radius: 4px;
+    padding: 4px 10px;
+}
+QPushButton[callRole="cameraOff"]:hover { background-color: __ER__; color: #ffffff; }
+
+QPushButton[callRole="cameraOn"] {
+    background-color: __ABG__;
+    color: __OK__;
+    border: 1px solid __OK__;
+    border-radius: 4px;
+    padding: 4px 10px;
+}
+QPushButton[callRole="cameraOn"]:hover { background-color: __OK__; color: #ffffff; }
 
 /* --- Status cards --- */
 #StatusCard {

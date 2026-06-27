@@ -11,7 +11,6 @@ class DiagnosticsPanel;
 class SettingsPanel;
 class SipLadderPage;
 class AppStatusBar;
-class QAction;
 class QDialog;
 class QSplitter;
 class QStackedWidget;
@@ -41,7 +40,6 @@ private slots:
     void showDiagnosticsInfo();
 
 private:
-    void buildMenuBar();
     void buildCentralWidget();
     void buildStatusBar();
     void requestApplicationShutdown();
@@ -73,12 +71,6 @@ private:
     SipLadderPage    *m_ladderPage{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
     QDialog          *m_settingsDialog{nullptr};
-
-    // Menu actions that need to be stored
-    QAction *m_actImportConfig{nullptr};
-    QAction *m_actExportConfig{nullptr};
-    QAction *m_actAbout{nullptr};
-    QAction *m_actDiagnosticsInfo{nullptr};
 
     QLineEdit *m_clientsTargetInput{nullptr};
     bool m_shutdownRequested{false};

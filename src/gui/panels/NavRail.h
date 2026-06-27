@@ -13,16 +13,23 @@ class NavRail : public QWidget
 public:
     explicit NavRail(QWidget *parent = nullptr);
 
-    // Enable or disable a nav button by page id.
     void setPageEnabled(const QString &page, bool enabled);
     void setPageActive(const QString &page);
 
 signals:
     void pageRequested(const QString &page);
+    void importConfigRequested();
+    void exportConfigRequested();
+    void helpRequested();
+    void aboutRequested();
+    void exitRequested();
 
 private:
-    QToolButton *addNavButton(QVBoxLayout *layout, const QIcon &icon,
+    QToolButton *addNavButton(QVBoxLayout *layout, const QString &svgPath,
                               const QString &label, const QString &page);
+    QToolButton *addActionButton(QVBoxLayout *layout, const QString &svgPath,
+                                 const QString &label, const QString &objectName);
+    static QIcon makeIconFromSvg(const QByteArray &svgData, int size = 28);
 
     QMap<QString, QToolButton *> m_buttons;
     QString m_activePage;

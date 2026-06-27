@@ -30,6 +30,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Gui
     Multimedia
     MultimediaWidgets
+    Svg
 )
 
 # --- Optional: PJSIP/pjsua2 SIP stack ---
@@ -196,6 +197,7 @@ target_link_libraries(SIPClient PRIVATE
     Qt6::Gui
     Qt6::Multimedia
     Qt6::MultimediaWidgets
+    Qt6::Svg
 )
 
 if(WIN32)
