@@ -591,7 +591,12 @@ void VideoPanel::drawDebugOverlay(QPainter &p)
     const qint64 rendMs      = VideoPipelineMonitor::instance().latencyMs(
                                    VideoPipelineMonitor::Stage::Render);
 
+    const QString modeStr = m_videoActive
+        ? QStringLiteral("Call (PJSIP)")
+        : QStringLiteral("Preview (Qt)");
+
     const QStringList lines{
+        QStringLiteral("Mode: %1").arg(modeStr),
         QStringLiteral("FPS: %1").arg(fps, 0, 'f', 1),
         QStringLiteral("Res: %1x%2").arg(vs.resolution.width()).arg(vs.resolution.height()),
         QStringLiteral("Codec: %1").arg(vs.codecOrder.isEmpty() ? QStringLiteral("?") : vs.codecOrder.first()),

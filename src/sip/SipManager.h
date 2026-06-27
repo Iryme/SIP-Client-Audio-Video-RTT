@@ -184,6 +184,10 @@ private:
     // and applies it to PJSIP AudDevManager. No-op when PJSIP is not active.
     void applyPersistedAudioDevices();
 
+    // Reads VideoQualityManager settings and applies codec priority, bitrate,
+    // and format to PJSIP before each outgoing call. No-op without HAVE_PJSIP.
+    void applyVideoSettingsForCall();
+
 #ifdef HAVE_PJSIP
 public:
     struct PjEndpoint;

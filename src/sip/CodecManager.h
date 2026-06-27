@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QList>
+#include <QSize>
 #include <QString>
+#include <QStringList>
 
 enum class SipMediaType { Audio, Video, Text };
 
@@ -34,6 +36,18 @@ public:
 
     // Log all discovered codecs in a structured table.
     void logCodecMatrix() const;
+
+    // Apply video codec priority order from user preferences.
+    // Codecs in order get decreasing priority (240, 230, ...); others get priority 1.
+    // No-op when PJSIP or PJMEDIA_HAS_VIDEO is unavailable.
+    void applyVideoCodecOrder(const QStringList &order);
+
+    // Apply bitrate to the first PJSIP video codec matching preferredCodec prefix.
+    // Sets avg_bps = bitrateKbps * 1000, max_bps = bitrateKbps * 2000.
+    void applyVideoCodecBitrate(const QString &preferredCodec, int bitrateKbps);
+
+    // Apply resolution and fps to the encoder format of the first matching codec.
+    void applyVideoCodecFormat(const QStringList &order, const QSize &resolution, int fps);
 
 private:
     CodecManager() = default;

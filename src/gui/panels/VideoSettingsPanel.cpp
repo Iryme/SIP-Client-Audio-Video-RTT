@@ -1,9 +1,11 @@
 #include "VideoSettingsPanel.h"
 #include "VideoPanel.h"
 
+#include "core/Logger.h"
 #include "media/MediaDeviceManager.h"
 #include "media/VideoQualityManager.h"
 #include "media/VideoStatistics.h"
+#include "sip/SipManager.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -370,8 +372,19 @@ void VideoSettingsPanel::onCodecDown()
 void VideoSettingsPanel::onApply()
 {
     VideoQualityManager::instance().apply(collectSettings());
-    if (m_preview && m_preview->isVisible())
-        m_preview->refreshIdlePreview();
+
+    const CallState cs = SipManager::instance().callState();
+    const bool callActive = (cs != CallState::Idle && cs != CallState::Failed);
+
+    if (callActive) {
+        m_statsLabel->setText(tr("Settings saved — will apply on next call"));
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("VideoSettings changed during active call — "
+                           "will apply on next call start"));
+    } else {
+        if (m_preview && m_preview->isVisible())
+            m_preview->refreshIdlePreview();
+    }
 }
 
 void VideoSettingsPanel::onReset()

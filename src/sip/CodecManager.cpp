@@ -173,6 +173,157 @@ bool CodecManager::hasUsableVideoCodec() const
     return false;
 }
 
+void CodecManager::applyVideoCodecOrder(const QStringList &order)
+{
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+    try {
+        pj::CodecInfoVector2 pjVideo = pj::Endpoint::instance().videoCodecEnum2();
+        for (const auto &c : pjVideo) {
+            const QString id = QString::fromStdString(c.codecId);
+            int rank = -1;
+            for (int i = 0; i < order.size(); ++i) {
+                if (id.startsWith(order[i], Qt::CaseInsensitive)) { rank = i; break; }
+            }
+            const int pri = (rank >= 0) ? qMax(1, 240 - rank * 10) : 1;
+            try {
+                pj::Endpoint::instance().videoCodecSetPriority(
+                    c.codecId, static_cast<pj_uint8_t>(pri));
+                Logger::instance().info(LogCategory::Media,
+                    QStringLiteral("VideoCodec priority: %1 → %2 (rank %3)")
+                        .arg(id).arg(pri).arg(rank));
+            } catch (const pj::Error &e) {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Video setting not applied to PJSIP: priority set failed for %1: %2")
+                        .arg(id, QString::fromStdString(e.reason)));
+            }
+        }
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("Video setting not applied to PJSIP: codec order enum failed: %1")
+                .arg(QString::fromStdString(e.reason)));
+    }
+#else
+    Q_UNUSED(order)
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Video setting not applied to PJSIP: PJMEDIA_HAS_VIDEO=0 or HAVE_PJSIP not defined"));
+#endif
+}
+
+void CodecManager::applyVideoCodecBitrate(const QString &preferredCodec, int bitrateKbps)
+{
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+    try {
+        pj::CodecInfoVector2 pjVideo = pj::Endpoint::instance().videoCodecEnum2();
+        for (const auto &c : pjVideo) {
+            const QString id = QString::fromStdString(c.codecId);
+            if (!id.startsWith(preferredCodec, Qt::CaseInsensitive))
+                continue;
+
+            pjmedia_vid_codec_param param;
+            pj_str_t pjId = pj_str(const_cast<char *>(c.codecId.c_str()));
+            pj_status_t st = pjsua_vid_codec_get_param(&pjId, &param);
+            if (st == PJ_SUCCESS) {
+                param.enc_fmt.det.vid.avg_bps = static_cast<pj_uint32_t>(bitrateKbps) * 1000u;
+                param.enc_fmt.det.vid.max_bps = static_cast<pj_uint32_t>(bitrateKbps) * 2000u;
+                st = pjsua_vid_codec_set_param(&pjId, &param);
+                if (st == PJ_SUCCESS) {
+                    Logger::instance().info(LogCategory::Media,
+                        QStringLiteral("VideoCodec bitrate: %1 → %2 kbps "
+                                       "(avg_bps=%3 max_bps=%4)")
+                            .arg(id).arg(bitrateKbps)
+                            .arg(param.enc_fmt.det.vid.avg_bps)
+                            .arg(param.enc_fmt.det.vid.max_bps));
+                } else {
+                    Logger::instance().warn(LogCategory::Media,
+                        QStringLiteral("Video setting not applied to PJSIP: "
+                                       "bitrate set_param failed for %1 (status %2)")
+                            .arg(id).arg(static_cast<int>(st)));
+                }
+            } else {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Video setting not applied to PJSIP: "
+                                   "bitrate get_param failed for %1 (status %2)")
+                        .arg(id).arg(static_cast<int>(st)));
+            }
+            break;
+        }
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("Video setting not applied to PJSIP: bitrate exception: %1")
+                .arg(QString::fromStdString(e.reason)));
+    }
+#else
+    Q_UNUSED(preferredCodec)
+    Q_UNUSED(bitrateKbps)
+#endif
+}
+
+void CodecManager::applyVideoCodecFormat(const QStringList &order,
+                                         const QSize &resolution, int fps)
+{
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+    try {
+        pj::CodecInfoVector2 pjVideo = pj::Endpoint::instance().videoCodecEnum2();
+        bool applied = false;
+        for (const QString &preferred : order) {
+            if (applied) break;
+            for (const auto &c : pjVideo) {
+                const QString id = QString::fromStdString(c.codecId);
+                if (!id.startsWith(preferred, Qt::CaseInsensitive))
+                    continue;
+
+                pjmedia_vid_codec_param param;
+                pj_str_t pjId = pj_str(const_cast<char *>(c.codecId.c_str()));
+                pj_status_t st = pjsua_vid_codec_get_param(&pjId, &param);
+                if (st == PJ_SUCCESS) {
+                    param.enc_fmt.det.vid.size.w = static_cast<unsigned>(resolution.width());
+                    param.enc_fmt.det.vid.size.h = static_cast<unsigned>(resolution.height());
+                    param.enc_fmt.det.vid.fps.num   = fps;
+                    param.enc_fmt.det.vid.fps.denum = 1;
+                    st = pjsua_vid_codec_set_param(&pjId, &param);
+                    if (st == PJ_SUCCESS) {
+                        Logger::instance().info(LogCategory::Media,
+                            QStringLiteral("VideoCodec format: %1 → %2x%3 @ %4 fps")
+                                .arg(id)
+                                .arg(resolution.width()).arg(resolution.height())
+                                .arg(fps));
+                        applied = true;
+                    } else {
+                        Logger::instance().warn(LogCategory::Media,
+                            QStringLiteral("Video setting not applied to PJSIP: "
+                                           "format set_param failed for %1 (status %2)")
+                                .arg(id).arg(static_cast<int>(st)));
+                    }
+                } else {
+                    Logger::instance().warn(LogCategory::Media,
+                        QStringLiteral("Video setting not applied to PJSIP: "
+                                       "format get_param failed for %1 (status %2)")
+                            .arg(id).arg(static_cast<int>(st)));
+                }
+                break;
+            }
+        }
+        if (!applied && !order.isEmpty()) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("Video setting not applied to PJSIP: "
+                               "no matching codec for format (order: [%1])")
+                    .arg(order.join(QStringLiteral(", "))));
+        }
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("Video setting not applied to PJSIP: format exception: %1")
+                .arg(QString::fromStdString(e.reason)));
+    }
+#else
+    Q_UNUSED(order)
+    Q_UNUSED(resolution)
+    Q_UNUSED(fps)
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Video setting not applied to PJSIP: "
+                       "PJMEDIA_HAS_VIDEO=0 or HAVE_PJSIP not defined"));
+#endif
+}
+
 void CodecManager::logCodecMatrix() const
 {
     // --- Audio ---

@@ -8,6 +8,7 @@
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoMediaManager.h"
+#include "media/VideoQualityManager.h"
 #include "security/CredentialStore.h"
 #include "sip/CodecManager.h"
 #include "sip/PjsipAudioMapper.h"
@@ -1009,6 +1010,8 @@ bool SipManager::makeCall(const QString &remoteUri)
     if (!prepareOutgoingCall(remoteUri))
         return false;
 
+    applyVideoSettingsForCall();
+
     // Emit INVITE outbound trace.
     {
         SipMessageTrace trace;
@@ -1028,6 +1031,8 @@ bool SipManager::makeEmergencyCall(const QString &remoteUri, const SipCallOption
 {
     if (!prepareOutgoingCall(remoteUri))
         return false;
+
+    applyVideoSettingsForCall();
 
     // Emit INVITE outbound trace (emergency).
     {
@@ -1322,6 +1327,46 @@ bool SipManager::ensureTransport(SipTransport transport, int &transportId,
     }
 }
 #endif
+
+void SipManager::applyVideoSettingsForCall()
+{
+    const VideoSettings vs = VideoQualityManager::instance().current();
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Video call settings: camera=\"%1\" "
+                       "resolution=%2x%3 @ %4 fps  bitrate=%5 kbps  "
+                       "codec=[%6]  overlay=%7")
+            .arg(vs.cameraId.isEmpty() ? QStringLiteral("(default)") : vs.cameraId)
+            .arg(vs.resolution.width()).arg(vs.resolution.height())
+            .arg(vs.fps)
+            .arg(vs.bitrateKbps)
+            .arg(vs.codecOrder.isEmpty()
+                     ? QStringLiteral("(none)")
+                     : vs.codecOrder.join(QStringLiteral(", ")))
+            .arg(vs.overlayEnabled ? QStringLiteral("on") : QStringLiteral("off")));
+
+#ifdef HAVE_PJSIP
+    if (!vs.codecOrder.isEmpty())
+        CodecManager::instance().applyVideoCodecOrder(vs.codecOrder);
+
+    if (!vs.codecOrder.isEmpty())
+        CodecManager::instance().applyVideoCodecBitrate(vs.codecOrder.first(), vs.bitrateKbps);
+
+    CodecManager::instance().applyVideoCodecFormat(vs.codecOrder, vs.resolution, vs.fps);
+
+    // Camera capture device: PJSIP video capture requires a DirectShow backend
+    // (PJMEDIA_VIDEO_DEV_HAS_DSHOW) which is not compiled in this build.
+    // The Qt camera preview uses VideoQualityManager camera ID via QCamera directly.
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Video setting not applied to PJSIP: camera device selection "
+                       "requires PJMEDIA_VIDEO_DEV_HAS_DSHOW "
+                       "(Qt preview uses \"%1\")").arg(vs.cameraId));
+#else
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Video setting not applied to PJSIP: "
+                       "stub backend active — settings are preferences only"));
+#endif
+}
 
 void SipManager::applyPersistedAudioDevices()
 {
