@@ -406,46 +406,42 @@ QWidget *MainWindow::buildDashboardPage()
 QWidget *MainWindow::buildClientsPage()
 {
     auto *page = new QWidget(this);
-    auto *root = new QVBoxLayout(page);
-    root->setContentsMargins(12, 12, 12, 12);
-    root->setSpacing(10);
+    auto *root = new QHBoxLayout(page);
+    root->setContentsMargins(0, 0, 0, 0);
 
-    auto *header = new QLabel(tr("Clients / Call Control"), page);
-    header->setStyleSheet("font-size: 18px; font-weight: 600;");
-    root->addWidget(header);
+    // Outer horizontal splitter: [left vertical split | RTT panel]
+    auto *outerSplit = new QSplitter(Qt::Horizontal, page);
+    outerSplit->setChildrenCollapsible(false);
+    outerSplit->setHandleWidth(6);
 
-    auto *desc = new QLabel(
-        tr("Three-zone workspace for live video, call control, audio status, and RTT."),
-        page);
-    desc->setStyleSheet("color: #b7c4d6;");
-    desc->setWordWrap(true);
-    root->addWidget(desc);
+    // Left vertical splitter: [VideoPanel (top 50%) | CallPanel (bottom 50%)]
+    auto *leftSplit = new QSplitter(Qt::Vertical, outerSplit);
+    leftSplit->setChildrenCollapsible(false);
+    leftSplit->setHandleWidth(6);
 
-    auto *split = new QSplitter(Qt::Horizontal, page);
-    split->setChildrenCollapsible(false);
-    split->setHandleWidth(8);
-
-    m_clientsVideoPanel = new VideoPanel(split);
+    m_clientsVideoPanel = new VideoPanel(leftSplit);
     m_clientsVideoPanel->setObjectName("ClientsVideoPanel");
-    split->addWidget(m_clientsVideoPanel);
+    leftSplit->addWidget(m_clientsVideoPanel);
 
-    auto *centerWrap = new QWidget(split);
-    auto *centerLayout = new QVBoxLayout(centerWrap);
-    centerLayout->setContentsMargins(0, 0, 0, 0);
-    centerLayout->setSpacing(8);
-    m_callPanel = new CallPanel(centerWrap);
-    centerLayout->addWidget(m_callPanel, 2);
-    split->addWidget(centerWrap);
+    m_callPanel = new CallPanel(leftSplit);
+    leftSplit->addWidget(m_callPanel);
+    leftSplit->setSizes({480, 480});
 
-    m_rttPanel = new RttPanel(split);
-    split->addWidget(m_rttPanel);
+    outerSplit->addWidget(leftSplit);
 
-    split->setStretchFactor(0, 2);
-    split->setStretchFactor(1, 2);
-    split->setStretchFactor(2, 1);
-    split->setSizes(QList<int>{520, 520, 360});
+    m_rttPanel = new RttPanel(outerSplit);
+    outerSplit->addWidget(m_rttPanel);
+    outerSplit->setSizes({1100, 400});
+    outerSplit->setStretchFactor(0, 3);
+    outerSplit->setStretchFactor(1, 1);
 
-    root->addWidget(split, 1);
+    root->addWidget(outerSplit);
+
+    // Start/Stop local video preview from the call panel buttons
+    connect(m_callPanel, &CallPanel::startLocalVideoRequested,
+            m_clientsVideoPanel, &VideoPanel::startIdlePreview);
+    connect(m_callPanel, &CallPanel::stopLocalVideoRequested,
+            m_clientsVideoPanel, &VideoPanel::stopIdlePreview);
 
     m_rttPanel->setRttSession(SipManager::instance().rttSession());
     return page;

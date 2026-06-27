@@ -184,7 +184,7 @@ void CodecManager::applyVideoCodecOrder(const QStringList &order)
             for (int i = 0; i < order.size(); ++i) {
                 if (id.startsWith(order[i], Qt::CaseInsensitive)) { rank = i; break; }
             }
-            const int pri = (rank >= 0) ? qMax(1, 240 - rank * 10) : 1;
+            const int pri = (rank >= 0) ? qMax(1, 240 - rank * 10) : (order.isEmpty() ? 0 : 1);
             try {
                 pj::Endpoint::instance().videoCodecSetPriority(
                     c.codecId, static_cast<pj_uint8_t>(pri));

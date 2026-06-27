@@ -1027,6 +1027,40 @@ bool SipManager::makeCall(const QString &remoteUri)
     return m_activeCall->makeCall(remoteUri);
 }
 
+bool SipManager::makeCall(const QString &remoteUri, const CallMediaOptions &opts)
+{
+    if (!prepareOutgoingCall(remoteUri))
+        return false;
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("makeCall with CallType=%1 (audio=%2 video=%3 rtt=%4)")
+            .arg(callTypeName(opts.type))
+            .arg(opts.enableAudio).arg(opts.enableVideo).arg(opts.enableRtt));
+
+    // For audio-only calls disable all video codecs; otherwise apply normal order.
+    if (!opts.enableVideo) {
+        CodecManager::instance().applyVideoCodecOrder(QStringList{});
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("makeCall: video disabled — all video codec priorities set to 0"));
+    } else {
+        applyVideoSettingsForCall();
+    }
+
+    // Emit INVITE outbound trace.
+    {
+        SipMessageTrace trace;
+        trace.direction = SipMessageTrace::Direction::Outbound;
+        trace.method    = QStringLiteral("INVITE");
+        trace.toUri     = remoteUri.trimmed();
+        const SipProfile cp = SipProfileManager::instance().activeProfile();
+        if (!cp.isNull())
+            trace.fromUri = cp.effectiveSipUri();
+        SipTraceLogger::instance().logMessage(trace);
+    }
+
+    return m_activeCall->makeCall(remoteUri);
+}
+
 bool SipManager::makeEmergencyCall(const QString &remoteUri, const SipCallOptions &options)
 {
     if (!prepareOutgoingCall(remoteUri))
@@ -1266,6 +1300,9 @@ void SipManager::onActiveCallStateChanged(CallState state,
                 .arg(callStateName(state)));
         AudioMediaManager::instance().detachCall();
         VideoMediaManager::instance().detachCall();
+        // Restore video codec priorities to the saved order (undoes any per-call disable).
+        CodecManager::instance().applyVideoCodecOrder(
+            VideoQualityManager::instance().current().codecOrder);
         // Defer Qt-object cleanup, but release the pj::Call slot now.
         // Without this, deleteLater fires after destroyAccount() when unregister
         // follows hangup immediately, producing "deleting account while call active".

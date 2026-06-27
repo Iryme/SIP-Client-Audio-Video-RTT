@@ -7,6 +7,7 @@
 #include "sip/SipAccount.h"
 #include "sip/SipCall.h"
 #include "sip/SipCallOptions.h"
+#include "sip/CallMediaOptions.h"
 #include "sip/RegistrationStateMachine.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
@@ -39,6 +40,10 @@ public:
     // Initiate an outgoing call. Returns false if a call is already active or
     // if remoteUri is empty.
     bool makeCall(const QString &remoteUri);
+
+    // Initiate an outgoing call with explicit media options (call type, audio/video/RTT).
+    // Sets codec priorities accordingly before placing the call.
+    bool makeCall(const QString &remoteUri, const CallMediaOptions &opts);
 
     // Emergency variant: outgoing call with per-call SIP options (custom headers,
     // media policy).  Use EmergencyCallAdapter::toSipCallOptions() to build the

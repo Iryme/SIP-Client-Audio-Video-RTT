@@ -29,6 +29,30 @@
 #include "sip/SipProfileManager.h"
 #include "sip/SipUriNormalizer.h"
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+static QLabel *infoKeyLabel(const QString &text, QWidget *parent)
+{
+    auto *lbl = new QLabel(text, parent);
+    lbl->setStyleSheet("color: #7a8aaa; font-size: 10px;");
+    lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    return lbl;
+}
+
+static QLabel *infoValLabel(const QString &text, QWidget *parent)
+{
+    auto *lbl = new QLabel(text, parent);
+    lbl->setStyleSheet("color: #d0dae8; font-size: 10px; font-family: monospace;");
+    lbl->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    return lbl;
+}
+
+// ---------------------------------------------------------------------------
+// Constructor
+// ---------------------------------------------------------------------------
+
 CallPanel::CallPanel(QWidget *parent)
     : QWidget(parent)
 {
@@ -36,317 +60,336 @@ CallPanel::CallPanel(QWidget *parent)
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 8, 12, 8);
-    layout->setSpacing(4);
+    layout->setSpacing(6);
 
-    // --- Call info row -------------------------------------------------------
-    auto *infoRow = new QHBoxLayout();
+    // ── Dial row: URI input + call type + Call button ─────────────────────
+    {
+        auto *dialOuter = new QWidget(this);
+        dialOuter->setObjectName("DialRow");
+        dialOuter->setStyleSheet(
+            "QWidget#DialRow { background: #1e2a1e; border: 1px solid #3a5a3a; border-radius: 5px; }");
+        auto *dialV = new QVBoxLayout(dialOuter);
+        dialV->setContentsMargins(10, 8, 10, 8);
+        dialV->setSpacing(4);
 
-    m_remoteName = new QLabel(tr("No active call"), this);
-    m_remoteName->setObjectName("RemoteName");
-    m_remoteName->setStyleSheet("font-size: 16px; font-weight: bold;");
+        m_regStatusLabel = new QLabel(tr("Not registered — register a SIP profile first"), dialOuter);
+        m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+        dialV->addWidget(m_regStatusLabel);
 
-    m_callState = new QLabel(tr("Idle"), this);
-    m_callState->setObjectName("CallState");
-    m_callState->setStyleSheet("color: #aaaaaa; font-size: 12px;");
+        auto *dialH = new QHBoxLayout();
+        dialH->setSpacing(6);
 
-    m_duration = new QLabel(tr("00:00:00"), this);
-    m_duration->setObjectName("Duration");
-    m_duration->setStyleSheet("color: #aaaaaa; font-size: 12px; font-family: monospace;");
+        m_dialInput = new QLineEdit(dialOuter);
+        m_dialInput->setObjectName("DialInput");
+        m_dialInput->setPlaceholderText(tr("sip:user@domain  or  user@domain"));
+        m_dialInput->setFixedHeight(30);
 
-    infoRow->addWidget(m_remoteName);
-    infoRow->addStretch();
-    infoRow->addWidget(m_callState);
-    infoRow->addSpacing(12);
-    infoRow->addWidget(m_duration);
+        m_callTypeCombo = new QComboBox(dialOuter);
+        m_callTypeCombo->setFixedHeight(30);
+        m_callTypeCombo->addItem(callTypeName(CallType::AudioOnly),     static_cast<int>(CallType::AudioOnly));
+        m_callTypeCombo->addItem(callTypeName(CallType::AudioVideo),    static_cast<int>(CallType::AudioVideo));
+        m_callTypeCombo->addItem(callTypeName(CallType::AudioRtt),      static_cast<int>(CallType::AudioRtt));
+        m_callTypeCombo->addItem(callTypeName(CallType::AudioVideoRtt), static_cast<int>(CallType::AudioVideoRtt));
+        m_callTypeCombo->addItem(callTypeName(CallType::RttOnly),       static_cast<int>(CallType::RttOnly));
 
-    m_remoteUri = new QLabel(tr("—"), this);
-    m_remoteUri->setObjectName("RemoteUri");
-    m_remoteUri->setStyleSheet("color: #888888; font-size: 11px;");
+        m_btnCall = new QPushButton(tr("Call"), dialOuter);
+        m_btnCall->setObjectName("CallBtn");
+        m_btnCall->setFixedHeight(30);
+        m_btnCall->setMinimumWidth(64);
+        m_btnCall->setEnabled(false);
 
-    layout->addLayout(infoRow);
-    layout->addWidget(m_remoteUri);
+        dialH->addWidget(m_dialInput, 1);
+        dialH->addWidget(m_callTypeCombo);
+        dialH->addWidget(m_btnCall);
+        dialV->addLayout(dialH);
 
-    // --- Separator -----------------------------------------------------------
-    auto *sep = new QFrame(this);
-    sep->setFrameShape(QFrame::HLine);
-    sep->setFrameShadow(QFrame::Sunken);
-    layout->addWidget(sep);
+        layout->addWidget(dialOuter);
+    }
 
-    // --- Audio level meters --------------------------------------------------
-    auto *meterRow = new QHBoxLayout();
-    meterRow->setSpacing(6);
+    // ── Separator ─────────────────────────────────────────────────────────
+    {
+        auto *sep = new QFrame(this);
+        sep->setFrameShape(QFrame::HLine);
+        sep->setFrameShadow(QFrame::Sunken);
+        layout->addWidget(sep);
+    }
 
-    auto *micLabel = new QLabel(tr("Mic:"), this);
-    micLabel->setStyleSheet("color: #888888; font-size: 10px;");
-    micLabel->setFixedWidth(24);
+    // ── Level meters + device selectors ───────────────────────────────────
+    {
+        auto *meterRow = new QHBoxLayout();
+        meterRow->setSpacing(6);
 
-    m_inputMeter = new QProgressBar(this);
-    m_inputMeter->setObjectName("InputMeter");
-    m_inputMeter->setRange(0, 100);
-    m_inputMeter->setValue(0);
-    m_inputMeter->setTextVisible(false);
-    m_inputMeter->setFixedHeight(8);
-    m_inputMeter->setStyleSheet(
-        "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
-        "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
+        auto *micLabel = new QLabel(tr("Mic:"), this);
+        micLabel->setStyleSheet("color: #888; font-size: 10px;");
+        micLabel->setFixedWidth(24);
 
-    auto *spkLabel = new QLabel(tr("Spk:"), this);
-    spkLabel->setStyleSheet("color: #888888; font-size: 10px;");
-    spkLabel->setFixedWidth(24);
+        m_inputMeter = new QProgressBar(this);
+        m_inputMeter->setRange(0, 100);
+        m_inputMeter->setValue(0);
+        m_inputMeter->setTextVisible(false);
+        m_inputMeter->setFixedHeight(8);
+        m_inputMeter->setStyleSheet(
+            "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
+            "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
 
-    m_outputMeter = new QProgressBar(this);
-    m_outputMeter->setObjectName("OutputMeter");
-    m_outputMeter->setRange(0, 100);
-    m_outputMeter->setValue(0);
-    m_outputMeter->setTextVisible(false);
-    m_outputMeter->setFixedHeight(8);
-    m_outputMeter->setStyleSheet(
-        "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
-        "QProgressBar::chunk { background: #5090e0; border-radius: 2px; }");
+        auto *spkLabel = new QLabel(tr("Spk:"), this);
+        spkLabel->setStyleSheet("color: #888; font-size: 10px;");
+        spkLabel->setFixedWidth(24);
 
-    meterRow->addWidget(micLabel);
-    meterRow->addWidget(m_inputMeter);
-    meterRow->addSpacing(8);
-    meterRow->addWidget(spkLabel);
-    meterRow->addWidget(m_outputMeter);
+        m_outputMeter = new QProgressBar(this);
+        m_outputMeter->setRange(0, 100);
+        m_outputMeter->setValue(0);
+        m_outputMeter->setTextVisible(false);
+        m_outputMeter->setFixedHeight(8);
+        m_outputMeter->setStyleSheet(
+            "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
+            "QProgressBar::chunk { background: #5090e0; border-radius: 2px; }");
 
-    layout->addLayout(meterRow);
+        meterRow->addWidget(micLabel);
+        meterRow->addWidget(m_inputMeter);
+        meterRow->addSpacing(8);
+        meterRow->addWidget(spkLabel);
+        meterRow->addWidget(m_outputMeter);
 
-    // --- Device selector row (hidden when idle) -------------------------------
-    m_deviceRow = new QWidget(this);
-    auto *devLayout = new QHBoxLayout(m_deviceRow);
-    devLayout->setContentsMargins(0, 0, 0, 0);
-    devLayout->setSpacing(8);
+        layout->addLayout(meterRow);
 
-    auto *micDevLabel = new QLabel(tr("Microphone:"), m_deviceRow);
-    micDevLabel->setStyleSheet("color: #888888; font-size: 10px;");
+        auto *devRow = new QHBoxLayout();
+        devRow->setSpacing(6);
 
-    m_micSelector = new QComboBox(m_deviceRow);
-    m_micSelector->setObjectName("MicSelector");
-    m_micSelector->setFixedHeight(24);
+        auto *micDevLabel = new QLabel(tr("Microphone:"), this);
+        micDevLabel->setStyleSheet("color: #888; font-size: 10px;");
+        m_micSelector = new QComboBox(this);
+        m_micSelector->setFixedHeight(24);
 
-    auto *spkDevLabel = new QLabel(tr("Speaker:"), m_deviceRow);
-    spkDevLabel->setStyleSheet("color: #888888; font-size: 10px;");
+        auto *spkDevLabel = new QLabel(tr("Speaker:"), this);
+        spkDevLabel->setStyleSheet("color: #888; font-size: 10px;");
+        m_spkSelector = new QComboBox(this);
+        m_spkSelector->setFixedHeight(24);
 
-    m_spkSelector = new QComboBox(m_deviceRow);
-    m_spkSelector->setObjectName("SpkSelector");
-    m_spkSelector->setFixedHeight(24);
+        devRow->addWidget(micDevLabel);
+        devRow->addWidget(m_micSelector, 1);
+        devRow->addWidget(spkDevLabel);
+        devRow->addWidget(m_spkSelector, 1);
 
-    devLayout->addWidget(micDevLabel);
-    devLayout->addWidget(m_micSelector, 1);
-    devLayout->addWidget(spkDevLabel);
-    devLayout->addWidget(m_spkSelector, 1);
+        layout->addLayout(devRow);
+    }
 
-    m_deviceRow->setVisible(true);
-    layout->addWidget(m_deviceRow);
+    // ── Call control buttons ───────────────────────────────────────────────
+    {
+        auto *ctrlRow = new QHBoxLayout();
+        ctrlRow->setSpacing(6);
 
-    // --- Call control buttons ------------------------------------------------
-    auto *ctrlRow = new QHBoxLayout();
-    ctrlRow->setSpacing(8);
+        auto makeBtn = [&](const QString &label, bool checkable = false) -> QPushButton* {
+            auto *btn = new QPushButton(label, this);
+            btn->setObjectName("CallCtrlBtn");
+            btn->setCheckable(checkable);
+            btn->setFixedHeight(32);
+            btn->setMinimumWidth(72);
+            return btn;
+        };
 
-    auto makeBtn = [&](const QString &label, bool checkable = false) -> QPushButton* {
-        auto *btn = new QPushButton(label, this);
-        btn->setObjectName("CallCtrlBtn");
-        btn->setCheckable(checkable);
-        btn->setFixedHeight(32);
-        btn->setMinimumWidth(72);
-        return btn;
-    };
+        m_btnMute       = makeBtn(tr("Mute"),          true);
+        m_btnHold       = makeBtn(tr("Hold"),          true);
+        m_btnStartVideo = makeBtn(tr("Start Video"),   false);
+        m_btnStopVideo  = makeBtn(tr("Stop Video"),    false);
+        m_btnAnswer     = makeBtn(tr("Answer"),        false);
+        m_btnReject     = makeBtn(tr("Reject"),        false);
+        m_btnHangup     = makeBtn(tr("Hangup"),        false);
 
-    m_btnMute   = makeBtn(tr("Mute"),    true);
-    m_btnVideo  = makeBtn(tr("Video"),   true);
-    m_btnShare  = makeBtn(tr("Share"),   false);
-    m_btnHold   = makeBtn(tr("Hold"),    true);
-    m_btnKeypad = makeBtn(tr("Keypad"),  true);
-    m_btnRecord = makeBtn(tr("Record"),  true);
-    m_btnAnswer = makeBtn(tr("Answer"),  false);
-    m_btnReject = makeBtn(tr("Reject"),  false);
-    m_btnHangup = makeBtn(tr("Hangup"),  false);
+        m_btnAnswer->setObjectName("AnswerBtn");
+        m_btnReject->setObjectName("RejectBtn");
+        m_btnHangup->setObjectName("HangupBtn");
+        m_btnStartVideo->setObjectName("StartVideoBtn");
+        m_btnStopVideo->setObjectName("StopVideoBtn");
 
-    m_btnAnswer->setObjectName("AnswerBtn");
-    m_btnReject->setObjectName("RejectBtn");
-    m_btnHangup->setObjectName("HangupBtn");
+        ctrlRow->addWidget(m_btnMute);
+        ctrlRow->addWidget(m_btnHold);
+        ctrlRow->addWidget(m_btnStartVideo);
+        ctrlRow->addWidget(m_btnStopVideo);
+        ctrlRow->addStretch();
+        ctrlRow->addWidget(m_btnAnswer);
+        ctrlRow->addWidget(m_btnReject);
+        ctrlRow->addWidget(m_btnHangup);
 
-    // Share and Record are placeholders.
-    m_btnShare->setEnabled(false);
-    m_btnRecord->setEnabled(false);
+        layout->addLayout(ctrlRow);
+    }
 
-    ctrlRow->addWidget(m_btnMute);
-    ctrlRow->addWidget(m_btnVideo);
-    ctrlRow->addWidget(m_btnShare);
-    ctrlRow->addWidget(m_btnHold);
-    ctrlRow->addWidget(m_btnKeypad);
-    ctrlRow->addWidget(m_btnRecord);
-    ctrlRow->addStretch();
-    ctrlRow->addWidget(m_btnAnswer);
-    ctrlRow->addWidget(m_btnReject);
-    ctrlRow->addWidget(m_btnHangup);
+    // ── Info grid ─────────────────────────────────────────────────────────
+    {
+        auto *grid = new QGridLayout();
+        grid->setSpacing(2);
+        grid->setColumnStretch(0, 0);
+        grid->setColumnStretch(1, 1);
+        grid->setColumnStretch(2, 0);
+        grid->setColumnStretch(3, 1);
 
-    layout->addLayout(ctrlRow);
+        int row = 0;
 
-    // --- Dial row (visible only when Idle) -----------------------------------
-    m_dialRow = new QWidget(this);
-    m_dialRow->setObjectName("DialRow");
-    m_dialRow->setStyleSheet(
-        "QWidget#DialRow { background: #1e2a1e; border: 1px solid #3a5a3a; border-radius: 5px; }");
+        m_infoState    = infoValLabel(tr("Idle"), this);
+        m_infoDuration = infoValLabel(tr("00:00:00"), this);
+        grid->addWidget(infoKeyLabel(tr("State:"), this),    row, 0);
+        grid->addWidget(m_infoState,                         row, 1);
+        grid->addWidget(infoKeyLabel(tr("Duration:"), this), row, 2);
+        grid->addWidget(m_infoDuration,                      row, 3);
+        ++row;
 
-    auto *dialOuter = new QVBoxLayout(m_dialRow);
-    dialOuter->setContentsMargins(10, 8, 10, 8);
-    dialOuter->setSpacing(4);
+        m_infoRemoteUri = infoValLabel(tr("—"), this);
+        m_infoLocalUri  = infoValLabel(tr("—"), this);
+        grid->addWidget(infoKeyLabel(tr("Remote:"), this), row, 0);
+        grid->addWidget(m_infoRemoteUri,                   row, 1);
+        grid->addWidget(infoKeyLabel(tr("Local:"), this),  row, 2);
+        grid->addWidget(m_infoLocalUri,                    row, 3);
+        ++row;
 
-    m_regStatusLabel = new QLabel(tr("Not registered — register a SIP profile first"), m_dialRow);
-    m_regStatusLabel->setObjectName("DialRegStatus");
-    m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
-    dialOuter->addWidget(m_regStatusLabel);
+        m_infoCallType   = infoValLabel(tr("—"), this);
+        m_infoNegotiated = infoValLabel(tr("—"), this);
+        grid->addWidget(infoKeyLabel(tr("Call type:"), this),  row, 0);
+        grid->addWidget(m_infoCallType,                        row, 1);
+        grid->addWidget(infoKeyLabel(tr("Negotiated:"), this), row, 2);
+        grid->addWidget(m_infoNegotiated,                      row, 3);
+        ++row;
 
-    auto *dialLayout = new QHBoxLayout();
-    dialLayout->setSpacing(6);
+        m_infoAudioConn = infoValLabel(tr("—"), this);
+        m_infoVideoConn = infoValLabel(tr("—"), this);
+        grid->addWidget(infoKeyLabel(tr("Audio:"), this), row, 0);
+        grid->addWidget(m_infoAudioConn,                  row, 1);
+        grid->addWidget(infoKeyLabel(tr("Video:"), this), row, 2);
+        grid->addWidget(m_infoVideoConn,                  row, 3);
+        ++row;
 
-    m_dialInput = new QLineEdit(m_dialRow);
-    m_dialInput->setObjectName("DialInput");
-    m_dialInput->setPlaceholderText(tr("sip:user@domain  or  user@domain"));
-    m_dialInput->setFixedHeight(30);
+        m_infoRttConn = infoValLabel(tr("—"), this);
+        grid->addWidget(infoKeyLabel(tr("RTT:"), this), row, 0);
+        grid->addWidget(m_infoRttConn,                  row, 1);
+        ++row;
 
-    m_btnCall = new QPushButton(tr("Call"), m_dialRow);
-    m_btnCall->setObjectName("CallBtn");
-    m_btnCall->setFixedHeight(30);
-    m_btnCall->setMinimumWidth(64);
+        layout->addLayout(grid);
+    }
 
-    dialLayout->addWidget(m_dialInput, 1);
-    dialLayout->addWidget(m_btnCall);
-    dialOuter->addLayout(dialLayout);
-    layout->addWidget(m_dialRow);
+    // ── Separator ─────────────────────────────────────────────────────────
+    {
+        auto *sep = new QFrame(this);
+        sep->setFrameShape(QFrame::HLine);
+        sep->setFrameShadow(QFrame::Sunken);
+        layout->addWidget(sep);
+    }
 
-    // --- Emergency test mode section (hidden by default) ---------------------
-    // Visible only when emergency/testMode=true in SIPClient.ini.
-    // Never used for real emergency calls — lab/test only.
+    // ── Emergency test mode section (hidden by default) ────────────────────
     m_emergencyRow = new QWidget(this);
     m_emergencyRow->setObjectName("EmergencyRow");
     m_emergencyRow->setStyleSheet(
         "QWidget#EmergencyRow { background: #2a1200; border: 1px solid #8b3a00;"
         " border-radius: 5px; }");
 
-    auto *emerOuter = new QVBoxLayout(m_emergencyRow);
-    emerOuter->setContentsMargins(10, 8, 10, 8);
-    emerOuter->setSpacing(4);
+    {
+        auto *emerOuter = new QVBoxLayout(m_emergencyRow);
+        emerOuter->setContentsMargins(10, 8, 10, 8);
+        emerOuter->setSpacing(4);
 
-    auto *emerWarnLabel = new QLabel(
-        tr("[TEST/LAB] Emergency Test Mode — NOT a real emergency service"), m_emergencyRow);
-    emerWarnLabel->setObjectName("EmergencyWarnLabel");
-    emerWarnLabel->setStyleSheet("color: #ff8c00; font-size: 10px; font-weight: bold;");
-    emerWarnLabel->setWordWrap(true);
-    emerOuter->addWidget(emerWarnLabel);
+        auto *emerWarnLabel = new QLabel(
+            tr("[TEST/LAB] Emergency Test Mode — NOT a real emergency service"), m_emergencyRow);
+        emerWarnLabel->setStyleSheet("color: #ff8c00; font-size: 10px; font-weight: bold;");
+        emerWarnLabel->setWordWrap(true);
+        emerOuter->addWidget(emerWarnLabel);
 
-    // --- Manual location input section ---------------------------------------
-    // No Windows Location API — coordinates entered manually by the user.
-    auto *locHeaderLabel = new QLabel(
-        tr("[TEST/LAB] Manual Location — enter WGS-84 coordinates below. "
-           "No GPS, no Windows Location."), m_emergencyRow);
-    locHeaderLabel->setStyleSheet("color: #cc7700; font-size: 9px;");
-    locHeaderLabel->setWordWrap(true);
-    emerOuter->addWidget(locHeaderLabel);
+        auto *locHeaderLabel = new QLabel(
+            tr("[TEST/LAB] Manual Location — enter WGS-84 coordinates below. "
+               "No GPS, no Windows Location."), m_emergencyRow);
+        locHeaderLabel->setStyleSheet("color: #cc7700; font-size: 9px;");
+        locHeaderLabel->setWordWrap(true);
+        emerOuter->addWidget(locHeaderLabel);
 
-    auto *locInputRow = new QHBoxLayout();
-    locInputRow->setSpacing(4);
+        auto *locInputRow = new QHBoxLayout();
+        locInputRow->setSpacing(4);
 
-    auto *latLabel = new QLabel(tr("Lat:"), m_emergencyRow);
-    latLabel->setStyleSheet("color: #888888; font-size: 10px;");
-    m_latInput = new QLineEdit(QStringLiteral("44.4268"), m_emergencyRow);
-    m_latInput->setObjectName("LocLatInput");
-    m_latInput->setFixedWidth(72);
-    m_latInput->setFixedHeight(22);
-    m_latInput->setToolTip(tr("-90 to 90 degrees (WGS-84)"));
+        auto *latLabel = new QLabel(tr("Lat:"), m_emergencyRow);
+        latLabel->setStyleSheet("color: #888; font-size: 10px;");
+        m_latInput = new QLineEdit(QStringLiteral("44.4268"), m_emergencyRow);
+        m_latInput->setFixedWidth(72);
+        m_latInput->setFixedHeight(22);
+        m_latInput->setToolTip(tr("-90 to 90 degrees (WGS-84)"));
 
-    auto *lonLabel = new QLabel(tr("Lon:"), m_emergencyRow);
-    lonLabel->setStyleSheet("color: #888888; font-size: 10px;");
-    m_lonInput = new QLineEdit(QStringLiteral("26.1025"), m_emergencyRow);
-    m_lonInput->setObjectName("LocLonInput");
-    m_lonInput->setFixedWidth(72);
-    m_lonInput->setFixedHeight(22);
-    m_lonInput->setToolTip(tr("-180 to 180 degrees (WGS-84)"));
+        auto *lonLabel = new QLabel(tr("Lon:"), m_emergencyRow);
+        lonLabel->setStyleSheet("color: #888; font-size: 10px;");
+        m_lonInput = new QLineEdit(QStringLiteral("26.1025"), m_emergencyRow);
+        m_lonInput->setFixedWidth(72);
+        m_lonInput->setFixedHeight(22);
+        m_lonInput->setToolTip(tr("-180 to 180 degrees (WGS-84)"));
 
-    auto *uncLabel = new QLabel(tr("Unc(m):"), m_emergencyRow);
-    uncLabel->setStyleSheet("color: #888888; font-size: 10px;");
-    m_uncertaintyInput = new QLineEdit(QStringLiteral("50.0"), m_emergencyRow);
-    m_uncertaintyInput->setObjectName("LocUncInput");
-    m_uncertaintyInput->setFixedWidth(56);
-    m_uncertaintyInput->setFixedHeight(22);
-    m_uncertaintyInput->setToolTip(tr("Accuracy radius in meters (>= 0)"));
+        auto *uncLabel = new QLabel(tr("Unc(m):"), m_emergencyRow);
+        uncLabel->setStyleSheet("color: #888; font-size: 10px;");
+        m_uncertaintyInput = new QLineEdit(QStringLiteral("50.0"), m_emergencyRow);
+        m_uncertaintyInput->setFixedWidth(56);
+        m_uncertaintyInput->setFixedHeight(22);
+        m_uncertaintyInput->setToolTip(tr("Accuracy radius in meters (>= 0)"));
 
-    m_btnGeneratePidf = new QPushButton(tr("Generate PIDF-LO"), m_emergencyRow);
-    m_btnGeneratePidf->setObjectName("GeneratePidfBtn");
-    m_btnGeneratePidf->setFixedHeight(22);
-    m_btnGeneratePidf->setStyleSheet("font-size: 10px;");
+        m_btnGeneratePidf = new QPushButton(tr("Generate PIDF-LO"), m_emergencyRow);
+        m_btnGeneratePidf->setFixedHeight(22);
+        m_btnGeneratePidf->setStyleSheet("font-size: 10px;");
 
-    locInputRow->addWidget(latLabel);
-    locInputRow->addWidget(m_latInput);
-    locInputRow->addWidget(lonLabel);
-    locInputRow->addWidget(m_lonInput);
-    locInputRow->addWidget(uncLabel);
-    locInputRow->addWidget(m_uncertaintyInput);
-    locInputRow->addWidget(m_btnGeneratePidf);
-    locInputRow->addStretch();
-    emerOuter->addLayout(locInputRow);
+        locInputRow->addWidget(latLabel);
+        locInputRow->addWidget(m_latInput);
+        locInputRow->addWidget(lonLabel);
+        locInputRow->addWidget(m_lonInput);
+        locInputRow->addWidget(uncLabel);
+        locInputRow->addWidget(m_uncertaintyInput);
+        locInputRow->addWidget(m_btnGeneratePidf);
+        locInputRow->addStretch();
+        emerOuter->addLayout(locInputRow);
 
-    m_locationStatusLabel = new QLabel(
-        tr("Location: not generated — enter coordinates and click Generate PIDF-LO"),
-        m_emergencyRow);
-    m_locationStatusLabel->setObjectName("LocationStatusLabel");
-    m_locationStatusLabel->setStyleSheet("color: #888888; font-size: 9px;");
-    m_locationStatusLabel->setWordWrap(true);
-    emerOuter->addWidget(m_locationStatusLabel);
+        m_locationStatusLabel = new QLabel(
+            tr("Location: not generated — enter coordinates and click Generate PIDF-LO"),
+            m_emergencyRow);
+        m_locationStatusLabel->setStyleSheet("color: #888; font-size: 9px;");
+        m_locationStatusLabel->setWordWrap(true);
+        emerOuter->addWidget(m_locationStatusLabel);
 
-    m_pidfPreview = new QPlainTextEdit(m_emergencyRow);
-    m_pidfPreview->setObjectName("PidfPreview");
-    m_pidfPreview->setReadOnly(true);
-    m_pidfPreview->setMaximumHeight(56);
-    m_pidfPreview->setPlaceholderText(tr("PIDF-LO XML appears here after Generate is clicked"));
-    m_pidfPreview->setStyleSheet(
-        "QPlainTextEdit { font-family: monospace; font-size: 8px;"
-        " color: #999999; background: #1a1a1a; border: 1px solid #333; }");
-    emerOuter->addWidget(m_pidfPreview);
+        m_pidfPreview = new QPlainTextEdit(m_emergencyRow);
+        m_pidfPreview->setReadOnly(true);
+        m_pidfPreview->setMaximumHeight(56);
+        m_pidfPreview->setPlaceholderText(tr("PIDF-LO XML appears here after Generate is clicked"));
+        m_pidfPreview->setStyleSheet(
+            "QPlainTextEdit { font-family: monospace; font-size: 8px;"
+            " color: #999; background: #1a1a1a; border: 1px solid #333; }");
+        emerOuter->addWidget(m_pidfPreview);
 
-    // --- Control row: state label + emergency call button + location update --
-    auto *emerCtrlRow = new QHBoxLayout();
-    emerCtrlRow->setSpacing(6);
+        auto *emerCtrlRow = new QHBoxLayout();
+        emerCtrlRow->setSpacing(6);
 
-    m_emergencyStateLabel = new QLabel(tr("State: Idle"), m_emergencyRow);
-    m_emergencyStateLabel->setObjectName("EmergencyStateLabel");
-    m_emergencyStateLabel->setStyleSheet("color: #aaaaaa; font-size: 10px;");
-    emerCtrlRow->addWidget(m_emergencyStateLabel, 1);
+        m_emergencyStateLabel = new QLabel(tr("State: Idle"), m_emergencyRow);
+        m_emergencyStateLabel->setStyleSheet("color: #aaa; font-size: 10px;");
+        emerCtrlRow->addWidget(m_emergencyStateLabel, 1);
 
-    m_btnLocationUpdate = new QPushButton(tr("Send Location Update"), m_emergencyRow);
-    m_btnLocationUpdate->setObjectName("LocationUpdateBtn");
-    m_btnLocationUpdate->setFixedHeight(30);
-    m_btnLocationUpdate->setEnabled(false);
-    m_btnLocationUpdate->setStyleSheet(
-        "QPushButton#LocationUpdateBtn { background: #1a3a4a; color: #5090c0;"
-        " border-radius: 4px; font-size: 10px; }"
-        "QPushButton#LocationUpdateBtn:hover { background: #2a4a5a; }"
-        "QPushButton#LocationUpdateBtn:disabled { background: #1a2020; color: #444444; }");
-    emerCtrlRow->addWidget(m_btnLocationUpdate);
+        m_btnLocationUpdate = new QPushButton(tr("Send Location Update"), m_emergencyRow);
+        m_btnLocationUpdate->setFixedHeight(30);
+        m_btnLocationUpdate->setEnabled(false);
+        m_btnLocationUpdate->setStyleSheet(
+            "QPushButton { background: #1a3a4a; color: #5090c0;"
+            " border-radius: 4px; font-size: 10px; }"
+            "QPushButton:hover { background: #2a4a5a; }"
+            "QPushButton:disabled { background: #1a2020; color: #444; }");
+        emerCtrlRow->addWidget(m_btnLocationUpdate);
 
-    m_btnEmergency = new QPushButton(tr("112 Emergency (TEST)"), m_emergencyRow);
-    m_btnEmergency->setObjectName("EmergencyBtn");
-    m_btnEmergency->setFixedHeight(30);
-    m_btnEmergency->setMinimumWidth(160);
-    m_btnEmergency->setEnabled(false); // enabled only when registered
-    m_btnEmergency->setStyleSheet(
-        "QPushButton#EmergencyBtn { background: #8b0000; color: white;"
-        " border-radius: 4px; font-weight: bold; }"
-        "QPushButton#EmergencyBtn:hover { background: #b00000; }"
-        "QPushButton#EmergencyBtn:disabled { background: #3a2020; color: #666666; }");
-    emerCtrlRow->addWidget(m_btnEmergency);
+        m_btnEmergency = new QPushButton(tr("112 Emergency (TEST)"), m_emergencyRow);
+        m_btnEmergency->setObjectName("EmergencyBtn");
+        m_btnEmergency->setFixedHeight(30);
+        m_btnEmergency->setMinimumWidth(160);
+        m_btnEmergency->setEnabled(false);
+        m_btnEmergency->setStyleSheet(
+            "QPushButton#EmergencyBtn { background: #8b0000; color: white;"
+            " border-radius: 4px; font-weight: bold; }"
+            "QPushButton#EmergencyBtn:hover { background: #b00000; }"
+            "QPushButton#EmergencyBtn:disabled { background: #3a2020; color: #666; }");
+        emerCtrlRow->addWidget(m_btnEmergency);
 
-    emerOuter->addLayout(emerCtrlRow);
+        emerOuter->addLayout(emerCtrlRow);
+    }
+
     layout->addWidget(m_emergencyRow);
+    layout->addStretch(1);
 
-    // Hide unless test mode is explicitly enabled in settings.
     m_emergencyRow->setVisible(AppSettings::emergencyTestModeEnabled());
 
-    // --- Emergency controller setup ------------------------------------------
-    // DEMO static location: Bucharest, 44.4268°N 26.1025°E, uncertainty 50 m.
-    // No Windows Location API — StaticLocationProvider only.
+    // ── Emergency controller setup ─────────────────────────────────────────
     QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     if (!ts.endsWith('Z')) ts += 'Z';
     EmergencyLocation demoLoc = EmergencyLocation::makeStatic(44.4268, 26.1025, ts);
@@ -361,20 +404,11 @@ CallPanel::CallPanel(QWidget *parent)
         AppSettings::emergencyTarget(), QStringLiteral("NG112-TEST"));
     m_emergencyController->setProfile(emProfile);
 
-    // --- Internal signal wiring ----------------------------------------------
-    connect(m_btnMute,   &QPushButton::toggled, this, &CallPanel::muteToggled);
-    connect(m_btnVideo,  &QPushButton::toggled, this, &CallPanel::videoToggled);
-    connect(m_btnHold,   &QPushButton::toggled, this, &CallPanel::holdToggled);
-    connect(m_btnHangup, &QPushButton::clicked, this, &CallPanel::hangupRequested);
-    connect(m_btnAnswer, &QPushButton::clicked, this, &CallPanel::answerRequested);
-    connect(m_btnReject, &QPushButton::clicked, this, &CallPanel::rejectRequested);
-    connect(m_btnKeypad, &QPushButton::toggled, this, &CallPanel::keypadToggled);
+    // ── Signal wiring ──────────────────────────────────────────────────────
 
-    // Mute button → AudioMediaManager
+    // Mute → AudioMediaManager
     connect(m_btnMute, &QPushButton::toggled,
             [](bool checked){ AudioMediaManager::instance().setMuted(checked); });
-
-    // AudioMediaManager → mute button sync + level meters
     connect(&AudioMediaManager::instance(), &AudioMediaManager::mutedChanged,
             this, &CallPanel::onMuteChanged);
     connect(&AudioMediaManager::instance(), &AudioMediaManager::inputLevelChanged,
@@ -382,29 +416,22 @@ CallPanel::CallPanel(QWidget *parent)
     connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
             this, &CallPanel::onOutputLevelChanged);
 
-    // Video button → VideoMediaManager (mute / unmute video stream)
-    connect(m_btnVideo, &QPushButton::toggled,
-            [](bool checked){ VideoMediaManager::instance().setVideoMuted(checked); });
-
-    // VideoMediaManager → video button sync
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMutedChanged,
-            this, &CallPanel::onVideoMuteChanged);
-
-    // Hold button → SipManager
-    connect(this, &CallPanel::holdToggled, [](bool held) {
+    // Hold → SipManager
+    connect(m_btnHold, &QPushButton::toggled, [](bool held) {
         if (held) SipManager::instance().holdCall();
         else      SipManager::instance().resumeCall();
     });
 
     // Answer / Reject / Hangup → SipManager
-    connect(this, &CallPanel::answerRequested,
-            []{ SipManager::instance().answerCall(); });
-    connect(this, &CallPanel::rejectRequested,
-            []{ SipManager::instance().rejectCall(); });
-    connect(this, &CallPanel::hangupRequested,
-            []{ SipManager::instance().hangupCall(); });
+    connect(m_btnAnswer, &QPushButton::clicked, []{ SipManager::instance().answerCall(); });
+    connect(m_btnReject, &QPushButton::clicked, []{ SipManager::instance().rejectCall(); });
+    connect(m_btnHangup, &QPushButton::clicked, []{ SipManager::instance().hangupCall(); });
 
-    // Device combos → AudioMediaManager (empty id = system default)
+    // Start/Stop Video → signals for MainWindow to wire to VideoPanel
+    connect(m_btnStartVideo, &QPushButton::clicked, this, &CallPanel::startLocalVideoRequested);
+    connect(m_btnStopVideo,  &QPushButton::clicked, this, &CallPanel::stopLocalVideoRequested);
+
+    // Device combos → AudioMediaManager
     connect(m_micSelector, &QComboBox::currentIndexChanged, this, [this](int idx) {
         AudioMediaManager::instance().setMicrophone(m_micSelector->itemData(idx).toString());
     });
@@ -424,7 +451,21 @@ CallPanel::CallPanel(QWidget *parent)
     connect(&SipManager::instance(), &SipManager::callFailed,
             this, &CallPanel::onCallFailed);
 
-    // Dial row: Call button and Enter key both trigger makeCall.
+    // Media connected/disconnected
+    connect(&SipManager::instance(), &SipManager::audioMediaConnected,
+            this, &CallPanel::onAudioMediaConnected);
+    connect(&SipManager::instance(), &SipManager::audioMediaDisconnected,
+            this, &CallPanel::onAudioMediaDisconnected);
+    connect(&SipManager::instance(), &SipManager::videoMediaConnected,
+            this, &CallPanel::onVideoMediaConnected);
+    connect(&SipManager::instance(), &SipManager::videoMediaDisconnected,
+            this, &CallPanel::onVideoMediaDisconnected);
+    connect(&SipManager::instance(), &SipManager::rttMediaConnected,
+            this, &CallPanel::onRttMediaConnected);
+    connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
+            this, &CallPanel::onRttMediaDisconnected);
+
+    // Dial row: Call button / Enter
     auto triggerCall = [this] {
         const QString raw = m_dialInput->text().trimmed();
         if (raw.isEmpty()) {
@@ -450,12 +491,18 @@ CallPanel::CallPanel(QWidget *parent)
                     .arg(raw, result.uri));
             m_dialInput->setText(result.uri);
         }
-        SipManager::instance().makeCall(result.uri);
+        const int typeIdx = m_callTypeCombo->currentIndex();
+        const CallType ct = static_cast<CallType>(m_callTypeCombo->itemData(typeIdx).toInt());
+        m_activeCallType = ct;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Placing call: uri=%1 type=%2")
+                .arg(result.uri, callTypeName(ct)));
+        SipManager::instance().makeCall(result.uri, CallMediaOptions::fromType(ct));
     };
-    connect(m_btnCall,  &QPushButton::clicked,  this, triggerCall);
-    connect(m_dialInput, &QLineEdit::returnPressed, this, triggerCall);
+    connect(m_btnCall,   &QPushButton::clicked,       this, triggerCall);
+    connect(m_dialInput, &QLineEdit::returnPressed,   this, triggerCall);
 
-    // Dial row: update registration status label and button enable.
+    // Registration state → update status label + Call button enable
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             this, [this](RegistrationState state, const QString &, int) {
         const bool registered = (state == RegistrationState::Registered);
@@ -470,7 +517,6 @@ CallPanel::CallPanel(QWidget *parent)
             m_regStatusLabel->setText(tr("Not registered — register a SIP profile first"));
             m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
         }
-        // Emergency button: requires registration + Idle/Failed SM state.
         if (m_btnEmergency) {
             const EmergencyCallState es = m_emergencyController->state();
             const bool canDial = (es == EmergencyCallState::Idle
@@ -480,22 +526,17 @@ CallPanel::CallPanel(QWidget *parent)
         }
     });
 
-    // Emergency controller signals.
+    // Emergency controller
     connect(m_emergencyController, &EmergencyCallController::stateChanged,
             this, &CallPanel::onEmergencyStateChanged);
     connect(m_emergencyController, &EmergencyCallController::readyToDial,
             this, &CallPanel::onEmergencyReadyToDial);
     connect(m_emergencyController, &EmergencyCallController::preparationFailed,
             this, &CallPanel::onEmergencyFailed);
-
-    // Emergency button click → confirm dialog → prepare().
-    connect(m_btnEmergency, &QPushButton::clicked, this, &CallPanel::onEmergencyButtonClicked);
-
-    // Manual location buttons.
+    connect(m_btnEmergency,    &QPushButton::clicked, this, &CallPanel::onEmergencyButtonClicked);
     connect(m_btnGeneratePidf, &QPushButton::clicked, this, &CallPanel::onGeneratePidfClicked);
     connect(m_btnLocationUpdate, &QPushButton::clicked, this, &CallPanel::onLocationUpdateClicked);
 
-    // SipManager call events → update emergency SM when an emergency call is active.
     connect(&SipManager::instance(), &SipManager::callConnected,
             this, [this](const QString &) {
         if (m_emergencyCallActive)
@@ -523,19 +564,15 @@ CallPanel::CallPanel(QWidget *parent)
         }
     });
 
-    // Populate device combos once at construction so they're always visible.
-    populateDeviceCombos();
+    // Duration timer
+    m_durationTimer.setInterval(1000);
+    connect(&m_durationTimer, &QTimer::timeout, this, &CallPanel::onDurationTick);
 
-    // Initial idle state
+    populateDeviceCombos();
     applyCallState(CallState::Idle);
 }
 
 // ---------------------------------------------------------------------------
-
-void CallPanel::setRemoteName(const QString &name)  { m_remoteName->setText(name); }
-void CallPanel::setRemoteUri(const QString &uri)    { m_remoteUri->setText(uri); }
-void CallPanel::setCallState(const QString &state)  { m_callState->setText(state); }
-void CallPanel::setDuration(const QString &dur)     { m_duration->setText(dur); }
 
 void CallPanel::placeCall(const QString &uri)
 {
@@ -565,23 +602,22 @@ void CallPanel::placeCall(const QString &uri)
         }
         return;
     }
-    if (result.uri != raw) {
-        Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("Dial URI normalized: \"%1\" â†’ \"%2\"")
-                .arg(raw, result.uri));
-        if (m_dialInput)
-            m_dialInput->setText(result.uri);
-    }
-    SipManager::instance().makeCall(result.uri);
+    if (result.uri != raw && m_dialInput)
+        m_dialInput->setText(result.uri);
+
+    const int typeIdx = m_callTypeCombo ? m_callTypeCombo->currentIndex() : 0;
+    const CallType ct = m_callTypeCombo
+        ? static_cast<CallType>(m_callTypeCombo->itemData(typeIdx).toInt())
+        : CallType::AudioOnly;
+    m_activeCallType = ct;
+    SipManager::instance().makeCall(result.uri, CallMediaOptions::fromType(ct));
 }
 
 void CallPanel::populateDeviceCombos()
 {
-    // Preserve current selection
     const QString curMic = m_micSelector->currentData().toString();
     const QString curSpk = m_spkSelector->currentData().toString();
 
-    // Resolve persisted defaults
     MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
     const QString defaultMicId = sel.selectedMicrophone().id;
     const QString defaultSpkId = sel.selectedSpeaker().id;
@@ -599,7 +635,6 @@ void CallPanel::populateDeviceCombos()
     for (const MediaDevice &d : MediaDeviceManager::instance().listSpeakers())
         m_spkSelector->addItem(d.displayName, d.id);
 
-    // Restore selection: prefer the previous call-panel selection, then the persisted default.
     auto selectById = [](QComboBox *combo, const QString &preferred, const QString &fallback) {
         for (int i = 0; i < combo->count(); ++i) {
             if (combo->itemData(i).toString() == preferred) { combo->setCurrentIndex(i); return; }
@@ -628,17 +663,16 @@ void CallPanel::applyCallState(CallState state)
     m_btnHangup->setVisible(!isIncoming && hasCall);
     m_btnHold->setEnabled(isActive);
     m_btnMute->setEnabled(state == CallState::Active);
-    m_btnVideo->setEnabled(state == CallState::Active);
-    m_btnKeypad->setEnabled(state == CallState::Active);
 
-    // Dial row: visible when Idle or Failed so the user can retry after a failed call.
-    m_dialRow->setVisible(isIdle || isFailed);
-    if (isIdle || isFailed) {
+    // Dial row visible when no active call
+    const bool showDial = isIdle || isFailed;
+    if (m_dialInput) m_dialInput->parentWidget()->setVisible(showDial);
+
+    if (showDial) {
         const bool registered =
             (SipManager::instance().registrationState() == RegistrationState::Registered);
         m_btnCall->setEnabled(registered);
         if (isIdle) {
-            // Reset status label to registration hint when returning to Idle normally.
             if (registered) {
                 m_regStatusLabel->setText(tr("Registered — enter a SIP URI and press Call"));
                 m_regStatusLabel->setStyleSheet("color: #50c878; font-size: 10px;");
@@ -647,105 +681,179 @@ void CallPanel::applyCallState(CallState state)
                 m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
             }
         }
-        // For Failed: leave the label for onCallFailed to fill with the specific reason.
     }
 
-    // Device selectors always visible (Jitsi-style).
-    m_deviceRow->setVisible(true);
-
-    m_callState->setText(callStateDisplayText(state));
-
-    // Color-code the state label.
-    QString color = QStringLiteral("#aaaaaa"); // Idle / default
+    // Info grid state label
+    QString stateText = callStateDisplayText(state);
+    QString stateColor = QStringLiteral("#aaaaaa");
     if (state == CallState::Active)
-        color = QStringLiteral("#50c878"); // green
+        stateColor = QStringLiteral("#50c878");
     else if (state == CallState::IncomingRinging || state == CallState::Ringing
              || state == CallState::OutgoingInit || state == CallState::Connecting)
-        color = QStringLiteral("#e0b850"); // amber
+        stateColor = QStringLiteral("#e0b850");
     else if (state == CallState::Failed)
-        color = QStringLiteral("#e05050"); // red
+        stateColor = QStringLiteral("#e05050");
     else if (state == CallState::Held)
-        color = QStringLiteral("#5090e0"); // blue
+        stateColor = QStringLiteral("#5090e0");
 
-    m_callState->setStyleSheet(
-        QStringLiteral("color: %1; font-size: 12px;").arg(color));
+    m_infoState->setText(stateText);
+    m_infoState->setStyleSheet(
+        QStringLiteral("color: %1; font-size: 10px; font-family: monospace;").arg(stateColor));
 
     if (isIdle) {
-        m_remoteName->setText(tr("No active call"));
-        m_remoteUri->setText(tr("—"));
-        m_duration->setText(tr("00:00:00"));
-        m_inputMeter->setValue(0);
-        m_outputMeter->setValue(0);
+        m_durationTimer.stop();
+        m_durationSeconds = 0;
+        resetInfoGrid();
     }
 }
 
+void CallPanel::updateInfoGrid()
+{
+    m_infoRemoteUri->setText(m_remoteUri.isEmpty() ? tr("—") : m_remoteUri);
+
+    const SipProfile p = SipProfileManager::instance().activeProfile();
+    m_infoLocalUri->setText(p.isNull() ? tr("—") : p.effectiveSipUri());
+
+    m_infoCallType->setText(callTypeName(m_activeCallType));
+
+    QStringList negotiated;
+    if (m_audioConnected) negotiated << QStringLiteral("Audio");
+    if (m_videoConnected) negotiated << QStringLiteral("Video");
+    if (m_rttConnected)   negotiated << QStringLiteral("RTT");
+    m_infoNegotiated->setText(negotiated.isEmpty() ? tr("—") : negotiated.join(QStringLiteral(" + ")));
+
+    auto connected = [](bool v) -> QString {
+        return v ? QStringLiteral("Connected") : QStringLiteral("—");
+    };
+    m_infoAudioConn->setText(connected(m_audioConnected));
+    m_infoVideoConn->setText(connected(m_videoConnected));
+    m_infoRttConn->setText(connected(m_rttConnected));
+}
+
+void CallPanel::resetInfoGrid()
+{
+    m_remoteUri.clear();
+    m_audioConnected = false;
+    m_videoConnected = false;
+    m_rttConnected   = false;
+
+    m_infoDuration->setText(tr("00:00:00"));
+    m_infoRemoteUri->setText(tr("—"));
+    m_infoLocalUri->setText(tr("—"));
+    m_infoCallType->setText(tr("—"));
+    m_infoNegotiated->setText(tr("—"));
+    m_infoAudioConn->setText(tr("—"));
+    m_infoVideoConn->setText(tr("—"));
+    m_infoRttConn->setText(tr("—"));
+    m_inputMeter->setValue(0);
+    m_outputMeter->setValue(0);
+}
+
+QString CallPanel::formatDuration(int seconds) const
+{
+    const int h = seconds / 3600;
+    const int m = (seconds % 3600) / 60;
+    const int s = seconds % 60;
+    return QStringLiteral("%1:%2:%3")
+        .arg(h, 2, 10, QLatin1Char('0'))
+        .arg(m, 2, 10, QLatin1Char('0'))
+        .arg(s, 2, 10, QLatin1Char('0'));
+}
+
 // ---------------------------------------------------------------------------
-// Slots
+// Call state slots
 // ---------------------------------------------------------------------------
 
-void CallPanel::onCallStateChanged(CallState state, const QString &statusText, int statusCode)
+void CallPanel::onCallStateChanged(CallState state, const QString &, int)
 {
-    Q_UNUSED(statusText)
-    Q_UNUSED(statusCode)
     applyCallState(state);
 }
 
 void CallPanel::onIncomingCall(const QString &remoteUri)
 {
-    m_remoteName->setText(tr("Incoming Call"));
-    m_remoteUri->setText(remoteUri);
+    m_remoteUri = remoteUri;
+    m_activeCallType = CallType::AudioOnly; // will be refined by media signals
+    updateInfoGrid();
     applyCallState(CallState::IncomingRinging);
 }
 
 void CallPanel::onCallConnected(const QString &remoteUri)
 {
-    Q_UNUSED(remoteUri)
+    m_remoteUri = remoteUri;
+    m_durationSeconds = 0;
+    m_durationTimer.start();
+    updateInfoGrid();
     applyCallState(CallState::Active);
 }
 
-void CallPanel::onCallDisconnected(const QString &remoteUri, const QString &reason, int statusCode)
+void CallPanel::onCallDisconnected(const QString &, const QString &, int)
 {
-    Q_UNUSED(remoteUri)
-    Q_UNUSED(reason)
-    Q_UNUSED(statusCode)
+    m_durationTimer.stop();
     applyCallState(CallState::Idle);
 }
 
-void CallPanel::onCallFailed(const QString &remoteUri, const QString &reason, int statusCode)
+void CallPanel::onCallFailed(const QString &, const QString &reason, int)
 {
-    Q_UNUSED(remoteUri)
-    Q_UNUSED(statusCode)
-    // applyCallState(Failed) has already run (callStateChanged fires before callFailed).
-    // Override the status label with the specific failure reason so the user can correct it.
-    m_regStatusLabel->setText(
-        tr("Call failed: %1 — correct the URI and try again").arg(reason));
-    m_regStatusLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+    m_durationTimer.stop();
+    if (m_regStatusLabel) {
+        m_regStatusLabel->setText(
+            tr("Call failed: %1 — correct the URI and try again").arg(reason));
+        m_regStatusLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+    }
     Logger::instance().info(LogCategory::App,
-        QStringLiteral("Call failed — dial row visible; user can retry without restarting"));
+        QStringLiteral("Call failed — dial row visible; user can retry"));
 }
 
-void CallPanel::onInputLevelChanged(int level)
-{
-    m_inputMeter->setValue(level);
-}
-
-void CallPanel::onOutputLevelChanged(int level)
-{
-    m_outputMeter->setValue(level);
-}
+void CallPanel::onInputLevelChanged(int level)  { m_inputMeter->setValue(level); }
+void CallPanel::onOutputLevelChanged(int level) { m_outputMeter->setValue(level); }
 
 void CallPanel::onMuteChanged(bool muted)
 {
-    QSignalBlocker blocker(m_btnMute);
+    QSignalBlocker b(m_btnMute);
     m_btnMute->setChecked(muted);
     m_btnMute->setText(muted ? tr("Unmute") : tr("Mute"));
 }
 
-void CallPanel::onVideoMuteChanged(bool muted)
+void CallPanel::onAudioMediaConnected()
 {
-    QSignalBlocker blocker(m_btnVideo);
-    m_btnVideo->setChecked(muted);
-    m_btnVideo->setText(muted ? tr("Show Video") : tr("Video"));
+    m_audioConnected = true;
+    updateInfoGrid();
+}
+
+void CallPanel::onAudioMediaDisconnected()
+{
+    m_audioConnected = false;
+    updateInfoGrid();
+}
+
+void CallPanel::onVideoMediaConnected()
+{
+    m_videoConnected = true;
+    updateInfoGrid();
+}
+
+void CallPanel::onVideoMediaDisconnected()
+{
+    m_videoConnected = false;
+    updateInfoGrid();
+}
+
+void CallPanel::onRttMediaConnected()
+{
+    m_rttConnected = true;
+    updateInfoGrid();
+}
+
+void CallPanel::onRttMediaDisconnected()
+{
+    m_rttConnected = false;
+    updateInfoGrid();
+}
+
+void CallPanel::onDurationTick()
+{
+    ++m_durationSeconds;
+    m_infoDuration->setText(formatDuration(m_durationSeconds));
 }
 
 void CallPanel::setDialTarget(const QString &uri)
@@ -784,7 +892,7 @@ void CallPanel::onEmergencyButtonClicked()
         tr("Confirm Emergency Test Call — TEST/LAB Only"),
         msg,
         QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);  // default: No (prevents accidental confirmation)
+        QMessageBox::No);
 
     if (ret != QMessageBox::Yes) {
         Logger::instance().info(LogCategory::App,
@@ -797,11 +905,9 @@ void CallPanel::onEmergencyButtonClicked()
 
     m_btnEmergency->setEnabled(false);
 
-    // Update the controller profile with the current target (may have changed in settings).
     const EmergencyCallProfile emProfile = EmergencyCallProfile::makeSos(
         target, QStringLiteral("NG112-TEST"));
     m_emergencyController->setProfile(emProfile);
-
     m_emergencyController->prepare();
 }
 
@@ -847,21 +953,20 @@ void CallPanel::onEmergencyStateChanged(EmergencyCallState state)
 {
     const QString name = emergencyCallStateName(state);
 
-    QString color = QStringLiteral("#aaaaaa"); // Idle / default
+    QString color = QStringLiteral("#aaa");
     switch (state) {
     case EmergencyCallState::Active:
-        color = QStringLiteral("#50c878"); break;          // green
+        color = QStringLiteral("#50c878"); break;
     case EmergencyCallState::Dialing:
     case EmergencyCallState::Preparing:
     case EmergencyCallState::LocationPending:
     case EmergencyCallState::ReadyToDial:
-        color = QStringLiteral("#e0b850"); break;          // amber
+        color = QStringLiteral("#e0b850"); break;
     case EmergencyCallState::Failed:
-        color = QStringLiteral("#e05050"); break;          // red
+        color = QStringLiteral("#e05050"); break;
     case EmergencyCallState::Ended:
-        color = QStringLiteral("#5090e0"); break;          // blue
-    default:
-        break;
+        color = QStringLiteral("#5090e0"); break;
+    default: break;
     }
 
     m_emergencyStateLabel->setStyleSheet(
@@ -876,7 +981,6 @@ void CallPanel::onEmergencyStateChanged(EmergencyCallState state)
     if (m_btnEmergency)
         m_btnEmergency->setEnabled(registered && canDial);
 
-    // Location update: only allowed when emergency call is active and location was generated.
     if (m_btnLocationUpdate)
         m_btnLocationUpdate->setEnabled(
             state == EmergencyCallState::Active && m_manualLocationValid);
@@ -953,9 +1057,7 @@ void CallPanel::onGeneratePidfClicked()
         return;
     }
 
-    // Update the static provider with the newly entered location.
     m_staticLocationProvider->setLocation(loc);
-
     m_pidfPreview->setPlainText(r.xml);
     m_locationStatusLabel->setText(
         tr("[TEST/LAB] Valid — lat=%1 lon=%2 unc=%3m — PIDF-LO ready")

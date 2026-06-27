@@ -144,6 +144,7 @@ set(HEADERS
     src/sip/CodecManager.h
     src/sip/PjsipAudioMapper.h
     src/sip/CallStateMachine.h
+    src/sip/CallMediaOptions.h
     src/sip/RegistrationStateMachine.h
     src/sip/RegistrationRetryPolicy.h
     src/sip/RegistrationRefreshConfig.h

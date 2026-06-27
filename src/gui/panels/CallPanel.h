@@ -2,9 +2,11 @@
 
 #include <QWidget>
 #include <QString>
+#include <QTimer>
 #include "emergency/EmergencyCallProfile.h"
 #include "emergency/EmergencyCallStateMachine.h"
 #include "sip/CallStateMachine.h"
+#include "sip/CallMediaOptions.h"
 
 class QLabel;
 class QComboBox;
@@ -21,22 +23,16 @@ class CallPanel : public QWidget
 public:
     explicit CallPanel(QWidget *parent = nullptr);
 
-    void setRemoteName(const QString &name);
-    void setRemoteUri(const QString &uri);
-    void setCallState(const QString &state);
-    void setDuration(const QString &duration);
-
 signals:
     void muteToggled(bool muted);
-    void videoToggled(bool on);
     void holdToggled(bool held);
     void hangupRequested();
     void answerRequested();
     void rejectRequested();
-    void keypadToggled(bool visible);
+    void startLocalVideoRequested();
+    void stopLocalVideoRequested();
 
 public slots:
-    // Populate the dial input with uri and give it focus (called from contacts/menu).
     void setDialTarget(const QString &uri);
     void placeCall(const QString &uri = QString());
     void focusDialInput();
@@ -50,7 +46,13 @@ private slots:
     void onInputLevelChanged(int level);
     void onOutputLevelChanged(int level);
     void onMuteChanged(bool muted);
-    void onVideoMuteChanged(bool muted);
+    void onAudioMediaConnected();
+    void onAudioMediaDisconnected();
+    void onVideoMediaConnected();
+    void onVideoMediaDisconnected();
+    void onRttMediaConnected();
+    void onRttMediaDisconnected();
+    void onDurationTick();
 
     // Emergency call slots
     void onEmergencyButtonClicked();
@@ -63,14 +65,17 @@ private slots:
 private:
     void applyCallState(CallState state);
     void populateDeviceCombos();
+    void updateInfoGrid();
+    void resetInfoGrid();
+    QString formatDuration(int seconds) const;
 
-    QLabel      *m_remoteName{nullptr};
-    QLabel      *m_remoteUri{nullptr};
-    QLabel      *m_callState{nullptr};
-    QLabel      *m_duration{nullptr};
+    // Dial row
+    QLineEdit   *m_dialInput{nullptr};
+    QComboBox   *m_callTypeCombo{nullptr};
+    QPushButton *m_btnCall{nullptr};
+    QLabel      *m_regStatusLabel{nullptr};
 
-    // Audio device selectors (visible only during an active call)
-    QWidget     *m_deviceRow{nullptr};
+    // Audio device selectors
     QComboBox   *m_micSelector{nullptr};
     QComboBox   *m_spkSelector{nullptr};
 
@@ -78,23 +83,38 @@ private:
     QProgressBar *m_inputMeter{nullptr};
     QProgressBar *m_outputMeter{nullptr};
 
+    // Call control buttons
     QPushButton *m_btnMute{nullptr};
-    QPushButton *m_btnVideo{nullptr};
-    QPushButton *m_btnShare{nullptr};
     QPushButton *m_btnHold{nullptr};
-    QPushButton *m_btnKeypad{nullptr};
-    QPushButton *m_btnRecord{nullptr};
+    QPushButton *m_btnStartVideo{nullptr};
+    QPushButton *m_btnStopVideo{nullptr};
     QPushButton *m_btnAnswer{nullptr};
     QPushButton *m_btnReject{nullptr};
     QPushButton *m_btnHangup{nullptr};
 
-    // Dial row — visible only when Idle and registered.
-    QWidget     *m_dialRow{nullptr};
-    QLabel      *m_regStatusLabel{nullptr};
-    QLineEdit   *m_dialInput{nullptr};
-    QPushButton *m_btnCall{nullptr};
+    // Info grid labels (right column = values)
+    QLabel *m_infoState{nullptr};
+    QLabel *m_infoDuration{nullptr};
+    QLabel *m_infoRemoteUri{nullptr};
+    QLabel *m_infoLocalUri{nullptr};
+    QLabel *m_infoCallType{nullptr};
+    QLabel *m_infoNegotiated{nullptr};
+    QLabel *m_infoAudioConn{nullptr};
+    QLabel *m_infoVideoConn{nullptr};
+    QLabel *m_infoRttConn{nullptr};
 
-    // Emergency test mode section (hidden unless emergency/testMode=true in settings).
+    // Duration tracking
+    QTimer  m_durationTimer;
+    int     m_durationSeconds{0};
+
+    // Media state
+    bool m_audioConnected{false};
+    bool m_videoConnected{false};
+    bool m_rttConnected{false};
+    QString m_remoteUri;
+    CallType m_activeCallType{CallType::AudioOnly};
+
+    // Emergency test mode section
     QWidget                 *m_emergencyRow{nullptr};
     QLabel                  *m_emergencyStateLabel{nullptr};
     QPushButton             *m_btnEmergency{nullptr};
@@ -102,7 +122,6 @@ private:
     StaticLocationProvider  *m_staticLocationProvider{nullptr};
     bool                     m_emergencyCallActive{false};
 
-    // Manual location input (inside emergency row)
     QLineEdit               *m_latInput{nullptr};
     QLineEdit               *m_lonInput{nullptr};
     QLineEdit               *m_uncertaintyInput{nullptr};
