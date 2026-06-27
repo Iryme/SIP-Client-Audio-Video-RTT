@@ -50,6 +50,11 @@ set(SOURCES
     src/main.cpp
     src/app/Application.cpp
     src/gui/MainWindow.cpp
+    src/gui/dashboard/DashboardPage.cpp
+    src/gui/dashboard/DashboardHeader.cpp
+    src/gui/dashboard/DashboardShortcutCard.cpp
+    src/gui/dashboard/DashboardStatistics.cpp
+    src/gui/dashboard/DashboardRecentEvents.cpp
     src/gui/panels/NavRail.cpp
     src/gui/panels/SidebarPanel.cpp
     src/gui/panels/ContactsPanel.cpp
@@ -103,6 +108,11 @@ set(SOURCES
 set(HEADERS
     src/app/Application.h
     src/gui/MainWindow.h
+    src/gui/dashboard/DashboardPage.h
+    src/gui/dashboard/DashboardHeader.h
+    src/gui/dashboard/DashboardShortcutCard.h
+    src/gui/dashboard/DashboardStatistics.h
+    src/gui/dashboard/DashboardRecentEvents.h
     src/gui/panels/NavRail.h
     src/gui/panels/SidebarPanel.h
     src/gui/panels/ContactsPanel.h
@@ -172,7 +182,7 @@ target_link_libraries(SIPClient PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(SIPClient PRIVATE Advapi32)
+    target_link_libraries(SIPClient PRIVATE Advapi32 Psapi)
 endif()
 
 if(ENABLE_PJSIP AND PJSIP_FOUND)

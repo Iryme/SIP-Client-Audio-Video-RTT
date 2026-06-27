@@ -2,6 +2,7 @@
 #include <QMainWindow>
 #include <QCloseEvent>
 
+class DashboardPage;
 class NavRail;
 class CallPanel;
 class VideoPanel;
@@ -55,6 +56,9 @@ private:
     // Tracks which pages have been built (false = still a placeholder).
     static constexpr int kPageCount = 6;
     bool m_pageBuilt[kPageCount]{};
+
+    // Dashboard page (kept for signal wiring in buildDashboardPage)
+    DashboardPage    *m_dashboardPage{nullptr};
 
     // Panels
     NavRail          *m_navRail{nullptr};

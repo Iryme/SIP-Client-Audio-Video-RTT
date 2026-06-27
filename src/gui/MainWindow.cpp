@@ -3,6 +3,7 @@
 #include "core/AppSettings.h"
 #include "core/Logger.h"
 #include "core/PerfScope.h"
+#include "gui/dashboard/DashboardPage.h"
 #include "gui/panels/CallPanel.h"
 #include "gui/panels/DiagnosticsPanel.h"
 #include "gui/panels/MediaPanel.h"
@@ -18,7 +19,6 @@
 #include <QAction>
 #include <QFrame>
 #include <QDateTime>
-#include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QFile>
@@ -33,8 +33,6 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QList>
-#include <QTableWidget>
-#include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QMessageBox>
@@ -399,97 +397,10 @@ void MainWindow::buildMenuBar()
 
 QWidget *MainWindow::buildDashboardPage()
 {
-    auto *page = new QWidget(this);
-    auto *root = new QVBoxLayout(page);
-    root->setContentsMargins(12, 12, 12, 12);
-    root->setSpacing(10);
-
-    auto *title = new QLabel(tr("Dashboard"), page);
-    title->setStyleSheet("font-size: 18px; font-weight: 600;");
-    root->addWidget(title);
-
-    auto *subtitle = new QLabel(
-        tr("Live overview of the SIP backend, current registration, and recent events."),
-        page);
-    subtitle->setStyleSheet("color: #b7c4d6;");
-    subtitle->setWordWrap(true);
-    root->addWidget(subtitle);
-
-    auto *cardRow = new QHBoxLayout();
-    cardRow->setSpacing(8);
-
-    auto addCard = [&](const QString &label, const QString &value) -> QLabel* {
-        auto *card = makeCard(page);
-        auto *lay = new QVBoxLayout(card);
-        lay->setContentsMargins(10, 10, 10, 10);
-        lay->setSpacing(2);
-        auto *lbl = new QLabel(label, card);
-        lbl->setStyleSheet("color: #8899aa; font-size: 11px;");
-        auto *val = new QLabel(value, card);
-        val->setWordWrap(true);
-        val->setStyleSheet("font-size: 16px; font-weight: 600;");
-        lay->addWidget(lbl);
-        lay->addWidget(val);
-        cardRow->addWidget(card, 1);
-        return val;
-    };
-
-    QLabel *backendValue = addCard(tr("Backend / WS"), tr("Initializing..."));
-    QLabel *registrationValue = addCard(tr("Registered users"), tr("0"));
-    QLabel *callsValue = addCard(tr("Active calls"), tr("0"));
-    QLabel *eventValue = addCard(tr("Last SIP event"), tr("Waiting for activity"));
-
-    root->addLayout(cardRow);
-
-    auto *logCard = makeCard(page);
-    auto *logLayout = new QVBoxLayout(logCard);
-    logLayout->setContentsMargins(10, 10, 10, 10);
-    logLayout->setSpacing(6);
-    auto *logTitle = new QLabel(tr("Recent SIP / backend events"), logCard);
-    logTitle->setStyleSheet("font-weight: 600;");
-    logLayout->addWidget(logTitle);
-
-    auto *logTable = new QTableWidget(0, 3, logCard);
-    logTable->setHorizontalHeaderLabels({tr("Time"), tr("Level"), tr("Message")});
-    logTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    logTable->setSelectionBehavior(QTableWidget::SelectRows);
-    logTable->setEditTriggers(QTableWidget::NoEditTriggers);
-    logTable->setWordWrap(false);
-    logTable->verticalHeader()->setVisible(false);
-    logLayout->addWidget(logTable, 1);
-    root->addWidget(logCard, 1);
-
-    auto updateStatus = [backendValue, registrationValue, callsValue, eventValue]() {
-        const auto &sip = SipManager::instance();
-        backendValue->setText(QStringLiteral("%1 (%2)")
-            .arg(sip.backendName(),
-                 sip.isInitialized() ? QStringLiteral("ready") : QStringLiteral("inactive")));
-        registrationValue->setText(!sip.registeredProfileId().isEmpty()
-            && sip.registrationState() == RegistrationState::Registered
-                ? QStringLiteral("1")
-                : QStringLiteral("0"));
-        callsValue->setText(sip.callState() == CallState::Idle ? QStringLiteral("0") : QStringLiteral("1"));
-    };
-    updateStatus();
-
-    connect(&SipManager::instance(), &SipManager::initialized, page, updateStatus);
-    connect(&SipManager::instance(), &SipManager::shutdownComplete, page, updateStatus);
-    connect(&SipManager::instance(), &SipManager::callStateChanged, page, [updateStatus]() { updateStatus(); });
-    connect(&SipManager::instance(), &SipManager::registrationStateChanged, page, [updateStatus]() { updateStatus(); });
-
-    connect(&Logger::instance(), &Logger::entryAdded, page,
-            [logTable, eventValue](const LogEntry &entry) {
-        if (logTable->rowCount() >= 8)
-            logTable->removeRow(logTable->rowCount() - 1);
-        logTable->insertRow(0);
-        logTable->setItem(0, 0, new QTableWidgetItem(entry.timestamp.toString("hh:mm:ss")));
-        logTable->setItem(0, 1, new QTableWidgetItem(Logger::levelName(entry.level)));
-        logTable->setItem(0, 2, new QTableWidgetItem(entry.message));
-        if (entry.category == LogCategory::Sip)
-            eventValue->setText(entry.message);
-    });
-
-    return page;
+    m_dashboardPage = new DashboardPage(this);
+    connect(m_dashboardPage, &DashboardPage::navigateTo,
+            this, &MainWindow::onNavPageRequested);
+    return m_dashboardPage;
 }
 
 QWidget *MainWindow::buildClientsPage()
