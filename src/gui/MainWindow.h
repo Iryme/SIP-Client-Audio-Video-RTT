@@ -4,6 +4,7 @@
 
 class NavRail;
 class SidebarPanel;
+class ContactsPanel;
 class CallPanel;
 class VideoPanel;
 class RttPanel;
@@ -49,6 +50,7 @@ private:
     NavRail          *m_navRail{nullptr};
     QStackedWidget   *m_pageStack{nullptr};
     SidebarPanel     *m_sidebar{nullptr};
+    ContactsPanel    *m_contactsPanel{nullptr};
     CallPanel        *m_callPanel{nullptr};
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};

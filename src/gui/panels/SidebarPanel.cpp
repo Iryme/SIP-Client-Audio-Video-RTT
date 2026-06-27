@@ -9,8 +9,6 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QLineEdit>
-#include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -23,6 +21,17 @@ SidebarPanel::SidebarPanel(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(6);
+
+    auto *title = new QLabel(tr("SIP Profiles / Accounts"), this);
+    title->setStyleSheet("font-weight: bold; font-size: 13px;");
+    layout->addWidget(title);
+
+    auto *subtitle = new QLabel(
+        tr("Select the active profile, then register or switch accounts without blocking the UI."),
+        this);
+    subtitle->setWordWrap(true);
+    subtitle->setStyleSheet("color: #9aa8b8; font-size: 11px;");
+    layout->addWidget(subtitle);
 
     m_profileSelector = new QComboBox(this);
     m_profileSelector->setObjectName("ProfileSelector");
@@ -75,18 +84,6 @@ SidebarPanel::SidebarPanel(QWidget *parent)
     profileBtnRow->addWidget(m_editProfile);
     profileBtnRow->addWidget(m_deleteProfile);
     layout->addLayout(profileBtnRow);
-
-    m_search = new QLineEdit(this);
-    m_search->setPlaceholderText(tr("Search contacts..."));
-    m_search->setObjectName("SearchField");
-    layout->addWidget(m_search);
-
-    m_contactList = new QListWidget(this);
-    m_contactList->setObjectName("ContactList");
-    m_contactList->addItem(tr("Alice - sip:alice@example.com"));
-    m_contactList->addItem(tr("Bob - sip:bob@example.com"));
-    m_contactList->addItem(tr("Emergency - sip:emergency@psap.example"));
-    layout->addWidget(m_contactList, 1);
 
     connect(m_profileSelector, &QComboBox::currentIndexChanged,
             this, &SidebarPanel::onProfileSelectorChanged);

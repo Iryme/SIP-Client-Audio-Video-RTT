@@ -3,6 +3,7 @@
 #include "core/AppSettings.h"
 #include "core/Logger.h"
 #include "gui/panels/CallPanel.h"
+#include "gui/panels/ContactsPanel.h"
 #include "gui/panels/DiagnosticsPanel.h"
 #include "gui/panels/MediaPanel.h"
 #include "gui/panels/NavRail.h"
@@ -24,6 +25,7 @@
 #include <QPushButton>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
@@ -223,36 +225,60 @@ QWidget *MainWindow::buildDashboardPage()
 QWidget *MainWindow::buildClientsPage()
 {
     auto *page = new QWidget(this);
-    auto *root = new QHBoxLayout(page);
-    root->setContentsMargins(0, 0, 0, 0);
-    root->setSpacing(0);
+    auto *root = new QVBoxLayout(page);
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(10);
 
-    m_sidebar = new SidebarPanel(page);
-    root->addWidget(m_sidebar, 0);
-
-    auto *right = new QWidget(page);
-    auto *rightLayout = new QVBoxLayout(right);
-    rightLayout->setContentsMargins(12, 12, 12, 12);
-    rightLayout->setSpacing(8);
-
-    auto *header = new QLabel(tr("SIP Clients"), right);
+    auto *header = new QLabel(tr("Clients / Call Control"), page);
     header->setStyleSheet("font-size: 18px; font-weight: 600;");
-    rightLayout->addWidget(header);
+    root->addWidget(header);
 
     auto *desc = new QLabel(
-        tr("Manage SIP profiles, quick registration, dialing and session controls."),
-        right);
+        tr("Three-zone workspace for profiles, live call control, and contact-target actions."),
+        page);
     desc->setStyleSheet("color: #b7c4d6;");
     desc->setWordWrap(true);
-    rightLayout->addWidget(desc);
+    root->addWidget(desc);
 
-    m_callPanel = new CallPanel(right);
-    rightLayout->addWidget(m_callPanel);
+    auto *split = new QSplitter(Qt::Horizontal, page);
+    split->setChildrenCollapsible(false);
+    split->setHandleWidth(8);
 
-    m_rttPanel = new RttPanel(right);
-    rightLayout->addWidget(m_rttPanel, 1);
+    auto *leftWrap = new QWidget(split);
+    auto *leftLayout = new QVBoxLayout(leftWrap);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    m_sidebar = new SidebarPanel(leftWrap);
+    leftLayout->addWidget(m_sidebar);
+    split->addWidget(leftWrap);
 
-    root->addWidget(right, 1);
+    auto *centerWrap = new QWidget(split);
+    auto *centerLayout = new QVBoxLayout(centerWrap);
+    centerLayout->setContentsMargins(0, 0, 0, 0);
+    centerLayout->setSpacing(8);
+    m_callPanel = new CallPanel(centerWrap);
+    centerLayout->addWidget(m_callPanel, 2);
+    m_rttPanel = new RttPanel(centerWrap);
+    centerLayout->addWidget(m_rttPanel, 1);
+    split->addWidget(centerWrap);
+
+    auto *rightWrap = new QWidget(split);
+    auto *rightLayout = new QVBoxLayout(rightWrap);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    m_contactsPanel = new ContactsPanel(rightWrap);
+    rightLayout->addWidget(m_contactsPanel);
+    split->addWidget(rightWrap);
+
+    split->setStretchFactor(0, 1);
+    split->setStretchFactor(1, 2);
+    split->setStretchFactor(2, 1);
+    split->setSizes(QList<int>{320, 620, 320});
+
+    root->addWidget(split, 1);
+
+    connect(m_contactsPanel, &ContactsPanel::dialRequested,
+            m_callPanel, &CallPanel::placeCall);
+    connect(m_contactsPanel, &ContactsPanel::dialRequested,
+            m_callPanel, &CallPanel::focusDialInput);
 
     m_rttPanel->setRttSession(SipManager::instance().rttSession());
     return page;

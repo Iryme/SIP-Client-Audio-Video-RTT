@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QString>
 #include "emergency/EmergencyCallProfile.h"
 #include "emergency/EmergencyCallStateMachine.h"
 #include "sip/CallStateMachine.h"
@@ -37,6 +38,7 @@ signals:
 public slots:
     // Populate the dial input with uri and give it focus (called from contacts/menu).
     void setDialTarget(const QString &uri);
+    void placeCall(const QString &uri = QString());
     void focusDialInput();
 
 private slots:

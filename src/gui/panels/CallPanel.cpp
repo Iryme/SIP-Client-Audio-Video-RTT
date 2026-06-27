@@ -537,6 +537,44 @@ void CallPanel::setRemoteUri(const QString &uri)    { m_remoteUri->setText(uri);
 void CallPanel::setCallState(const QString &state)  { m_callState->setText(state); }
 void CallPanel::setDuration(const QString &dur)     { m_duration->setText(dur); }
 
+void CallPanel::placeCall(const QString &uri)
+{
+    if (m_dialInput && !uri.trimmed().isEmpty())
+        m_dialInput->setText(uri.trimmed());
+
+    const QString raw = m_dialInput ? m_dialInput->text().trimmed() : QString{};
+    if (raw.isEmpty()) {
+        if (m_regStatusLabel) {
+            m_regStatusLabel->setText(tr("Enter a SIP URI or extension to call"));
+            m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+        }
+        return;
+    }
+
+    const QString fallbackDomain =
+        SipProfileManager::instance().activeProfile().sipDomain;
+    const SipUriNormalizer::Result result =
+        SipUriNormalizer::normalize(raw, fallbackDomain);
+    if (!result.isValid) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Dial URI invalid: input=\"%1\" error=\"%2\"")
+                .arg(raw, result.error));
+        if (m_regStatusLabel) {
+            m_regStatusLabel->setText(tr("Invalid URI: %1").arg(result.error));
+            m_regStatusLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+        }
+        return;
+    }
+    if (result.uri != raw) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Dial URI normalized: \"%1\" â†’ \"%2\"")
+                .arg(raw, result.uri));
+        if (m_dialInput)
+            m_dialInput->setText(result.uri);
+    }
+    SipManager::instance().makeCall(result.uri);
+}
+
 void CallPanel::populateDeviceCombos()
 {
     // Preserve current selection
