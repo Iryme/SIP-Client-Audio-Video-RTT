@@ -473,13 +473,20 @@ struct SipCall::Impl
             if (!m_impl || !m_impl->q)
                 return;
             const QString text = QString::fromStdString(prm.text);
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("RTT text received from remote: seq=%1 text=\"%2\"")
-                    .arg(prm.seq).arg(text));
+            const unsigned seq = prm.seq;
             QPointer<SipCall> self = m_impl->q;
-            QMetaObject::invokeMethod(self, [self, text]() {
-                if (self)
-                    emit self->rttTextReceived(text);
+            // Logger and signal emission are both on the main thread — Logger is not
+            // thread-safe (emits Qt signals) and must not be called from PJSIP callbacks.
+            QMetaObject::invokeMethod(self, [self, text, seq]() {
+                if (!self) return;
+                if (!text.isEmpty()) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("RTT text received from remote: seq=%1 text=\"%2\"")
+                            .arg(seq).arg(text));
+                }
+                // Emit for all packets (including empty keepalives) so RttSession
+                // can maintain its suppression counter on the main thread.
+                emit self->rttTextReceived(text);
             }, Qt::QueuedConnection);
         }
 

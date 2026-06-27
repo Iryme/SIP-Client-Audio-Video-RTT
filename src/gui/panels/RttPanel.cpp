@@ -79,9 +79,14 @@ RttPanel::RttPanel(QWidget *parent)
 
     connect(m_rttSend,  &QPushButton::clicked, this, &RttPanel::onRttSend);
     connect(m_rttInput, &QLineEdit::returnPressed, this, &RttPanel::onRttSend);
-    // Live typing: fires on every character change.
     connect(m_rttInput, &QLineEdit::textChanged, this, &RttPanel::onRttInputChanged);
     connect(m_rttClear, &QPushButton::clicked, m_rttTranscript, &QTextEdit::clear);
+
+    m_liveUpdateTimer.setInterval(150);
+    m_liveUpdateTimer.setSingleShot(true);
+    connect(&m_liveUpdateTimer, &QTimer::timeout, this, [this]() {
+        m_rttRemoteLive->setPlainText(m_remoteBuffer);
+    });
 
     tabs->addTab(rttTab, tr("RTT"));
 
@@ -258,20 +263,23 @@ void RttPanel::updateInputState()
 // All other codepoints are appended to the live buffer.
 void RttPanel::processRemoteText(const QString &incoming)
 {
+    if (incoming.trimmed().isEmpty())
+        return;
+
     Logger::instance().debug(LogCategory::Sip,
         QStringLiteral("RTT RX: incoming len=%1").arg(incoming.length()));
 
     bool prevWasCR = false;
     for (const QChar ch : incoming) {
         const ushort u = ch.unicode();
-        if (u == 0x08) {                        // BS — remove last char
+        if (u == 0x08) {
             if (!m_remoteBuffer.isEmpty())
                 m_remoteBuffer.chop(1);
             prevWasCR = false;
-        } else if (u == 0x0D) {                 // CR — flush to transcript
+        } else if (u == 0x0D) {
             flushRemoteBuffer();
             prevWasCR = true;
-        } else if (u == 0x0A) {                 // LF — flush only if standalone
+        } else if (u == 0x0A) {
             if (!prevWasCR)
                 flushRemoteBuffer();
             prevWasCR = false;
@@ -281,7 +289,9 @@ void RttPanel::processRemoteText(const QString &incoming)
         }
     }
 
-    m_rttRemoteLive->setPlainText(m_remoteBuffer);
+    // Batch rapid RTT packets — update live-typing widget at most once per 150 ms.
+    if (!m_liveUpdateTimer.isActive())
+        m_liveUpdateTimer.start();
 }
 
 void RttPanel::flushRemoteBuffer()
@@ -289,6 +299,7 @@ void RttPanel::flushRemoteBuffer()
     if (!m_remoteBuffer.isEmpty()) {
         m_rttTranscript->append(tr("Remote: %1").arg(m_remoteBuffer));
         m_remoteBuffer.clear();
+        m_liveUpdateTimer.stop();
         m_rttRemoteLive->clear();
     }
 }
@@ -297,6 +308,7 @@ void RttPanel::resetRttBuffers()
 {
     m_prevLocalText.clear();
     m_remoteBuffer.clear();
+    m_liveUpdateTimer.stop();
     if (m_rttRemoteLive)
         m_rttRemoteLive->clear();
 }

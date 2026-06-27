@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QTimer>
 
 class SipCall;
 
@@ -49,7 +50,11 @@ signals:
 
 private:
     void setState(RttState newState);
+    void flushSuppressedLog();
 
     RttState          m_state{RttState::Disabled};
-    QPointer<SipCall> m_call;  // weak — SipCall may outlive or pre-die this session
+    QPointer<SipCall> m_call;
+
+    int    m_suppressedEmptyRtt{0};
+    QTimer m_suppressedLogTimer;
 };

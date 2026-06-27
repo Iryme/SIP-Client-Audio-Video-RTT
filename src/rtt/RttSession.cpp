@@ -19,6 +19,10 @@ RttSession::RttSession(QObject *parent)
 {
     Logger::instance().info(LogCategory::Sip,
         QStringLiteral("RTT session controller created"));
+
+    m_suppressedLogTimer.setInterval(5000);
+    m_suppressedLogTimer.setSingleShot(false);
+    connect(&m_suppressedLogTimer, &QTimer::timeout, this, &RttSession::flushSuppressedLog);
 }
 
 RttSession::~RttSession()
@@ -53,6 +57,12 @@ void RttSession::enableForCall(SipCall *call)
         onCallMediaStateChanged(false);
     });
     connect(call, &SipCall::rttTextReceived, this, [this](const QString &text) {
+        if (text.trimmed().isEmpty()) {
+            ++m_suppressedEmptyRtt;
+            if (!m_suppressedLogTimer.isActive())
+                m_suppressedLogTimer.start();
+            return;
+        }
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("RTT remote text received: \"%1\"").arg(text));
         emit remoteTextReceived(text);
@@ -73,6 +83,8 @@ void RttSession::disable()
         m_call->disconnect(this);
     }
     m_call = nullptr;
+    flushSuppressedLog();
+    m_suppressedLogTimer.stop();
     Logger::instance().info(LogCategory::Sip,
         QStringLiteral("RTT session disabled"));
     setState(RttState::Disabled);
@@ -120,7 +132,19 @@ void RttSession::onCallEnded()
         m_call->disconnect(this);
     }
     m_call = nullptr;
+    flushSuppressedLog();
+    m_suppressedLogTimer.stop();
     setState(RttState::Disabled);
+}
+
+void RttSession::flushSuppressedLog()
+{
+    if (m_suppressedEmptyRtt > 0) {
+        Logger::instance().debug(LogCategory::Sip,
+            QStringLiteral("RTT: suppressed %1 empty keepalive packet(s)")
+                .arg(m_suppressedEmptyRtt));
+        m_suppressedEmptyRtt = 0;
+    }
 }
 
 RttState RttSession::state() const

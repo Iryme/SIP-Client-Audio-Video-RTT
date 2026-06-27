@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include <QTimer>
 #include "rtt/RttSession.h"
 
 class QLabel;
@@ -53,8 +54,9 @@ private:
 
     RttSession  *m_rttSession{nullptr};
 
-    // TX: tracks what has already been sent so delta can be computed.
     QString m_prevLocalText;
-    // RX: accumulates received T.140 characters for the current remote line.
     QString m_remoteBuffer;
+
+    // Defers m_rttRemoteLive repaints — batch rapid RTT packets into one update.
+    QTimer  m_liveUpdateTimer;
 };
