@@ -572,6 +572,54 @@ target_link_libraries(test_emergency_invite_builder PRIVATE
 
 add_test(NAME test_emergency_invite_builder COMMAND test_emergency_invite_builder)
 
+# ---- Emergency module sources (location + PIDF-LO, no PJSIP) ---------------
+set(EMERGENCY_LOCATION_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocationProvider.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/StaticLocationProvider.cpp
+)
+
+# ---- test_emergency_location -------------------------------------------
+qt_add_executable(test_emergency_location
+    test_emergency_location.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocationProvider.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/StaticLocationProvider.cpp
+)
+
+target_include_directories(test_emergency_location PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_location PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_location COMMAND test_emergency_location)
+
+# ---- test_pidf_lo_builder ----------------------------------------------
+qt_add_executable(test_pidf_lo_builder
+    test_pidf_lo_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyInviteBuilder.cpp
+)
+
+target_include_directories(test_pidf_lo_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_pidf_lo_builder PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_pidf_lo_builder COMMAND test_pidf_lo_builder)
+
 if(BUILD_LIVE_VALIDATION_TOOLS)
     if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
         message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")

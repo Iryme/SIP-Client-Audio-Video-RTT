@@ -22,6 +22,12 @@ EmergencyInviteBuilder &EmergencyInviteBuilder::setLocationRequired(bool require
     return *this;
 }
 
+EmergencyInviteBuilder &EmergencyInviteBuilder::setContentId(const QString &cid)
+{
+    m_contentId = cid;
+    return *this;
+}
+
 EmergencyInvite EmergencyInviteBuilder::build() const
 {
     EmergencyInvite inv;
@@ -29,8 +35,21 @@ EmergencyInvite EmergencyInviteBuilder::build() const
     inv.routeTarget      = m_profile.routingTarget;
     inv.serviceUrn       = m_profile.serviceUrn;
     inv.mediaPolicy      = m_mediaPolicy;
-    inv.hasLocation      = m_locationAvailable;
     inv.locationRequired = m_locationRequired;
+
+    // If the profile carries a PIDF-LO body, populate body/contentType/contentId
+    // and treat hasLocation=true. Otherwise fall back to the explicit flag set by
+    // the caller (backward-compatible with Task 36 usage).
+    const bool hasPidfLo = !m_profile.pidfLo.isEmpty();
+    inv.hasLocation      = hasPidfLo || m_locationAvailable;
+
+    if (hasPidfLo) {
+        inv.body        = m_profile.pidfLo;
+        inv.contentType = QStringLiteral("application/pidf+xml");
+        inv.contentId   = m_contentId.isEmpty()
+                          ? QStringLiteral("pidflo-1@ng112.local")
+                          : m_contentId;
+    }
 
     // Deterministic header order — same input always produces the same list.
     inv.headers.append({QStringLiteral("Accept"),
@@ -38,11 +57,12 @@ EmergencyInvite EmergencyInviteBuilder::build() const
     inv.headers.append({QStringLiteral("Supported"),
                         QStringLiteral("geolocation")});
 
-    // Geolocation headers follow RFC 6442 — include only when location is available.
-    // The value is a placeholder until the PIDF-LO builder is implemented (Task 38).
-    if (m_locationAvailable) {
-        inv.headers.append({QStringLiteral("Geolocation"),
-                            QStringLiteral("<placeholder-cid@ng112>")});
+    // Geolocation header (RFC 6442) — only when location is available.
+    if (inv.hasLocation) {
+        const QString geoValue = inv.contentId.isEmpty()
+                                 ? QStringLiteral("<placeholder-cid@ng112>")
+                                 : QStringLiteral("<cid:%1>").arg(inv.contentId);
+        inv.headers.append({QStringLiteral("Geolocation"), geoValue});
         inv.headers.append({QStringLiteral("Geolocation-Routing"),
                             QStringLiteral("yes")});
     }

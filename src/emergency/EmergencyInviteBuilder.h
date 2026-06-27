@@ -28,16 +28,17 @@ struct EmergencyMediaPolicy
 // a future SipCall/SipManager integration layer needs to construct a real
 // PJSIP INVITE without coupling the builder to the PJSIP stack.
 //
-// contentType and body are placeholders — populated in Task 38 (PIDF-LO /
-// multipart/mixed). Keeping them here now avoids a breaking struct change later.
+// When EmergencyCallProfile::pidfLo is non-empty, body/contentType/contentId
+// are populated automatically. Multipart body assembly is Task 38.
 struct EmergencyInvite
 {
     QString                   requestUri;        // PSAP SIP URI (Request-URI)
     QString                   routeTarget;       // Route: header value (initially == requestUri)
     QString                   serviceUrn;        // RFC 5031 URN, e.g. urn:service:sos
     QList<EmergencySipHeader> headers;           // Ordered extra SIP headers
-    QString                   contentType;       // placeholder — empty until Task 38
-    QString                   body;              // placeholder — empty until Task 38
+    QString                   contentType;       // "application/pidf+xml" when pidfLo is set
+    QString                   body;              // PIDF-LO XML when pidfLo is set
+    QString                   contentId;         // CID for Geolocation / Content-ID header
     EmergencyMediaPolicy      mediaPolicy;
     bool                      hasLocation      = false;
     bool                      locationRequired = false;
@@ -70,6 +71,8 @@ public:
     EmergencyInviteBuilder &setMediaPolicy(const EmergencyMediaPolicy &policy);
     EmergencyInviteBuilder &setLocationAvailable(bool available);
     EmergencyInviteBuilder &setLocationRequired(bool required);
+    // Override the auto-generated Content-ID used in the Geolocation header.
+    EmergencyInviteBuilder &setContentId(const QString &cid);
 
     // Build the declarative INVITE struct. Always succeeds; call validate() to
     // check whether the result is safe to use.
@@ -82,6 +85,7 @@ public:
 private:
     EmergencyCallProfile m_profile;
     EmergencyMediaPolicy m_mediaPolicy;
+    QString              m_contentId;
     bool                 m_locationAvailable = false;
     bool                 m_locationRequired  = false;
 };

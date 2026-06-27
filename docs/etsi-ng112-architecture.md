@@ -359,7 +359,161 @@ integration task.
 
 ---
 
-## 10. Roadmap
+## 10. PIDF-LO Builder and Manual Location Model (Task 37)
+
+**Status:** Complete — builder and static provider implemented, not yet sent over SIP.
+
+### 10.1 EmergencyLocation
+
+**File:** `src/emergency/EmergencyLocation.h` / `.cpp`
+
+Pure data struct for a geodetic location. No PJSIP dependency.
+
+| Field | Type | Description |
+|---|---|---|
+| `latitude` | `double` | degrees, WGS-84, -90..90 |
+| `longitude` | `double` | degrees, WGS-84, -180..180 |
+| `altitude` | `double` | meters above WGS-84 ellipsoid (optional) |
+| `hasAltitude` | `bool` | false if altitude not set |
+| `uncertaintyMeters` | `double` | < 0 means not set; ≥ 0 is the circle radius |
+| `timestamp` | `QString` | UTC ISO-8601, e.g. `2026-06-27T12:00:00Z` |
+| `civicAddress` | `QString` | free-form placeholder for future civic address |
+| `source` | `LocationSource` | Manual / Static / WindowsLocation / Unknown |
+
+Validation rules (`isValid()` / `validationErrors()`):
+- latitude must be in -90..90
+- longitude must be in -180..180
+- timestamp must not be empty
+
+Factory: `EmergencyLocation::makeStatic(lat, lon, timestamp)`
+
+---
+
+### 10.2 StaticLocationProvider
+
+**File:** `src/emergency/StaticLocationProvider.h` / `.cpp`
+
+Implements `EmergencyLocationProvider`. Backed by a static `EmergencyLocation` — no
+Windows Location API, no network.
+
+| Status | Condition |
+|---|---|
+| `Available` | Location is valid, PIDF-LO is built and cached |
+| `Unavailable` | Location fails validation; `unavailableReason()` explains why |
+
+`requestLocation()` emits `locationAvailable(pidfLo)` when Available, or
+`locationStatusChanged(Unavailable)` when not.
+
+`LocationStatus::Available` was added to the enum in Task 37 (previously: Unavailable, NotImplemented only).
+
+---
+
+### 10.3 PidfLoBuilder
+
+**File:** `src/emergency/PidfLoBuilder.h` / `.cpp`
+
+Builds a minimal PIDF-LO XML document (RFC 4119) using plain QString construction.
+No Qt XML module required. XML special characters are escaped via `escapeXml()` /
+`escapeXmlAttr()`.
+
+**Geodetic encoding:**
+- Without `uncertaintyMeters` (< 0): `gml:Point` (RFC 4119 §3)
+- With `uncertaintyMeters` (≥ 0): `gs:Circle` with `gs:radius` (RFC 5491 §5)
+
+**Namespaces declared:**
+- `urn:ietf:params:xml:ns:pidf` (PIDF)
+- `urn:ietf:params:xml:ns:pidf:geopriv10` (GeoPriv)
+- `http://www.opengis.net/gml` (GML)
+- `http://www.opengis.net/pidflo/1.0` (GeoShape — used for Circle)
+
+**Output:**
+```
+PidfLoResult {
+  success     = true
+  xml         = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<presence …>…</presence>\n"
+  contentType = "application/pidf+xml"
+  contentId   = "pidflo-1@ng112.local"   // configurable via setContentId()
+}
+```
+
+**Typical generated XML (Point, no uncertainty):**
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<presence
+  xmlns="urn:ietf:params:xml:ns:pidf"
+  xmlns:gp="urn:ietf:params:xml:ns:pidf:geopriv10"
+  xmlns:gml="http://www.opengis.net/gml"
+  xmlns:gs="http://www.opengis.net/pidflo/1.0"
+  entity="pres:anonymous@ng112.local">
+  <tuple id="loc001">
+    <status><basic>open</basic></status>
+    <gp:geopriv>
+      <gp:location-info>
+        <gml:Point srsName="urn:ogc:def:crs:EPSG::4326">
+          <gml:pos>47.606200 -122.332100</gml:pos>
+        </gml:Point>
+      </gp:location-info>
+      <gp:usage-rules/>
+    </gp:geopriv>
+    <timestamp>2026-06-27T12:00:00Z</timestamp>
+  </tuple>
+</presence>
+```
+
+---
+
+### 10.4 EmergencyInviteBuilder integration (updated in Task 37)
+
+When `EmergencyCallProfile::pidfLo` is non-empty, `EmergencyInviteBuilder::build()` now:
+- Sets `inv.hasLocation = true`
+- Sets `inv.body = profile.pidfLo`
+- Sets `inv.contentType = "application/pidf+xml"`
+- Sets `inv.contentId` (from `setContentId()` or default `"pidflo-1@ng112.local"`)
+- Changes Geolocation header to `<cid:contentId>` format (RFC 6442)
+
+This is backward-compatible: existing tests using `setLocationAvailable(true)` without
+pidfLo still get a `<placeholder-cid@ng112>` Geolocation header.
+
+---
+
+### 10.5 Content-ID flow
+
+```
+PidfLoBuilder::build() → PidfLoResult::contentId ("pidflo-1@ng112.local")
+     │
+     ▼
+EmergencyCallProfile::pidfLo = pidfLoResult.xml
+     │
+     ▼
+EmergencyInviteBuilder::setContentId(pidfLoResult.contentId).build()
+     │
+     ├── inv.body        = pidfLo XML
+     ├── inv.contentType = "application/pidf+xml"
+     ├── inv.contentId   = "pidflo-1@ng112.local"
+     └── Geolocation: <cid:pidflo-1@ng112.local>
+```
+
+In Task 38, `contentId` will be used as the `Content-ID` header in the multipart body:
+```
+Content-ID: <pidflo-1@ng112.local>
+```
+
+---
+
+### 10.6 What remains for subsequent tasks
+
+| Item | Task |
+|---|---|
+| Windows Location API (COM) — `WindowsLocationProvider` | Task 38+ |
+| Multipart INVITE body (`multipart/mixed`) | Task 38 |
+| PJSIP header injection into real INVITE | Task 38 |
+| `EmergencyCallController` → `SipManager::makeCall()` wiring | Task 38 |
+| PIDF-LO civic address (PIDF-LO §5) | Task 38+ |
+| ETSI TS 103 698 conformance validation | Task 38+ |
+
+---
+
+## 11. Roadmap
 
 ### Task 37 — Location Provider
 - `GpsLocationProvider` — Windows Location API (COM)

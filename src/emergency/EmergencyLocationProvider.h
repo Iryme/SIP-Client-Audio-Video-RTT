@@ -4,8 +4,9 @@
 #include <QString>
 
 enum class LocationStatus {
-    Unavailable,   // Geolocation API not accessible
-    NotImplemented // Provider not yet implemented (Task 34 default)
+    Unavailable,    // Provider exists but location cannot be obtained
+    NotImplemented, // Provider not yet implemented (Task 34 default)
+    Available       // Location obtained and ready
 };
 
 QString locationStatusName(LocationStatus status);

@@ -1,7 +1,7 @@
 # Project Status
 
-Last updated: 2026-06-26
-Current task count: 36 of N (Tasks 1–28.6 + Task 34 + Task 35 (build fix) + Task 36 complete)
+Last updated: 2026-06-27
+Current task count: 37 of N (Tasks 1–28.6 + Task 34–37 complete)
 Active branch: `feature/project-handoff-002`
 
 ---
@@ -23,7 +23,8 @@ Active branch: `feature/project-handoff-002`
 | ETSI / NG112 Architecture Skeleton | 34 | COMPLETE — skeleton only, no real calls |
 | Green build recovery (PJMEDIA_HAS_VIDEO fix) | 35 | COMPLETE — 20/20 CTest PASS |
 | ETSI / NG112 Emergency SIP INVITE Builder | 36 | COMPLETE — declarative builder, no real call |
-| ETSI / NG112 Location + real call integration | 37–38 | NOT STARTED |
+| ETSI / NG112 PIDF-LO Builder + Manual Location Model | 37 | COMPLETE — PIDF-LO builder, not yet sent over SIP |
+| ETSI / NG112 Multipart INVITE + real emergency call | 38 | NOT STARTED |
 
 ---
 
@@ -67,6 +68,7 @@ Active branch: `feature/project-handoff-002`
 | 34 | ETSI / NG112 Architecture Skeleton — emergency module, SM, profile, location interface | feature/project-handoff-002 | COMPLETE — skeleton only |
 | 35 | Green Build Recovery — PJMEDIA_HAS_VIDEO + pjlib linkage for PJSIP test targets | feature/project-handoff-002 | COMPLETE — 20/20 CTest PASS |
 | 36 | Emergency SIP INVITE Builder — EmergencyInviteBuilder, EmergencyInvite, validation | feature/project-handoff-002 | COMPLETE — declarative builder, no real call |
+| 37 | PIDF-LO Builder + Manual Location — EmergencyLocation, PidfLoBuilder, StaticLocationProvider | feature/project-handoff-002 | COMPLETE — PIDF-LO builder, not yet sent over SIP |
 
 ---
 
@@ -120,7 +122,10 @@ Active branch: `feature/project-handoff-002`
 | EmergencyLocationProvider | SKELETON | Abstract interface + NullLocationProvider (NotImplemented) |
 | EmergencyCallController | SKELETON | Orchestration. Emits readyToDial. No real call yet. |
 | EmergencyInviteBuilder | COMPLETE | Declarative INVITE builder. No PJSIP. 15 tests pass. |
-| EmergencyInvite | COMPLETE | Pure data struct. requestUri, headers, mediaPolicy, location flags. |
+| EmergencyInvite | COMPLETE | Pure data struct. requestUri, headers, mediaPolicy, location flags, contentId. |
+| EmergencyLocation | COMPLETE | Geodetic location struct. WGS-84. Validation. |
+| PidfLoBuilder | COMPLETE | RFC 4119 PIDF-LO XML builder. Point/Circle. No PJSIP. |
+| StaticLocationProvider | COMPLETE | Location provider backed by static EmergencyLocation. |
 | LMPE messaging | NOT STARTED | |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |
 | ETSI TS 103 480 | NOT STARTED | Blocked on Task 37–38 |

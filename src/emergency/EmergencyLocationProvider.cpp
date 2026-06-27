@@ -5,6 +5,7 @@ QString locationStatusName(LocationStatus status)
     switch (status) {
     case LocationStatus::Unavailable:    return QStringLiteral("Unavailable");
     case LocationStatus::NotImplemented: return QStringLiteral("NotImplemented");
+    case LocationStatus::Available:      return QStringLiteral("Available");
     }
     return QStringLiteral("Unknown");
 }
