@@ -75,24 +75,31 @@ DashboardPage::DashboardPage(QWidget *parent)
     populateStats();
 
     // ── Signal connections ───────────────────────────────────────────────
+    // Qt::UniqueConnection guards against any accidental double-connect if the
+    // page construction path ever changes.
     auto &sip = SipManager::instance();
     connect(&sip, &SipManager::registrationStateChanged,
-            this, &DashboardPage::onSipStateChanged);
+            this, &DashboardPage::onSipStateChanged,
+            Qt::UniqueConnection);
     connect(&sip, &SipManager::callStateChanged,
-            this, &DashboardPage::onCallStateChanged);
+            this, &DashboardPage::onCallStateChanged,
+            Qt::UniqueConnection);
     connect(&sip, &SipManager::audioMediaConnected,
-            this, &DashboardPage::onAudioConnected);
+            this, &DashboardPage::onAudioConnected,
+            Qt::UniqueConnection);
     connect(&sip, &SipManager::audioMediaDisconnected,
-            this, &DashboardPage::onAudioDisconnected);
+            this, &DashboardPage::onAudioDisconnected,
+            Qt::UniqueConnection);
     connect(&sip, &SipManager::initialized, this, [this]() {
         m_header->setSipStatus(SipManager::instance().registrationState());
         m_stats->setValue("registeredAccounts",
             SipManager::instance().registrationState() == RegistrationState::Registered
                 ? QStringLiteral("1") : QStringLiteral("0"));
-    });
+    }, Qt::UniqueConnection);
 
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
-            this, &DashboardPage::onDevicesChanged);
+            this, &DashboardPage::onDevicesChanged,
+            Qt::UniqueConnection);
 
     connect(&Logger::instance(), &Logger::entryAdded, this,
             [this](const LogEntry &entry) {
@@ -102,7 +109,7 @@ DashboardPage::DashboardPage(QWidget *parent)
         m_stats->setValue("logMessages", QString::number(m_totalLogEntries));
         m_stats->setValue("sipMessages", QString::number(m_sipEntries));
         m_stats->setValue("rttMessages", QString::number(m_rttEntries));
-    });
+    }, Qt::UniqueConnection);
 
     // ── Periodic tick: uptime, call duration, memory ─────────────────────
     m_tickTimer = new QTimer(this);
@@ -208,6 +215,9 @@ void DashboardPage::populateStats()
     m_stats->setValue(QStringLiteral("rttMessages"),        QStringLiteral("0"));
     m_stats->setValue(QStringLiteral("packetCapture"),      QStringLiteral("—"));
     m_stats->setValue(QStringLiteral("cpuUsage"),           QStringLiteral("—"));
+#ifndef Q_OS_WIN
+    m_stats->setValue(QStringLiteral("memoryUsage"),        QStringLiteral("—"));
+#endif
 }
 
 void DashboardPage::refreshDeviceStats()
@@ -273,6 +283,7 @@ void DashboardPage::onCallStateChanged(CallState state, const QString &, int)
 
     if (state == CallState::Failed) {
         if (m_inCall) m_inCall = false;
+        m_stats->setValue(QStringLiteral("activeCalls"), QStringLiteral("0"));
         ++m_failedCalls;
         m_stats->setValue(QStringLiteral("failedCalls"), QString::number(m_failedCalls));
     }

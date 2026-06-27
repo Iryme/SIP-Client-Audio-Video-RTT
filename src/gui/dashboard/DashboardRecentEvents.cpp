@@ -39,7 +39,8 @@ DashboardRecentEvents::DashboardRecentEvents(QWidget *parent)
     outer->addWidget(scrollArea, 1);
 
     connect(&Logger::instance(), &Logger::entryAdded,
-            this, &DashboardRecentEvents::onEntryAdded);
+            this, &DashboardRecentEvents::onEntryAdded,
+            Qt::UniqueConnection);
 }
 
 bool DashboardRecentEvents::isRelevant(const LogEntry &entry)
