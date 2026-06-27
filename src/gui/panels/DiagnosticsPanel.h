@@ -43,6 +43,7 @@ private:
 
     void buildToolbar(QHBoxLayout *row);
     void refreshTable();
+    void appendTableRow(const LogEntry &entry);
     void updateStatus();
     bool isLevelVisible(LogLevel level) const;
     bool entryMatchesFilters(const LogEntry &entry) const;

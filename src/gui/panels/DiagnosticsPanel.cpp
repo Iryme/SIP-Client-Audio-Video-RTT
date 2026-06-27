@@ -253,48 +253,51 @@ QString DiagnosticsPanel::visibleLogsAsText() const
     return out;
 }
 
+void DiagnosticsPanel::appendTableRow(const LogEntry &entry)
+{
+    const int row = m_table->rowCount();
+    m_table->insertRow(row);
+
+    auto *tTime  = new QTableWidgetItem(entry.timestamp.toString("hh:mm:ss.zzz"));
+    auto *tLevel = new QTableWidgetItem(Logger::levelName(entry.level));
+    auto *tComp  = new QTableWidgetItem(Logger::categoryName(entry.category));
+    auto *tMsg   = new QTableWidgetItem(entry.message);
+    auto *tPay   = new QTableWidgetItem(entry.payload);
+
+    const QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    tTime->setFont(mono);
+    tLevel->setFont(mono);
+    tComp->setFont(mono);
+    tMsg->setFont(mono);
+    tPay->setFont(mono);
+
+    QColor levelColor;
+    switch (entry.level) {
+    case LogLevel::Info:  levelColor = QColor("#50b8e0"); break;
+    case LogLevel::Warn:  levelColor = QColor("#e0b850"); break;
+    case LogLevel::Error: levelColor = QColor("#e05050"); break;
+    case LogLevel::Debug: levelColor = QColor("#888888"); break;
+    case LogLevel::Raw:   levelColor = QColor("#606060"); break;
+    }
+    tLevel->setForeground(levelColor);
+
+    m_table->setItem(row, 0, tTime);
+    m_table->setItem(row, 1, tLevel);
+    m_table->setItem(row, 2, tComp);
+    m_table->setItem(row, 3, tMsg);
+    m_table->setItem(row, 4, tPay);
+}
+
 void DiagnosticsPanel::refreshTable()
 {
     const int previousScroll = m_table->verticalScrollBar()->value();
-    const int previousMax = m_table->verticalScrollBar()->maximum();
+    const int previousMax    = m_table->verticalScrollBar()->maximum();
 
     m_table->setRowCount(0);
 
     for (const auto &entry : m_entries) {
-        if (!entryMatchesFilters(entry))
-            continue;
-
-        const int row = m_table->rowCount();
-        m_table->insertRow(row);
-
-        auto *tTime = new QTableWidgetItem(entry.timestamp.toString("hh:mm:ss.zzz"));
-        auto *tLevel = new QTableWidgetItem(Logger::levelName(entry.level));
-        auto *tComp = new QTableWidgetItem(Logger::categoryName(entry.category));
-        auto *tMsg = new QTableWidgetItem(entry.message);
-        auto *tPay = new QTableWidgetItem(entry.payload);
-
-        const QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-        tTime->setFont(mono);
-        tLevel->setFont(mono);
-        tComp->setFont(mono);
-        tMsg->setFont(mono);
-        tPay->setFont(mono);
-
-        QColor levelColor;
-        switch (entry.level) {
-        case LogLevel::Info:  levelColor = QColor("#50b8e0"); break;
-        case LogLevel::Warn:  levelColor = QColor("#e0b850"); break;
-        case LogLevel::Error: levelColor = QColor("#e05050"); break;
-        case LogLevel::Debug: levelColor = QColor("#888888"); break;
-        case LogLevel::Raw:   levelColor = QColor("#606060"); break;
-        }
-        tLevel->setForeground(levelColor);
-
-        m_table->setItem(row, 0, tTime);
-        m_table->setItem(row, 1, tLevel);
-        m_table->setItem(row, 2, tComp);
-        m_table->setItem(row, 3, tMsg);
-        m_table->setItem(row, 4, tPay);
+        if (entryMatchesFilters(entry))
+            appendTableRow(entry);
     }
 
     if (m_table->rowCount() == 0) {
@@ -333,7 +336,14 @@ void DiagnosticsPanel::updateStatus()
 void DiagnosticsPanel::onEntryAdded(const LogEntry &entry)
 {
     m_entries.append(entry);
-    refreshTable();
+    if (!entryMatchesFilters(entry))
+        return;
+
+    appendTableRow(entry);
+    m_viewStack->setCurrentWidget(m_table);
+    if (m_autoScroll->isChecked())
+        m_table->scrollToBottom();
+    updateStatus();
 }
 
 void DiagnosticsPanel::onClear()
