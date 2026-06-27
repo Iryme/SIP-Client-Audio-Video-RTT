@@ -1,7 +1,7 @@
 # Project Status
 
 Last updated: 2026-06-27
-Current task count: 42 of N (Tasks 1–28.6 + Task 34–42 complete)
+Current task count: 43 of N (Tasks 1–28.6 + Task 34–43 complete)
 Active branch: `feature/project-handoff-002`
 
 ---
@@ -29,6 +29,7 @@ Active branch: `feature/project-handoff-002`
 | ETSI / NG112 Emergency Protocol Validation | 40 | COMPLETE — 25/25 CTest PASS, live probe built, pre-INVITE chain validated, live run documented |
 | ETSI / NG112 Live Emergency INVITE Capture | 41 | COMPLETE — live probe ran, INVITE confirmed on wire (404 expected), all NG112 headers validated |
 | ETSI / NG112 Emergency GUI Wiring | 42 | COMPLETE — 112 button in CallPanel (hidden by default), EmergencyCallController wired to SipManager, StaticLocationProvider DEMO coords, 26/26 CTest PASS |
+| ETSI / NG112 Manual PIDF-LO Generator + SIP Location Update | 43 | COMPLETE — manual lat/lon/unc UI, PIDF-LO preview, StaticLocationProvider.setLocation(), SipCall::sendLocationUpdate() via UPDATE, SipManager::sendEmergencyLocationUpdate(), 8 unit tests |
 
 ---
 
@@ -78,6 +79,7 @@ Active branch: `feature/project-handoff-002`
 | 40 | Emergency Protocol Validation — test_emergency_protocol_validation, live_emergency_call_probe | feature/project-handoff-002 | COMPLETE — 25/25 CTest PASS, pre-INVITE chain validated, live probe ready |
 | 41 | Live Emergency INVITE Capture — live probe ran, headers confirmed, PIDF-LO confirmed, 404 from Kamailio (PSAP absent, expected) | feature/project-handoff-002 | COMPLETE — live validated |
 | 42 | Emergency GUI Wiring — 112 button in CallPanel, EmergencyCallController → SipManager, StaticLocationProvider DEMO, confirm dialog TEST/LAB | feature/project-handoff-002 | COMPLETE — 26/26 CTest PASS |
+| 43 | Manual PIDF-LO Generator + SIP Location Update — manual lat/lon/unc UI, PIDF-LO preview, SipCall::sendLocationUpdate() via SIP UPDATE, SipManager::sendEmergencyLocationUpdate() | feature/project-handoff-002 | COMPLETE — 26/26 CTest PASS (existing) + test_emergency_location_update 8 tests |
 
 ---
 
@@ -130,6 +132,9 @@ Active branch: `feature/project-handoff-002`
 | EmergencyCallStateMachine | SKELETON | 8-state SM. Independent of PJSIP. |
 | EmergencyLocationProvider | SKELETON | Abstract interface + NullLocationProvider (NotImplemented) |
 | EmergencyCallController | COMPLETE | Orchestration. Wired to SipManager::makeEmergencyCall() via CallPanel (Task 42). |
+| ManualLocationProvider (UI) | COMPLETE | Manual lat/lon/unc input in CallPanel emergency row → StaticLocationProvider.setLocation() → PIDF-LO preview (Task 43). |
+| SipCall::sendLocationUpdate | COMPLETE | SIP UPDATE with multipart PIDF-LO body. PJSIP mode: pjCall->update(). Stub mode: returns false + logs limitation (Task 43). |
+| SipManager::sendEmergencyLocationUpdate | COMPLETE | Delegates to activeCall->sendLocationUpdate(). Guards: emergencyCall flag, active call required (Task 43). |
 | EmergencyInviteBuilder | COMPLETE | Declarative INVITE builder. No PJSIP. 15 tests pass. |
 | EmergencyInvite | COMPLETE | Pure data struct. requestUri, headers, mediaPolicy, location flags, contentId. |
 | EmergencyLocation | COMPLETE | Geodetic location struct. WGS-84. Validation. |

@@ -906,6 +906,22 @@ RttSession *SipManager::rttSession()
     return &m_rttSession;
 }
 
+bool SipManager::sendEmergencyLocationUpdate(const SipCallOptions &opts)
+{
+    if (!opts.emergencyCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendEmergencyLocationUpdate rejected: "
+                           "opts.emergencyCall is false — not an emergency update"));
+        return false;
+    }
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendEmergencyLocationUpdate rejected: no active call"));
+        return false;
+    }
+    return m_activeCall->sendLocationUpdate(opts);
+}
+
 void SipManager::destroyActiveCall()
 {
     if (!m_activeCall)

@@ -73,6 +73,11 @@ public:
     // No-op if no call is active or RTT is not negotiated.
     void sendRttText(const QString &text);
 
+    // Send a SIP UPDATE with an updated PIDF-LO body on the active emergency call.
+    // opts.emergencyCall must be true; active call must be in Active state.
+    // Returns false if no active call, call is not Active, or PJSIP is unavailable.
+    bool sendEmergencyLocationUpdate(const SipCallOptions &opts);
+
     // Access the RTT session for the current call (never null).
     RttSession *rttSession();
 

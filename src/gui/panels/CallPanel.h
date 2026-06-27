@@ -8,6 +8,7 @@
 class QLabel;
 class QComboBox;
 class QLineEdit;
+class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
 class EmergencyCallController;
@@ -54,6 +55,8 @@ private slots:
     void onEmergencyReadyToDial(const EmergencyCallProfile &profile);
     void onEmergencyStateChanged(EmergencyCallState state);
     void onEmergencyFailed(const QString &reason);
+    void onGeneratePidfClicked();
+    void onLocationUpdateClicked();
 
 private:
     void applyCallState(CallState state);
@@ -96,4 +99,14 @@ private:
     EmergencyCallController *m_emergencyController{nullptr};
     StaticLocationProvider  *m_staticLocationProvider{nullptr};
     bool                     m_emergencyCallActive{false};
+
+    // Manual location input (inside emergency row)
+    QLineEdit               *m_latInput{nullptr};
+    QLineEdit               *m_lonInput{nullptr};
+    QLineEdit               *m_uncertaintyInput{nullptr};
+    QLabel                  *m_locationStatusLabel{nullptr};
+    QPlainTextEdit          *m_pidfPreview{nullptr};
+    QPushButton             *m_btnGeneratePidf{nullptr};
+    QPushButton             *m_btnLocationUpdate{nullptr};
+    bool                     m_manualLocationValid{false};
 };

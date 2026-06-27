@@ -76,6 +76,12 @@ public:
     // No-op in stub mode or when the text stream is not active.
     void sendRttText(const QString &text);
 
+    // Send a SIP UPDATE with an updated PIDF-LO body during an active emergency call.
+    // opts.emergencyCall must be true; call must be in Active state.
+    // PJSIP mode: sends UPDATE with PIDF-LO as a multipart/mixed part alongside SDP.
+    // Stub mode: returns false (no SIP stack).
+    bool sendLocationUpdate(const SipCallOptions &opts);
+
     // Force to Idle regardless of current state (shutdown / cleanup path).
     void reset(const QString &reason = QStringLiteral("Reset"));
 

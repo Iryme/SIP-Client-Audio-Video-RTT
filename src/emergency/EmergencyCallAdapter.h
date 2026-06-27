@@ -15,9 +15,14 @@ public:
     // media policy fields are mapped to requireAudio/requireRtt/allowVideo.
     static SipCallOptions toSipCallOptions(const EmergencyInvite &invite);
 
+    // Build SipCallOptions for an in-dialog location UPDATE (no new call).
+    // Sets emergencyCall=true, injects Geolocation / Geolocation-Routing /
+    // Supported headers and the PIDF-LO body.  Pass to
+    // SipManager::sendEmergencyLocationUpdate().
+    static SipCallOptions toLocationUpdateOptions(const QString &pidfLo,
+                                                  const QString &contentId);
+
     // Generate a unique Content-ID for a PIDF-LO MIME part.
-    // Format: pidflo-<ms-since-epoch>@ng112.local
-    // Two calls within the same millisecond return the same value; that is
-    // acceptable for sequential INVITE construction.
+    // Format: pidflo-<ms>-<seq>@ng112.local  (atomic counter ensures uniqueness).
     static QString generateContentId();
 };

@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -18,6 +19,7 @@
 #include "emergency/EmergencyCallController.h"
 #include "emergency/EmergencyInviteBuilder.h"
 #include "emergency/EmergencyLocation.h"
+#include "emergency/PidfLoBuilder.h"
 #include "emergency/StaticLocationProvider.h"
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
@@ -235,6 +237,76 @@ CallPanel::CallPanel(QWidget *parent)
     emerWarnLabel->setWordWrap(true);
     emerOuter->addWidget(emerWarnLabel);
 
+    // --- Manual location input section ---------------------------------------
+    // No Windows Location API — coordinates entered manually by the user.
+    auto *locHeaderLabel = new QLabel(
+        tr("[TEST/LAB] Manual Location — enter WGS-84 coordinates below. "
+           "No GPS, no Windows Location."), m_emergencyRow);
+    locHeaderLabel->setStyleSheet("color: #cc7700; font-size: 9px;");
+    locHeaderLabel->setWordWrap(true);
+    emerOuter->addWidget(locHeaderLabel);
+
+    auto *locInputRow = new QHBoxLayout();
+    locInputRow->setSpacing(4);
+
+    auto *latLabel = new QLabel(tr("Lat:"), m_emergencyRow);
+    latLabel->setStyleSheet("color: #888888; font-size: 10px;");
+    m_latInput = new QLineEdit(QStringLiteral("44.4268"), m_emergencyRow);
+    m_latInput->setObjectName("LocLatInput");
+    m_latInput->setFixedWidth(72);
+    m_latInput->setFixedHeight(22);
+    m_latInput->setToolTip(tr("-90 to 90 degrees (WGS-84)"));
+
+    auto *lonLabel = new QLabel(tr("Lon:"), m_emergencyRow);
+    lonLabel->setStyleSheet("color: #888888; font-size: 10px;");
+    m_lonInput = new QLineEdit(QStringLiteral("26.1025"), m_emergencyRow);
+    m_lonInput->setObjectName("LocLonInput");
+    m_lonInput->setFixedWidth(72);
+    m_lonInput->setFixedHeight(22);
+    m_lonInput->setToolTip(tr("-180 to 180 degrees (WGS-84)"));
+
+    auto *uncLabel = new QLabel(tr("Unc(m):"), m_emergencyRow);
+    uncLabel->setStyleSheet("color: #888888; font-size: 10px;");
+    m_uncertaintyInput = new QLineEdit(QStringLiteral("50.0"), m_emergencyRow);
+    m_uncertaintyInput->setObjectName("LocUncInput");
+    m_uncertaintyInput->setFixedWidth(56);
+    m_uncertaintyInput->setFixedHeight(22);
+    m_uncertaintyInput->setToolTip(tr("Accuracy radius in meters (>= 0)"));
+
+    m_btnGeneratePidf = new QPushButton(tr("Generate PIDF-LO"), m_emergencyRow);
+    m_btnGeneratePidf->setObjectName("GeneratePidfBtn");
+    m_btnGeneratePidf->setFixedHeight(22);
+    m_btnGeneratePidf->setStyleSheet("font-size: 10px;");
+
+    locInputRow->addWidget(latLabel);
+    locInputRow->addWidget(m_latInput);
+    locInputRow->addWidget(lonLabel);
+    locInputRow->addWidget(m_lonInput);
+    locInputRow->addWidget(uncLabel);
+    locInputRow->addWidget(m_uncertaintyInput);
+    locInputRow->addWidget(m_btnGeneratePidf);
+    locInputRow->addStretch();
+    emerOuter->addLayout(locInputRow);
+
+    m_locationStatusLabel = new QLabel(
+        tr("Location: not generated — enter coordinates and click Generate PIDF-LO"),
+        m_emergencyRow);
+    m_locationStatusLabel->setObjectName("LocationStatusLabel");
+    m_locationStatusLabel->setStyleSheet("color: #888888; font-size: 9px;");
+    m_locationStatusLabel->setWordWrap(true);
+    emerOuter->addWidget(m_locationStatusLabel);
+
+    m_pidfPreview = new QPlainTextEdit(m_emergencyRow);
+    m_pidfPreview->setObjectName("PidfPreview");
+    m_pidfPreview->setReadOnly(true);
+    m_pidfPreview->setMaximumHeight(56);
+    m_pidfPreview->setPlaceholderText(tr("PIDF-LO XML appears here after Generate is clicked"));
+    m_pidfPreview->setStyleSheet(
+        "QPlainTextEdit { font-family: monospace; font-size: 8px;"
+        " color: #999999; background: #1a1a1a; border: 1px solid #333; }");
+    emerOuter->addWidget(m_pidfPreview);
+
+    // --- Control row: state label + emergency call button + location update --
     auto *emerCtrlRow = new QHBoxLayout();
     emerCtrlRow->setSpacing(6);
 
@@ -242,6 +314,17 @@ CallPanel::CallPanel(QWidget *parent)
     m_emergencyStateLabel->setObjectName("EmergencyStateLabel");
     m_emergencyStateLabel->setStyleSheet("color: #aaaaaa; font-size: 10px;");
     emerCtrlRow->addWidget(m_emergencyStateLabel, 1);
+
+    m_btnLocationUpdate = new QPushButton(tr("Send Location Update"), m_emergencyRow);
+    m_btnLocationUpdate->setObjectName("LocationUpdateBtn");
+    m_btnLocationUpdate->setFixedHeight(30);
+    m_btnLocationUpdate->setEnabled(false);
+    m_btnLocationUpdate->setStyleSheet(
+        "QPushButton#LocationUpdateBtn { background: #1a3a4a; color: #5090c0;"
+        " border-radius: 4px; font-size: 10px; }"
+        "QPushButton#LocationUpdateBtn:hover { background: #2a4a5a; }"
+        "QPushButton#LocationUpdateBtn:disabled { background: #1a2020; color: #444444; }");
+    emerCtrlRow->addWidget(m_btnLocationUpdate);
 
     m_btnEmergency = new QPushButton(tr("112 Emergency (TEST)"), m_emergencyRow);
     m_btnEmergency->setObjectName("EmergencyBtn");
@@ -408,6 +491,10 @@ CallPanel::CallPanel(QWidget *parent)
     // Emergency button click → confirm dialog → prepare().
     connect(m_btnEmergency, &QPushButton::clicked, this, &CallPanel::onEmergencyButtonClicked);
 
+    // Manual location buttons.
+    connect(m_btnGeneratePidf, &QPushButton::clicked, this, &CallPanel::onGeneratePidfClicked);
+    connect(m_btnLocationUpdate, &QPushButton::clicked, this, &CallPanel::onLocationUpdateClicked);
+
     // SipManager call events → update emergency SM when an emergency call is active.
     connect(&SipManager::instance(), &SipManager::callConnected,
             this, [this](const QString &) {
@@ -419,6 +506,7 @@ CallPanel::CallPanel(QWidget *parent)
             this, [this](const QString &, const QString &, int) {
         if (m_emergencyCallActive) {
             m_emergencyCallActive = false;
+            if (m_btnLocationUpdate) m_btnLocationUpdate->setEnabled(false);
             m_emergencyController->stateMachine().transition(
                 EmergencyCallState::Ended, QStringLiteral("call ended"));
             m_emergencyController->stateMachine().reset();
@@ -428,6 +516,7 @@ CallPanel::CallPanel(QWidget *parent)
             this, [this](const QString &, const QString &reason, int) {
         if (m_emergencyCallActive) {
             m_emergencyCallActive = false;
+            if (m_btnLocationUpdate) m_btnLocationUpdate->setEnabled(false);
             m_emergencyController->stateMachine().transition(
                 EmergencyCallState::Failed,
                 QStringLiteral("call failed: %1").arg(reason));
@@ -748,6 +837,11 @@ void CallPanel::onEmergencyStateChanged(EmergencyCallState state)
                           || state == EmergencyCallState::Ended);
     if (m_btnEmergency)
         m_btnEmergency->setEnabled(registered && canDial);
+
+    // Location update: only allowed when emergency call is active and location was generated.
+    if (m_btnLocationUpdate)
+        m_btnLocationUpdate->setEnabled(
+            state == EmergencyCallState::Active && m_manualLocationValid);
 }
 
 void CallPanel::onEmergencyFailed(const QString &reason)
@@ -760,5 +854,137 @@ void CallPanel::onEmergencyFailed(const QString &reason)
         const bool registered =
             (SipManager::instance().registrationState() == RegistrationState::Registered);
         m_btnEmergency->setEnabled(registered);
+    }
+    if (m_btnLocationUpdate) m_btnLocationUpdate->setEnabled(false);
+}
+
+// ---------------------------------------------------------------------------
+// Manual PIDF-LO generation
+// ---------------------------------------------------------------------------
+
+void CallPanel::onGeneratePidfClicked()
+{
+    bool latOk = false, lonOk = false, uncOk = false;
+    const double lat = m_latInput->text().trimmed().toDouble(&latOk);
+    const double lon = m_lonInput->text().trimmed().toDouble(&lonOk);
+    const double unc = m_uncertaintyInput->text().trimmed().toDouble(&uncOk);
+
+    QStringList errors;
+    if (!latOk || lat < -90.0 || lat > 90.0)
+        errors << tr("Latitude must be -90..90");
+    if (!lonOk || lon < -180.0 || lon > 180.0)
+        errors << tr("Longitude must be -180..180");
+    if (!uncOk || unc < 0.0)
+        errors << tr("Uncertainty must be >= 0");
+
+    if (!errors.isEmpty()) {
+        m_locationStatusLabel->setText(tr("Invalid: %1").arg(errors.join(QStringLiteral("; "))));
+        m_locationStatusLabel->setStyleSheet("color: #e05050; font-size: 9px;");
+        m_pidfPreview->clear();
+        m_manualLocationValid = false;
+        if (m_btnLocationUpdate) m_btnLocationUpdate->setEnabled(false);
+        return;
+    }
+
+    QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    if (!ts.endsWith('Z')) ts += 'Z';
+
+    EmergencyLocation loc = EmergencyLocation::makeStatic(lat, lon, ts);
+    loc.uncertaintyMeters = unc;
+    loc.source = LocationSource::Manual;
+
+    if (!loc.isValid()) {
+        const QStringList ve = loc.validationErrors();
+        m_locationStatusLabel->setText(tr("Location invalid: %1").arg(ve.join(QStringLiteral("; "))));
+        m_locationStatusLabel->setStyleSheet("color: #e05050; font-size: 9px;");
+        m_pidfPreview->clear();
+        m_manualLocationValid = false;
+        if (m_btnLocationUpdate) m_btnLocationUpdate->setEnabled(false);
+        return;
+    }
+
+    const QString cid = EmergencyCallAdapter::generateContentId();
+    const PidfLoResult r = PidfLoBuilder(loc).setContentId(cid).build();
+
+    if (!r.success) {
+        m_locationStatusLabel->setText(tr("PIDF-LO build failed: %1").arg(r.error));
+        m_locationStatusLabel->setStyleSheet("color: #e05050; font-size: 9px;");
+        m_pidfPreview->clear();
+        m_manualLocationValid = false;
+        if (m_btnLocationUpdate) m_btnLocationUpdate->setEnabled(false);
+        return;
+    }
+
+    // Update the static provider with the newly entered location.
+    m_staticLocationProvider->setLocation(loc);
+
+    m_pidfPreview->setPlainText(r.xml);
+    m_locationStatusLabel->setText(
+        tr("[TEST/LAB] Valid — lat=%1 lon=%2 unc=%3m — PIDF-LO ready")
+            .arg(lat, 0, 'f', 6).arg(lon, 0, 'f', 6).arg(unc, 0, 'f', 1));
+    m_locationStatusLabel->setStyleSheet("color: #50c878; font-size: 9px;");
+    m_manualLocationValid = true;
+
+    const bool emergencyActive =
+        (m_emergencyCallActive
+         && m_emergencyController->state() == EmergencyCallState::Active);
+    if (m_btnLocationUpdate) m_btnLocationUpdate->setEnabled(emergencyActive);
+
+    Logger::instance().info(LogCategory::App,
+        QStringLiteral("[TEST/LAB] Manual PIDF-LO generated: lat=%1 lon=%2 unc=%3m")
+            .arg(lat, 0, 'f', 6).arg(lon, 0, 'f', 6).arg(unc, 0, 'f', 1));
+}
+
+// ---------------------------------------------------------------------------
+// In-dialog location update (SIP UPDATE)
+// ---------------------------------------------------------------------------
+
+void CallPanel::onLocationUpdateClicked()
+{
+    if (!m_emergencyCallActive || !m_manualLocationValid) {
+        Logger::instance().warn(LogCategory::App,
+            QStringLiteral("[EMERGENCY] Location update ignored: active=%1 locationValid=%2")
+                .arg(m_emergencyCallActive).arg(m_manualLocationValid));
+        return;
+    }
+
+    const QString target = AppSettings::emergencyTarget();
+    const int ret = QMessageBox::warning(
+        this,
+        tr("Confirm Location Update — TEST/LAB Only"),
+        tr("Send a SIP UPDATE with updated location to the active emergency test call?\n\n"
+           "Target: %1\n\n"
+           "THIS IS A TEST/LAB OPERATION ONLY.\n"
+           "Manual coordinates (not GPS) will be sent in a new PIDF-LO body.").arg(target),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+
+    if (ret != QMessageBox::Yes) {
+        Logger::instance().info(LogCategory::App,
+            QStringLiteral("[EMERGENCY] Location update: user cancelled"));
+        return;
+    }
+
+    const QString contentId = EmergencyCallAdapter::generateContentId();
+    const SipCallOptions opts = EmergencyCallAdapter::toLocationUpdateOptions(
+        m_staticLocationProvider->pidfLo(), contentId);
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("[EMERGENCY TEST/DEMO] sendEmergencyLocationUpdate: contentId=%1")
+            .arg(contentId));
+
+    const bool ok = SipManager::instance().sendEmergencyLocationUpdate(opts);
+    if (ok) {
+        m_locationStatusLabel->setText(
+            tr("[TEST/LAB] Location UPDATE sent — contentId=%1").arg(contentId));
+        m_locationStatusLabel->setStyleSheet("color: #50c878; font-size: 9px;");
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("[EMERGENCY TEST/DEMO] Location UPDATE accepted by PJSIP: contentId=%1")
+                .arg(contentId));
+    } else {
+        m_locationStatusLabel->setText(tr("Location UPDATE failed — see log (stub or not Active)"));
+        m_locationStatusLabel->setStyleSheet("color: #e05050; font-size: 9px;");
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("[EMERGENCY] sendEmergencyLocationUpdate returned false"));
     }
 }

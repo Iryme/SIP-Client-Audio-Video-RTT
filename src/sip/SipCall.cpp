@@ -1366,6 +1366,69 @@ void SipCall::sendRttText(const QString &text)
 #endif
 }
 
+bool SipCall::sendLocationUpdate(const SipCallOptions &opts)
+{
+    if (!opts.emergencyCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendLocationUpdate rejected: opts.emergencyCall is false"));
+        return false;
+    }
+    if (m_stateMachine.state() != CallState::Active) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendLocationUpdate rejected: call not Active (state=%1)")
+                .arg(callStateName(m_stateMachine.state())));
+        return false;
+    }
+
+#ifdef HAVE_PJSIP
+    if (!m_impl || !m_impl->pjCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendLocationUpdate: no PJSIP call object"));
+        return false;
+    }
+    try {
+        pj::CallOpParam prm;
+        for (const auto &hdr : opts.customHeaders) {
+            pj::SipHeader sh;
+            sh.hName  = hdr.first.toStdString();
+            sh.hValue = hdr.second.toStdString();
+            prm.txOption.headers.push_back(sh);
+        }
+        if (!opts.body.isEmpty()) {
+            pj::SipMultipartPart pidfPart;
+            pidfPart.contentType.type    = "application";
+            pidfPart.contentType.subType = "pidf+xml";
+            pidfPart.body                = opts.body.toStdString();
+            if (!opts.contentId.isEmpty()) {
+                pj::SipHeader cidHdr;
+                cidHdr.hName  = "Content-ID";
+                cidHdr.hValue = "<" + opts.contentId.toStdString() + ">";
+                pidfPart.headers.push_back(cidHdr);
+            }
+            prm.txOption.multipartParts.push_back(pidfPart);
+            prm.txOption.multipartContentType.type    = "multipart";
+            prm.txOption.multipartContentType.subType = "mixed";
+        }
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("[EMERGENCY] SIP UPDATE with PIDF-LO: call=%1 contentId=%2")
+                .arg(m_callId, opts.contentId));
+        m_impl->pjCall->update(prm);
+        return true;
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendLocationUpdate PJSIP error: call=%1 reason=%2")
+                .arg(m_callId, QString::fromStdString(e.reason)));
+        return false;
+    }
+#else
+    Q_UNUSED(opts)
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("sendLocationUpdate: PJSIP not available — "
+                       "UPDATE not sent (stub mode limitation)"));
+    return false;
+#endif
+}
+
 void SipCall::postStubTransition(CallState to, const QString &reason, int statusCode)
 {
     QPointer<SipCall> self(this);
