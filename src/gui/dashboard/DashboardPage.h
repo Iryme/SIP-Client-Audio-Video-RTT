@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include "core/Logger.h"
 #include "sip/SipAccount.h"
 #include "sip/CallStateMachine.h"
 
@@ -24,6 +25,8 @@ private slots:
     void onAudioConnected();
     void onAudioDisconnected();
     void onDevicesChanged();
+    void onSipInitialized();
+    void onLogEntryAdded(const LogEntry &entry);
     void tickUptimeAndMemory();
 
 private:

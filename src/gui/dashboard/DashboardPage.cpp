@@ -75,8 +75,10 @@ DashboardPage::DashboardPage(QWidget *parent)
     populateStats();
 
     // ── Signal connections ───────────────────────────────────────────────
-    // Qt::UniqueConnection guards against any accidental double-connect if the
-    // page construction path ever changes.
+    // Named-slot connections use Qt::UniqueConnection as a safety net.
+    // Lambda connections cannot use Qt::UniqueConnection (Qt asserts) — they
+    // are safe without it because DashboardPage is constructed exactly once
+    // (guarded by MainWindow::m_pageBuilt[0]).
     auto &sip = SipManager::instance();
     connect(&sip, &SipManager::registrationStateChanged,
             this, &DashboardPage::onSipStateChanged,
@@ -90,26 +92,17 @@ DashboardPage::DashboardPage(QWidget *parent)
     connect(&sip, &SipManager::audioMediaDisconnected,
             this, &DashboardPage::onAudioDisconnected,
             Qt::UniqueConnection);
-    connect(&sip, &SipManager::initialized, this, [this]() {
-        m_header->setSipStatus(SipManager::instance().registrationState());
-        m_stats->setValue("registeredAccounts",
-            SipManager::instance().registrationState() == RegistrationState::Registered
-                ? QStringLiteral("1") : QStringLiteral("0"));
-    }, Qt::UniqueConnection);
+    connect(&sip, &SipManager::initialized,
+            this, &DashboardPage::onSipInitialized,
+            Qt::UniqueConnection);
 
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
             this, &DashboardPage::onDevicesChanged,
             Qt::UniqueConnection);
 
-    connect(&Logger::instance(), &Logger::entryAdded, this,
-            [this](const LogEntry &entry) {
-        ++m_totalLogEntries;
-        if (entry.category == LogCategory::Sip) ++m_sipEntries;
-        if (entry.category == LogCategory::Rtt) ++m_rttEntries;
-        m_stats->setValue("logMessages", QString::number(m_totalLogEntries));
-        m_stats->setValue("sipMessages", QString::number(m_sipEntries));
-        m_stats->setValue("rttMessages", QString::number(m_rttEntries));
-    }, Qt::UniqueConnection);
+    connect(&Logger::instance(), &Logger::entryAdded,
+            this, &DashboardPage::onLogEntryAdded,
+            Qt::UniqueConnection);
 
     // ── Periodic tick: uptime, call duration, memory ─────────────────────
     m_tickTimer = new QTimer(this);
@@ -308,6 +301,24 @@ void DashboardPage::onAudioDisconnected()
 void DashboardPage::onDevicesChanged()
 {
     refreshDeviceStats();
+}
+
+void DashboardPage::onSipInitialized()
+{
+    const RegistrationState state = SipManager::instance().registrationState();
+    m_header->setSipStatus(state);
+    m_stats->setValue(QStringLiteral("registeredAccounts"),
+        state == RegistrationState::Registered ? QStringLiteral("1") : QStringLiteral("0"));
+}
+
+void DashboardPage::onLogEntryAdded(const LogEntry &entry)
+{
+    ++m_totalLogEntries;
+    if (entry.category == LogCategory::Sip) ++m_sipEntries;
+    if (entry.category == LogCategory::Rtt) ++m_rttEntries;
+    m_stats->setValue(QStringLiteral("logMessages"), QString::number(m_totalLogEntries));
+    m_stats->setValue(QStringLiteral("sipMessages"),  QString::number(m_sipEntries));
+    m_stats->setValue(QStringLiteral("rttMessages"),  QString::number(m_rttEntries));
 }
 
 void DashboardPage::tickUptimeAndMemory()
