@@ -1,15 +1,17 @@
 #pragma once
+
 #include <QWidget>
+#include <QList>
+
 #include "core/Logger.h"
 
-class QToolButton;
-class QTableWidget;
+class QComboBox;
 class QLineEdit;
 class QPushButton;
+class QToolButton;
+class QTableWidget;
 class QHBoxLayout;
-class QScrollArea;
 class QTabWidget;
-class SipLadderWidget;
 
 class DiagnosticsPanel : public QWidget
 {
@@ -17,12 +19,7 @@ class DiagnosticsPanel : public QWidget
 public:
     explicit DiagnosticsPanel(QWidget *parent = nullptr);
 
-    void showLogsTab();
-    void showLadderTab();
-    void setActiveTab(int index);
-
     QTableWidget *logTable() const;
-    SipLadderWidget *ladderWidget() const;
 
 private slots:
     void onEntryAdded(const LogEntry &entry);
@@ -31,18 +28,18 @@ private slots:
     void onExportVisible();
     void onExportBundle();
     void onLevelToggled(bool checked);
-    void onClearLadder();
+    void onFilterChanged();
 
 private:
     void buildToolbar(QHBoxLayout *row);
-    void addRow(const LogEntry &entry);
+    void refreshTable();
     bool isLevelVisible(LogLevel level) const;
+    bool entryMatchesFilters(const LogEntry &entry) const;
 
-    QTabWidget      *m_tabs{nullptr};
-    QTableWidget    *m_table{nullptr};
-    QLineEdit       *m_search{nullptr};
-    SipLadderWidget *m_ladder{nullptr};
-    QScrollArea     *m_ladderScroll{nullptr};
+    QTableWidget *m_table{nullptr};
+    QLineEdit    *m_search{nullptr};
+    QComboBox    *m_componentFilter{nullptr};
+    QList<LogEntry> m_entries;
 
     QToolButton *m_btnInfo{nullptr};
     QToolButton *m_btnWarn{nullptr};

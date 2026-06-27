@@ -3,7 +3,6 @@
 #include "core/AppSettings.h"
 #include "core/Logger.h"
 #include "gui/panels/CallPanel.h"
-#include "gui/panels/ContactsPanel.h"
 #include "gui/panels/DiagnosticsPanel.h"
 #include "gui/panels/MediaPanel.h"
 #include "gui/panels/NavRail.h"
@@ -262,7 +261,6 @@ QWidget *MainWindow::buildClientsPage()
 QWidget *MainWindow::buildLogsPage()
 {
     m_diagnostics = new DiagnosticsPanel(this);
-    m_diagnostics->showLogsTab();
     return m_diagnostics;
 }
 
