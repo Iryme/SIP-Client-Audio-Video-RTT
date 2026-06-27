@@ -155,36 +155,39 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
         repositionOverlays();
     });
 
-    // Retry timer: re-attach PJSIP video windows every 2 s while video is active.
-    // PJSIP often returns videoIncomingWindowId=-1 on the first media callback;
-    // the window ID becomes valid only after one or more re-negotiations.
-    m_videoRetryTimer.setInterval(2000);
-    connect(&m_videoRetryTimer, &QTimer::timeout, this, [this]() {
-        if (m_videoActive)
-            VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
-    });
+    // Remote-video wiring is only needed for the call panel (autoStartIdlePreview=true).
+    // The media-settings preview panel (autoStartIdlePreview=false) shows only local
+    // camera preview and must not intercept PJSIP video handles from the call panel.
+    if (m_autoStartIdlePreview) {
+        // Retry timer: re-attach PJSIP video windows every 2 s while video is active.
+        m_videoRetryTimer.setInterval(2000);
+        connect(&m_videoRetryTimer, &QTimer::timeout, this, [this]() {
+            if (m_videoActive)
+                VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
+        });
 
-    // VideoMediaManager → this
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMediaConnected,
-            this, &VideoPanel::onVideoMediaConnected);
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMediaDisconnected,
-            this, &VideoPanel::onVideoMediaDisconnected);
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::localVideoStarted,
-            this, &VideoPanel::onLocalVideoStarted);
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::localVideoStopped,
-            this, &VideoPanel::onLocalVideoStopped);
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::remoteVideoStarted,
-            this, &VideoPanel::onRemoteVideoStarted);
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::remoteVideoStopped,
-            this, &VideoPanel::onRemoteVideoStopped);
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMutedChanged,
-            this, &VideoPanel::onVideoMutedChanged);
+        connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMediaConnected,
+                this, &VideoPanel::onVideoMediaConnected);
+        connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMediaDisconnected,
+                this, &VideoPanel::onVideoMediaDisconnected);
+        connect(&VideoMediaManager::instance(), &VideoMediaManager::localVideoStarted,
+                this, &VideoPanel::onLocalVideoStarted);
+        connect(&VideoMediaManager::instance(), &VideoMediaManager::localVideoStopped,
+                this, &VideoPanel::onLocalVideoStopped);
+        connect(&VideoMediaManager::instance(), &VideoMediaManager::remoteVideoStarted,
+                this, &VideoPanel::onRemoteVideoStarted);
+        connect(&VideoMediaManager::instance(), &VideoMediaManager::remoteVideoStopped,
+                this, &VideoPanel::onRemoteVideoStopped);
+        connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMutedChanged,
+                this, &VideoPanel::onVideoMutedChanged);
+    }
+
     connect(&VideoMediaManager::instance(), &VideoMediaManager::cameraChanged,
             this, [this](const QString &deviceId) {
         Logger::instance().info(LogCategory::Media,
-            QStringLiteral("VideoPanel: cameraChanged received, refreshing preview for '%1'")
-                .arg(deviceId));
-        refreshIdlePreview();
+            QStringLiteral("VideoPanel: cameraChanged received for '%1'").arg(deviceId));
+        if (m_autoStartIdlePreview)
+            refreshIdlePreview();
     });
 
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
