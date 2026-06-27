@@ -78,6 +78,17 @@ set(SOURCES
     src/media/QtMediaDeviceBackend.cpp
     src/media/PjsipGdiRenderer.cpp
     src/rtt/RttSession.cpp
+    # Emergency module — no PJSIP dependency; wired to GUI in Task 42
+    src/emergency/EmergencyCallAdapter.cpp
+    src/emergency/EmergencyCallController.cpp
+    src/emergency/EmergencyCallProfile.cpp
+    src/emergency/EmergencyCallStateMachine.cpp
+    src/emergency/EmergencyInviteBuilder.cpp
+    src/emergency/EmergencyLocation.cpp
+    src/emergency/EmergencyLocationProvider.cpp
+    src/emergency/EmergencyMultipartBuilder.cpp
+    src/emergency/PidfLoBuilder.cpp
+    src/emergency/StaticLocationProvider.cpp
 )
 
 set(HEADERS

@@ -1,16 +1,24 @@
 #include "CallPanel.h"
 
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QGridLayout>
-#include <QLabel>
 #include <QComboBox>
+#include <QDateTime>
+#include <QFrame>
+#include <QGridLayout>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
-#include <QFrame>
+#include <QVBoxLayout>
 
+#include "core/AppSettings.h"
 #include "core/Logger.h"
+#include "emergency/EmergencyCallAdapter.h"
+#include "emergency/EmergencyCallController.h"
+#include "emergency/EmergencyInviteBuilder.h"
+#include "emergency/EmergencyLocation.h"
+#include "emergency/StaticLocationProvider.h"
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
@@ -207,6 +215,69 @@ CallPanel::CallPanel(QWidget *parent)
     dialOuter->addLayout(dialLayout);
     layout->addWidget(m_dialRow);
 
+    // --- Emergency test mode section (hidden by default) ---------------------
+    // Visible only when emergency/testMode=true in SIPClient.ini.
+    // Never used for real emergency calls — lab/test only.
+    m_emergencyRow = new QWidget(this);
+    m_emergencyRow->setObjectName("EmergencyRow");
+    m_emergencyRow->setStyleSheet(
+        "QWidget#EmergencyRow { background: #2a1200; border: 1px solid #8b3a00;"
+        " border-radius: 5px; }");
+
+    auto *emerOuter = new QVBoxLayout(m_emergencyRow);
+    emerOuter->setContentsMargins(10, 8, 10, 8);
+    emerOuter->setSpacing(4);
+
+    auto *emerWarnLabel = new QLabel(
+        tr("[TEST/LAB] Emergency Test Mode — NOT a real emergency service"), m_emergencyRow);
+    emerWarnLabel->setObjectName("EmergencyWarnLabel");
+    emerWarnLabel->setStyleSheet("color: #ff8c00; font-size: 10px; font-weight: bold;");
+    emerWarnLabel->setWordWrap(true);
+    emerOuter->addWidget(emerWarnLabel);
+
+    auto *emerCtrlRow = new QHBoxLayout();
+    emerCtrlRow->setSpacing(6);
+
+    m_emergencyStateLabel = new QLabel(tr("State: Idle"), m_emergencyRow);
+    m_emergencyStateLabel->setObjectName("EmergencyStateLabel");
+    m_emergencyStateLabel->setStyleSheet("color: #aaaaaa; font-size: 10px;");
+    emerCtrlRow->addWidget(m_emergencyStateLabel, 1);
+
+    m_btnEmergency = new QPushButton(tr("112 Emergency (TEST)"), m_emergencyRow);
+    m_btnEmergency->setObjectName("EmergencyBtn");
+    m_btnEmergency->setFixedHeight(30);
+    m_btnEmergency->setMinimumWidth(160);
+    m_btnEmergency->setEnabled(false); // enabled only when registered
+    m_btnEmergency->setStyleSheet(
+        "QPushButton#EmergencyBtn { background: #8b0000; color: white;"
+        " border-radius: 4px; font-weight: bold; }"
+        "QPushButton#EmergencyBtn:hover { background: #b00000; }"
+        "QPushButton#EmergencyBtn:disabled { background: #3a2020; color: #666666; }");
+    emerCtrlRow->addWidget(m_btnEmergency);
+
+    emerOuter->addLayout(emerCtrlRow);
+    layout->addWidget(m_emergencyRow);
+
+    // Hide unless test mode is explicitly enabled in settings.
+    m_emergencyRow->setVisible(AppSettings::emergencyTestModeEnabled());
+
+    // --- Emergency controller setup ------------------------------------------
+    // DEMO static location: Bucharest, 44.4268°N 26.1025°E, uncertainty 50 m.
+    // No Windows Location API — StaticLocationProvider only.
+    QString ts = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    if (!ts.endsWith('Z')) ts += 'Z';
+    EmergencyLocation demoLoc = EmergencyLocation::makeStatic(44.4268, 26.1025, ts);
+    demoLoc.uncertaintyMeters = 50.0;
+    demoLoc.source = LocationSource::Static;
+
+    m_staticLocationProvider = new StaticLocationProvider(demoLoc, this);
+    m_emergencyController    = new EmergencyCallController(this);
+    m_emergencyController->setLocationProvider(m_staticLocationProvider);
+
+    const EmergencyCallProfile emProfile = EmergencyCallProfile::makeSos(
+        AppSettings::emergencyTarget(), QStringLiteral("NG112-TEST"));
+    m_emergencyController->setProfile(emProfile);
+
     // --- Internal signal wiring ----------------------------------------------
     connect(m_btnMute,   &QPushButton::toggled, this, &CallPanel::muteToggled);
     connect(m_btnVideo,  &QPushButton::toggled, this, &CallPanel::videoToggled);
@@ -315,6 +386,51 @@ CallPanel::CallPanel(QWidget *parent)
         } else {
             m_regStatusLabel->setText(tr("Not registered — register a SIP profile first"));
             m_regStatusLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
+        }
+        // Emergency button: requires registration + Idle/Failed SM state.
+        if (m_btnEmergency) {
+            const EmergencyCallState es = m_emergencyController->state();
+            const bool canDial = (es == EmergencyCallState::Idle
+                                  || es == EmergencyCallState::Failed
+                                  || es == EmergencyCallState::Ended);
+            m_btnEmergency->setEnabled(registered && canDial);
+        }
+    });
+
+    // Emergency controller signals.
+    connect(m_emergencyController, &EmergencyCallController::stateChanged,
+            this, &CallPanel::onEmergencyStateChanged);
+    connect(m_emergencyController, &EmergencyCallController::readyToDial,
+            this, &CallPanel::onEmergencyReadyToDial);
+    connect(m_emergencyController, &EmergencyCallController::preparationFailed,
+            this, &CallPanel::onEmergencyFailed);
+
+    // Emergency button click → confirm dialog → prepare().
+    connect(m_btnEmergency, &QPushButton::clicked, this, &CallPanel::onEmergencyButtonClicked);
+
+    // SipManager call events → update emergency SM when an emergency call is active.
+    connect(&SipManager::instance(), &SipManager::callConnected,
+            this, [this](const QString &) {
+        if (m_emergencyCallActive)
+            m_emergencyController->stateMachine().transition(
+                EmergencyCallState::Active, QStringLiteral("call connected"));
+    });
+    connect(&SipManager::instance(), &SipManager::callDisconnected,
+            this, [this](const QString &, const QString &, int) {
+        if (m_emergencyCallActive) {
+            m_emergencyCallActive = false;
+            m_emergencyController->stateMachine().transition(
+                EmergencyCallState::Ended, QStringLiteral("call ended"));
+            m_emergencyController->stateMachine().reset();
+        }
+    });
+    connect(&SipManager::instance(), &SipManager::callFailed,
+            this, [this](const QString &, const QString &reason, int) {
+        if (m_emergencyCallActive) {
+            m_emergencyCallActive = false;
+            m_emergencyController->stateMachine().transition(
+                EmergencyCallState::Failed,
+                QStringLiteral("call failed: %1").arg(reason));
         }
     });
 
@@ -518,5 +634,131 @@ void CallPanel::focusDialInput()
     if (m_dialInput) {
         m_dialInput->setFocus();
         m_dialInput->selectAll();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Emergency call slots
+// ---------------------------------------------------------------------------
+
+void CallPanel::onEmergencyButtonClicked()
+{
+    const QString target = AppSettings::emergencyTarget();
+    const QString msg = tr(
+        "EMERGENCY TEST CALL\n\n"
+        "This will send a SIP INVITE to the configured lab PSAP target:\n"
+        "  %1\n\n"
+        "THIS IS A TEST/LAB CALL ONLY.\n"
+        "Do NOT use for real emergencies — this is not connected to emergency services.\n\n"
+        "Proceed with the test call?").arg(target);
+
+    const int ret = QMessageBox::warning(
+        this,
+        tr("Confirm Emergency Test Call — TEST/LAB Only"),
+        msg,
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);  // default: No (prevents accidental confirmation)
+
+    if (ret != QMessageBox::Yes) {
+        Logger::instance().info(LogCategory::App,
+            QStringLiteral("Emergency test call: user cancelled confirm dialog"));
+        return;
+    }
+
+    Logger::instance().info(LogCategory::App,
+        QStringLiteral("[EMERGENCY TEST/DEMO] Emergency call initiated — target=%1").arg(target));
+
+    m_btnEmergency->setEnabled(false);
+
+    // Update the controller profile with the current target (may have changed in settings).
+    const EmergencyCallProfile emProfile = EmergencyCallProfile::makeSos(
+        target, QStringLiteral("NG112-TEST"));
+    m_emergencyController->setProfile(emProfile);
+
+    m_emergencyController->prepare();
+}
+
+void CallPanel::onEmergencyReadyToDial(const EmergencyCallProfile &profile)
+{
+    const bool hasLocation = !profile.pidfLo.isEmpty();
+    const QString contentId = EmergencyCallAdapter::generateContentId();
+
+    const EmergencyInvite invite = EmergencyInviteBuilder(profile)
+        .setLocationAvailable(hasLocation)
+        .setLocationRequired(false)
+        .setContentId(contentId)
+        .build();
+
+    const EmergencyInviteValidationResult vr = EmergencyInviteBuilder::validate(invite);
+    if (!vr.isValid()) {
+        const QString reason = vr.errors.join(QStringLiteral("; "));
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("[EMERGENCY] Invite invalid, call blocked: %1").arg(reason));
+        m_emergencyController->stateMachine().transition(
+            EmergencyCallState::Failed, reason);
+        return;
+    }
+
+    const SipCallOptions opts = EmergencyCallAdapter::toSipCallOptions(invite);
+    m_emergencyCallActive = true;
+
+    m_emergencyController->stateMachine().transition(
+        EmergencyCallState::Dialing, QStringLiteral("makeEmergencyCall"));
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("[EMERGENCY TEST/DEMO] makeEmergencyCall → %1, contentId=%2")
+            .arg(profile.routingTarget, contentId));
+
+    if (!SipManager::instance().makeEmergencyCall(profile.routingTarget, opts)) {
+        m_emergencyCallActive = false;
+        m_emergencyController->stateMachine().transition(
+            EmergencyCallState::Failed, QStringLiteral("makeEmergencyCall returned false"));
+    }
+}
+
+void CallPanel::onEmergencyStateChanged(EmergencyCallState state)
+{
+    const QString name = emergencyCallStateName(state);
+
+    QString color = QStringLiteral("#aaaaaa"); // Idle / default
+    switch (state) {
+    case EmergencyCallState::Active:
+        color = QStringLiteral("#50c878"); break;          // green
+    case EmergencyCallState::Dialing:
+    case EmergencyCallState::Preparing:
+    case EmergencyCallState::LocationPending:
+    case EmergencyCallState::ReadyToDial:
+        color = QStringLiteral("#e0b850"); break;          // amber
+    case EmergencyCallState::Failed:
+        color = QStringLiteral("#e05050"); break;          // red
+    case EmergencyCallState::Ended:
+        color = QStringLiteral("#5090e0"); break;          // blue
+    default:
+        break;
+    }
+
+    m_emergencyStateLabel->setStyleSheet(
+        QStringLiteral("color: %1; font-size: 10px;").arg(color));
+    m_emergencyStateLabel->setText(tr("State: %1").arg(name));
+
+    const bool registered =
+        (SipManager::instance().registrationState() == RegistrationState::Registered);
+    const bool canDial = (state == EmergencyCallState::Idle
+                          || state == EmergencyCallState::Failed
+                          || state == EmergencyCallState::Ended);
+    if (m_btnEmergency)
+        m_btnEmergency->setEnabled(registered && canDial);
+}
+
+void CallPanel::onEmergencyFailed(const QString &reason)
+{
+    Logger::instance().warn(LogCategory::App,
+        QStringLiteral("[EMERGENCY] Preparation failed: %1").arg(reason));
+    m_emergencyStateLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+    m_emergencyStateLabel->setText(tr("State: Failed — %1").arg(reason));
+    if (m_btnEmergency) {
+        const bool registered =
+            (SipManager::instance().registrationState() == RegistrationState::Registered);
+        m_btnEmergency->setEnabled(registered);
     }
 }

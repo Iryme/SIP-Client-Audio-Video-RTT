@@ -36,4 +36,27 @@ public:
     static QString loadSelectedSpeaker   ()                  { return settings().value("media/device/speaker").toString(); }
     static void    saveSelectedCamera    (const QString &id) { settings().setValue("media/device/camera", id); }
     static QString loadSelectedCamera    ()                  { return settings().value("media/device/camera").toString(); }
+
+    // Emergency test mode — disabled by default; must be explicitly enabled in the INI file.
+    // When false the 112 emergency button is hidden and no emergency call can be initiated.
+    // To enable: set emergency/testMode=true in SIPClient.ini (user scope).
+    static bool emergencyTestModeEnabled()
+    {
+        return settings().value("emergency/testMode", false).toBool();
+    }
+    static void setEmergencyTestModeEnabled(bool on)
+    {
+        settings().setValue("emergency/testMode", on);
+    }
+
+    // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
+    static QString emergencyTarget()
+    {
+        return settings().value("emergency/target",
+                                QStringLiteral("sip:psap@10.2.0.180")).toString();
+    }
+    static void setEmergencyTarget(const QString &uri)
+    {
+        settings().setValue("emergency/target", uri);
+    }
 };

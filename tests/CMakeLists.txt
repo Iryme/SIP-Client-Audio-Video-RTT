@@ -679,6 +679,32 @@ target_link_libraries(test_emergency_protocol_validation PRIVATE
 
 add_test(NAME test_emergency_protocol_validation COMMAND test_emergency_protocol_validation)
 
+# ---- test_emergency_gui_wiring (Task 42) -----------------------------------
+qt_add_executable(test_emergency_gui_wiring
+    test_emergency_gui_wiring.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/AppSettings.h
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallAdapter.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallController.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallProfile.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyCallStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyInviteBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocationProvider.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/emergency/StaticLocationProvider.cpp
+)
+
+target_include_directories(test_emergency_gui_wiring PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_emergency_gui_wiring PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_emergency_gui_wiring COMMAND test_emergency_gui_wiring)
+
 if(BUILD_LIVE_VALIDATION_TOOLS)
     if(NOT ENABLE_PJSIP OR NOT PJSIP_FOUND)
         message(FATAL_ERROR "BUILD_LIVE_VALIDATION_TOOLS requires ENABLE_PJSIP=ON and a real PJSIP backend")

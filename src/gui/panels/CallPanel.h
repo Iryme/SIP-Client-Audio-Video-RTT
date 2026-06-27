@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QWidget>
+#include "emergency/EmergencyCallProfile.h"
+#include "emergency/EmergencyCallStateMachine.h"
 #include "sip/CallStateMachine.h"
 
 class QLabel;
@@ -8,6 +10,8 @@ class QComboBox;
 class QLineEdit;
 class QProgressBar;
 class QPushButton;
+class EmergencyCallController;
+class StaticLocationProvider;
 
 class CallPanel : public QWidget
 {
@@ -45,6 +49,12 @@ private slots:
     void onMuteChanged(bool muted);
     void onVideoMuteChanged(bool muted);
 
+    // Emergency call slots
+    void onEmergencyButtonClicked();
+    void onEmergencyReadyToDial(const EmergencyCallProfile &profile);
+    void onEmergencyStateChanged(EmergencyCallState state);
+    void onEmergencyFailed(const QString &reason);
+
 private:
     void applyCallState(CallState state);
     void populateDeviceCombos();
@@ -78,4 +88,12 @@ private:
     QLabel      *m_regStatusLabel{nullptr};
     QLineEdit   *m_dialInput{nullptr};
     QPushButton *m_btnCall{nullptr};
+
+    // Emergency test mode section (hidden unless emergency/testMode=true in settings).
+    QWidget                 *m_emergencyRow{nullptr};
+    QLabel                  *m_emergencyStateLabel{nullptr};
+    QPushButton             *m_btnEmergency{nullptr};
+    EmergencyCallController *m_emergencyController{nullptr};
+    StaticLocationProvider  *m_staticLocationProvider{nullptr};
+    bool                     m_emergencyCallActive{false};
 };
