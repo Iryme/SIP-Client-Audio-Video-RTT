@@ -239,29 +239,43 @@ QMenu::separator { height: 1px; background: __B1__; margin: 4px 0; }
 #CallCtrlBtn:checked  { background-color: __ACBG__; color: __AC__; border-color: __AC__; }
 #CallCtrlBtn:disabled { color: __T2__; border-color: __B0__; }
 
-QPushButton[callRole="call"] {
+QPushButton#CallCtrlBtn[callRole="call"] {
     background-color: __ABG__;
     color: __OK__;
     border: 1px solid __OK__;
     border-radius: 5px;
     font-weight: bold;
 }
-QPushButton[callRole="call"]:hover { background-color: __OK__; color: #ffffff; }
-QPushButton[callRole="call"]:disabled {
+QPushButton#CallCtrlBtn[callRole="call"]:hover { background-color: __OK__; color: #ffffff; }
+QPushButton#CallCtrlBtn[callRole="call"]:disabled {
     background-color: __BG3__;
     color: __T2__;
     border-color: __B0__;
 }
 
-QPushButton[callRole="answer"] {
+QPushButton#CallCtrlBtn[callRole="answer"] {
     background-color: __ABG__;
     color: __OK__;
     border: 1px solid __OK__;
     border-radius: 5px;
     font-weight: bold;
 }
-QPushButton[callRole="answer"]:hover { background-color: __OK__; color: #ffffff; }
-QPushButton[callRole="answer"]:disabled {
+QPushButton#CallCtrlBtn[callRole="answer"]:hover { background-color: __OK__; color: #ffffff; }
+QPushButton#CallCtrlBtn[callRole="answer"]:disabled {
+    background-color: __BG3__;
+    color: __T2__;
+    border-color: __B0__;
+}
+
+QPushButton#CallCtrlBtn[callRole="reject"] {
+    background-color: __HBG__;
+    color: __ER__;
+    border: 1px solid __ER__;
+    border-radius: 5px;
+    font-weight: bold;
+}
+QPushButton#CallCtrlBtn[callRole="reject"]:hover { background-color: __ER__; color: #ffffff; }
+QPushButton#CallCtrlBtn[callRole="reject"]:disabled {
     background-color: __BG3__;
     color: __T2__;
     border-color: __B0__;
@@ -287,31 +301,32 @@ QPushButton[callRole="answer"]:disabled {
 #AnswerBtn:hover { background-color: __OK__; color: #ffffff; }
 
 #RejectBtn {
-    background-color: __BG3__;
-    color: __WA__;
-    border: 1px solid __WA__;
-    border-radius: 5px;
-}
-#RejectBtn:hover { color: #ffffff; background-color: __WA__; }
-
-QPushButton[callRole="reject"],
-QPushButton[callRole="hangup"] {
     background-color: __HBG__;
     color: __ER__;
     border: 1px solid __ER__;
     border-radius: 5px;
     font-weight: bold;
 }
-QPushButton[callRole="reject"]:hover,
-QPushButton[callRole="hangup"]:hover { background-color: __ER__; color: #ffffff; }
-QPushButton[callRole="reject"]:disabled,
-QPushButton[callRole="hangup"]:disabled {
+#RejectBtn:hover { color: #ffffff; background-color: __ER__; }
+
+QPushButton#CallCtrlBtn[callRole="reject"],
+QPushButton#CallCtrlBtn[callRole="hangup"] {
+    background-color: __HBG__;
+    color: __ER__;
+    border: 1px solid __ER__;
+    border-radius: 5px;
+    font-weight: bold;
+}
+QPushButton#CallCtrlBtn[callRole="reject"]:hover,
+QPushButton#CallCtrlBtn[callRole="hangup"]:hover { background-color: __ER__; color: #ffffff; }
+QPushButton#CallCtrlBtn[callRole="reject"]:disabled,
+QPushButton#CallCtrlBtn[callRole="hangup"]:disabled {
     background-color: __BG3__;
     color: __T2__;
     border-color: __B0__;
 }
 
-QPushButton[callRole="hold"] {
+QPushButton#CallCtrlBtn[callRole="hold"] {
     background-color: __BG3__;
     color: __T0__;
     border: 1px solid __B1__;
@@ -319,20 +334,40 @@ QPushButton[callRole="hold"] {
     padding: 4px 10px;
     font-size: 11px;
 }
-QPushButton[callRole="hold"]:hover { background-color: __BG2__; border-color: __B1__; }
-QPushButton[callRole="hold"]:checked {
+QPushButton#CallCtrlBtn[callRole="hold"]:hover { background-color: __BG2__; border-color: __B1__; }
+QPushButton#CallCtrlBtn[callRole="hold"]:checked {
     background-color: __WA__;
     color: #ffffff;
     border-color: __WA__;
 }
-QPushButton[callRole="hold"]:disabled {
+QPushButton#CallCtrlBtn[callRole="hold"]:disabled {
     background-color: __BG3__;
     color: __T2__;
     border-color: __B0__;
 }
 
-QPushButton[callRole="requestVideo"],
-QPushButton[callRole="requestRtt"] {
+QPushButton#CallCtrlBtn[callRole="unhold"] {
+    background-color: __WA__;
+    color: #ffffff;
+    border: 1px solid __WA__;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+QPushButton#CallCtrlBtn[callRole="unhold"]:hover {
+    background-color: __WA__;
+    color: #ffffff;
+    border-color: __WA__;
+}
+QPushButton#CallCtrlBtn[callRole="unhold"]:disabled {
+    background-color: __BG3__;
+    color: __T2__;
+    border-color: __B0__;
+}
+
+QPushButton#CallCtrlBtn[callRole="requestVideo"],
+QPushButton#CallCtrlBtn[callRole="requestRtt"] {
     background-color: __BG3__;
     color: __T0__;
     border: 1px solid __B1__;
@@ -340,16 +375,16 @@ QPushButton[callRole="requestRtt"] {
     padding: 4px 10px;
     font-size: 11px;
 }
-QPushButton[callRole="requestVideo"]:hover,
-QPushButton[callRole="requestRtt"]:hover { background-color: __BG2__; border-color: __B1__; }
-QPushButton[callRole="requestVideo"]:checked,
-QPushButton[callRole="requestRtt"]:checked {
+QPushButton#CallCtrlBtn[callRole="requestVideo"]:hover,
+QPushButton#CallCtrlBtn[callRole="requestRtt"]:hover { background-color: __BG2__; border-color: __B1__; }
+QPushButton#CallCtrlBtn[callRole="requestVideo"]:checked,
+QPushButton#CallCtrlBtn[callRole="requestRtt"]:checked {
     background-color: __ACBG__;
     color: __AC__;
     border-color: __AC__;
 }
-QPushButton[callRole="requestVideo"]:disabled,
-QPushButton[callRole="requestRtt"]:disabled {
+QPushButton#CallCtrlBtn[callRole="requestVideo"]:disabled,
+QPushButton#CallCtrlBtn[callRole="requestRtt"]:disabled {
     background-color: __BG3__;
     color: __T2__;
     border-color: __B0__;

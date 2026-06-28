@@ -555,9 +555,9 @@ QWidget *MainWindow::buildClientsPage()
         auto *btn = new QPushButton(text, parent);
         btn->setObjectName(QStringLiteral("CallCtrlBtn"));
         btn->setCheckable(checkable);
-        btn->setMinimumHeight(44);
-        btn->setMinimumWidth(110);
-        btn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        btn->setMinimumHeight(40);
+        btn->setMinimumWidth(0);
+        btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         return btn;
     };
 
@@ -594,8 +594,14 @@ QWidget *MainWindow::buildClientsPage()
     callLayout->addWidget(m_clientsTargetInput);
 
     auto *btnFlowHost = new QWidget(callGroup);
-    auto *btnFlow = new FlowLayout(btnFlowHost, 4, 4, 4);
-    btnFlowHost->setLayout(btnFlow);
+    auto *btnGrid = new QGridLayout(btnFlowHost);
+    btnGrid->setContentsMargins(0, 0, 0, 0);
+    btnGrid->setHorizontalSpacing(6);
+    btnGrid->setVerticalSpacing(6);
+    btnGrid->setColumnStretch(0, 1);
+    btnGrid->setColumnStretch(1, 1);
+    btnGrid->setColumnStretch(2, 1);
+    btnGrid->setColumnStretch(3, 1);
     auto *callBtn = makeActionButton(tr("Call"), btnFlowHost);
     auto *answerBtn = makeActionButton(tr("Answer"), btnFlowHost);
     auto *rejectBtn = makeActionButton(tr("Reject"), btnFlowHost);
@@ -612,14 +618,14 @@ QWidget *MainWindow::buildClientsPage()
     holdBtn->setProperty("callRole", QStringLiteral("hold"));
     requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
     requestRttBtn->setProperty("callRole", QStringLiteral("requestRtt"));
-    btnFlow->addWidget(callBtn);
-    btnFlow->addWidget(answerBtn);
-    btnFlow->addWidget(rejectBtn);
-    btnFlow->addWidget(hangupBtn);
-    btnFlow->addWidget(muteBtn);
-    btnFlow->addWidget(holdBtn);
-    btnFlow->addWidget(requestVideoBtn);
-    btnFlow->addWidget(requestRttBtn);
+    btnGrid->addWidget(callBtn, 0, 0);
+    btnGrid->addWidget(answerBtn, 0, 1);
+    btnGrid->addWidget(rejectBtn, 0, 2);
+    btnGrid->addWidget(hangupBtn, 0, 3);
+    btnGrid->addWidget(muteBtn, 1, 0);
+    btnGrid->addWidget(holdBtn, 1, 1);
+    btnGrid->addWidget(requestVideoBtn, 1, 2);
+    btnGrid->addWidget(requestRttBtn, 1, 3);
     callLayout->addWidget(btnFlowHost);
 
     auto *actionRow = new QHBoxLayout();
