@@ -792,12 +792,24 @@ void CallPanel::updateStatusCards()
     m_cardAudio->setValue(m_audioConnected ? tr("Connected") : QStringLiteral("—"));
     m_cardAudio->setStatus(m_audioConnected ? QStringLiteral("ok") : QString{});
 
-    // Local video
-    m_cardLocalVideo->setValue(m_localVideoActive ? tr("Active") : QStringLiteral("—"));
-    m_cardLocalVideo->setStatus(m_localVideoActive ? QStringLiteral("ok") : QString{});
+    // Local video — PJSIP may negotiate video but lack a capture backend.
+    // When PJMEDIA_VIDEO_DEV_HAS_DSHOW=0 (this build), PJSIP is recvonly:
+    // Qt camera preview is local-only; remote cannot see video from this app.
+    if (m_localVideoActive) {
+        if (SipManager::instance().hasPjsipVideoCapture()) {
+            m_cardLocalVideo->setValue(tr("Transmitting"));
+            m_cardLocalVideo->setStatus(QStringLiteral("ok"));
+        } else {
+            m_cardLocalVideo->setValue(tr("Negotiated, no local capture"));
+            m_cardLocalVideo->setStatus(QStringLiteral("warn"));
+        }
+    } else {
+        m_cardLocalVideo->setValue(QStringLiteral("—"));
+        m_cardLocalVideo->setStatus({});
+    }
 
     // Remote video
-    m_cardRemoteVideo->setValue(m_remoteVideoActive ? tr("Active") : QStringLiteral("—"));
+    m_cardRemoteVideo->setValue(m_remoteVideoActive ? tr("Receiving") : QStringLiteral("—"));
     m_cardRemoteVideo->setStatus(m_remoteVideoActive ? QStringLiteral("ok") : QString{});
 
     // RTT

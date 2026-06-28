@@ -97,6 +97,9 @@ public:
 
     bool    isInitialized()        const;
     bool    isPjsipAvailable()     const;
+    // Returns true only if PJSIP has a usable video capture device.
+    // Always false when PJMEDIA_VIDEO_DEV_HAS_DSHOW was not compiled in.
+    bool    hasPjsipVideoCapture() const;
     QString backendName()          const;
     QString lastError()            const;
 

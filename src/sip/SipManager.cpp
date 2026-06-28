@@ -514,6 +514,29 @@ bool SipManager::isPjsipAvailable() const
 #endif
 }
 
+bool SipManager::hasPjsipVideoCapture() const
+{
+#if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+    if (!m_ep || !m_initialized)
+        return false;
+    try {
+        pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
+        const unsigned count = vdm.getDevCount();
+        for (unsigned i = 0; i < count; ++i) {
+            try {
+                pj::VideoDevInfo info = vdm.getDevInfo(static_cast<int>(i));
+                if (info.dir == PJMEDIA_DIR_CAPTURE
+                        || info.dir == PJMEDIA_DIR_CAPTURE_RENDER)
+                    return true;
+            } catch (...) {}
+        }
+    } catch (...) {}
+    return false;
+#else
+    return false;
+#endif
+}
+
 QString SipManager::backendName() const
 {
 #ifdef HAVE_PJSIP
