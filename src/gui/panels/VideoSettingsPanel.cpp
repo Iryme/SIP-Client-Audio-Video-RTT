@@ -2,6 +2,7 @@
 #include "VideoPanel.h"
 
 #include "core/Logger.h"
+#include "gui/CameraController.h"
 #include "media/MediaDeviceManager.h"
 #include "media/VideoQualityManager.h"
 #include "media/VideoStatistics.h"
@@ -123,6 +124,18 @@ void VideoSettingsPanel::buildUi()
     m_cameraToggle->setFixedHeight(28);
     leftLayout->addWidget(m_cameraToggle);
 
+    // Video TX warning — shown when PJSIP has no capture backend in this build.
+    m_videoTxWarning = new QLabel(
+        tr("⚠ Local preview uses Qt camera. "
+           "PJSIP video transmit is unavailable in this build "
+           "(PJMEDIA_VIDEO_DEV_HAS_DSHOW=0). "
+           "Remote cannot see video from this device."),
+        leftWidget);
+    m_videoTxWarning->setWordWrap(true);
+    m_videoTxWarning->setStyleSheet("color: #e0b850; font-size: 10px; padding: 4px 0;");
+    m_videoTxWarning->setVisible(!SipManager::instance().hasPjsipVideoCapture());
+    leftLayout->addWidget(m_videoTxWarning);
+
     // Buttons
     m_applyBtn = new QPushButton(tr("Apply"), leftWidget);
     m_applyBtn->setDefault(true);
@@ -166,6 +179,15 @@ void VideoSettingsPanel::buildUi()
     connect(m_codecDown, &QPushButton::clicked, this, &VideoSettingsPanel::onCodecDown);
     connect(m_cameraToggle, &QPushButton::toggled,
             this, &VideoSettingsPanel::onCameraToggled);
+    // Sync m_cameraToggle when CameraController changes from outside (Clients page, VideoPanel).
+    connect(&CameraController::instance(), &CameraController::enabledChanged,
+            this, [this](bool enabled) {
+        if (m_cameraToggle) {
+            QSignalBlocker b(m_cameraToggle);
+            m_cameraToggle->setChecked(enabled);
+            m_cameraToggle->setText(enabled ? tr("Camera On") : tr("Camera Off"));
+        }
+    });
     connect(m_applyBtn,  &QPushButton::clicked, this, &VideoSettingsPanel::onApply);
     connect(m_resetBtn,  &QPushButton::clicked, this, &VideoSettingsPanel::onReset);
 }
@@ -359,12 +381,12 @@ void VideoSettingsPanel::onCameraToggled(bool on)
 {
     if (m_cameraToggle)
         m_cameraToggle->setText(on ? tr("Camera On") : tr("Camera Off"));
-    if (!m_preview)
-        return;
-    if (on)
-        m_preview->startIdlePreview();
-    else
-        m_preview->stopIdlePreview();
+    // Delegate to CameraController so both Settings and Clients stay in sync
+    // and the hardware LED turns off when disabled from either location.
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Camera %1 requested from Settings")
+            .arg(on ? QStringLiteral("On") : QStringLiteral("Off")));
+    CameraController::instance().setEnabled(on, QStringLiteral("Settings"));
 }
 
 void VideoSettingsPanel::onBitrateChanged(int value)
@@ -439,7 +461,15 @@ void VideoSettingsPanel::showEvent(QShowEvent *event)
                 this, &VideoSettingsPanel::onStatsUpdated);
         m_statsConnected = true;
     }
-    onCameraToggled(m_cameraToggle && m_cameraToggle->isChecked());
+    // Sync button state from CameraController (don't set it — that would trigger setEnabled).
+    const bool camEnabled = CameraController::instance().isEnabled();
+    if (m_cameraToggle) {
+        QSignalBlocker b(m_cameraToggle);
+        m_cameraToggle->setChecked(camEnabled);
+        m_cameraToggle->setText(camEnabled ? tr("Camera On") : tr("Camera Off"));
+    }
+    if (camEnabled && m_preview)
+        m_preview->startIdlePreview();
 }
 
 void VideoSettingsPanel::hideEvent(QHideEvent *event)

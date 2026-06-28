@@ -55,6 +55,7 @@ private:
     QPushButton *m_codecDown{nullptr};
     QCheckBox   *m_overlayCheck{nullptr};
     QPushButton *m_cameraToggle{nullptr};
+    QLabel      *m_videoTxWarning{nullptr};
     QPushButton *m_applyBtn{nullptr};
     QPushButton *m_resetBtn{nullptr};
     QLabel      *m_statsLabel{nullptr};

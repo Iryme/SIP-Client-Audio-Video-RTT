@@ -949,6 +949,21 @@ bool SipCall::hold()
 
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
+        // Log dialog state for transport diagnostics before sending re-INVITE.
+        try {
+            const pj::CallInfo ci = m_impl->pjCall->getInfo();
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("SIP hold pre-send: operation=Hold callId=%1 "
+                               "pjsipCallId=%2 pjsipState=%3 "
+                               "remoteUri=%4 localUri=%5 mediaCount=%6")
+                    .arg(m_callId)
+                    .arg(m_impl->pjCall->getId())
+                    .arg(static_cast<int>(ci.state))
+                    .arg(QString::fromStdString(ci.remoteUri))
+                    .arg(QString::fromStdString(ci.localUri))
+                    .arg(static_cast<int>(ci.media.size())));
+        } catch (...) {}
+
         try {
             pj::CallOpParam prm;
             m_impl->pjCall->setHold(prm);
@@ -965,9 +980,12 @@ bool SipCall::hold()
                                          QStringLiteral("Hold re-INVITE sent"));
             return true;
         } catch (const pj::Error &e) {
+            // Hold failed at transport level — UI must NOT transition to Held.
             Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("SIP hold failed: callId=%1 pjsipError=%2")
+                QStringLiteral("Hold/Unhold failed due to unsuitable transport: "
+                               "callId=%1 pjsipError=%2; UI remains Active")
                     .arg(m_callId, QString::fromStdString(e.reason)));
+            return false;
         }
     }
 #endif
@@ -991,25 +1009,63 @@ bool SipCall::resume()
 
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
+        // Log dialog state for transport diagnostics and collect media counts.
+        bool videoWasActive = m_localVideoAvailable || m_remoteVideoAvailable;
+        const bool rttWasActive = m_impl->rttMediaActive;
         try {
-            pj::CallOpParam prm;
+            const pj::CallInfo ci = m_impl->pjCall->getInfo();
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("SIP unhold pre-send: operation=Unhold callId=%1 "
+                               "pjsipCallId=%2 pjsipState=%3 "
+                               "remoteUri=%4 localUri=%5 mediaCount=%6 "
+                               "videoWasActive=%7 rttWasActive=%8")
+                    .arg(m_callId)
+                    .arg(m_impl->pjCall->getId())
+                    .arg(static_cast<int>(ci.state))
+                    .arg(QString::fromStdString(ci.remoteUri))
+                    .arg(QString::fromStdString(ci.localUri))
+                    .arg(static_cast<int>(ci.media.size()))
+                    .arg(videoWasActive ? QStringLiteral("yes") : QStringLiteral("no"))
+                    .arg(rttWasActive   ? QStringLiteral("yes") : QStringLiteral("no")));
+            for (const auto &mi : ci.media) {
+                if (mi.type == PJMEDIA_TYPE_VIDEO && mi.status == PJSUA_CALL_MEDIA_ACTIVE)
+                    videoWasActive = true;
+            }
+        } catch (...) {}
+
+        try {
+            // Explicit media counts prevent PJSIP from generating empty SDP
+            // (0 m= lines) which causes PJSIP_ETPNOTSUITABLE and a failed re-INVITE.
+            // audioCount=1 keeps the audio stream; video/text preserve their current state.
+            pj::CallOpParam prm(true);
+            prm.opt.audioCount = 1;
+            prm.opt.videoCount = videoWasActive ? 1 : 0;
+            prm.opt.textCount  = rttWasActive   ? 1 : 0;
+            if (prm.opt.videoCount > 0)
+                applyVideoMediaDirectionIfNeeded(prm.opt);
+
             // Clear holdActive before reinvite so the CONFIRMED callback
             // (arriving when the remote answers the unhold re-INVITE) is no
             // longer suppressed and transitions the SM back to Active.
             m_impl->holdActive = false;
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("SIP unhold re-INVITE sent: callId=%1 "
+                QStringLiteral("SIP unhold re-INVITE: callId=%1 "
+                               "audioCount=1 videoCount=%2 textCount=%3 "
                                "sdpDirection=a=sendrecv — waiting for PJSIP CONFIRMED")
-                    .arg(m_callId));
+                    .arg(m_callId)
+                    .arg(prm.opt.videoCount)
+                    .arg(prm.opt.textCount));
             m_impl->pjCall->reinvite(prm);
             return true;
         } catch (const pj::Error &e) {
             // Restore holdActive because the reinvite did not go out.
             m_impl->holdActive = true;
+            // Unhold failed at transport level — UI must NOT transition to Active.
             Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("SIP unhold failed: callId=%1 pjsipError=%2; "
-                               "hold remains active")
+                QStringLiteral("Hold/Unhold failed due to unsuitable transport: "
+                               "callId=%1 pjsipError=%2; UI remains Held")
                     .arg(m_callId, QString::fromStdString(e.reason)));
+            return false;
         }
     }
 #endif

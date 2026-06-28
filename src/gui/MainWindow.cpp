@@ -380,6 +380,12 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             m_statusBar, &AppStatusBar::setRegistrationStatus);
 
+    // SIP backend ready/stopped → update backend label live.
+    connect(&SipManager::instance(), &SipManager::initialized,
+            this, &MainWindow::updateSipBackendStatus);
+    connect(&SipManager::instance(), &SipManager::shutdownComplete,
+            this, &MainWindow::updateSipBackendStatus);
+
     // Active account + transport in the status bar
     auto refreshStatusBarAccount = [this]() {
         const QString regId    = SipManager::instance().registeredProfileId();
@@ -811,8 +817,18 @@ QWidget *MainWindow::buildClientsPage()
     connect(requestVideoBtn, &QPushButton::toggled, this,
             [this, cardVideo, requestVideoBtn, videoRequestFailed](bool enabled) {
         *videoRequestFailed = false;
-        cardVideo->setValue(enabled ? tr("Requested") : tr("Not requested"));
-        cardVideo->setStatus(enabled ? QStringLiteral("warn") : QString{});
+        if (enabled && !SipManager::instance().hasPjsipVideoCapture()) {
+            // PJSIP has no capture backend (PJMEDIA_VIDEO_DEV_HAS_DSHOW=0).
+            // Video can only be received, not transmitted.
+            cardVideo->setValue(tr("Receive-only video"));
+            cardVideo->setStatus(QStringLiteral("warn"));
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("PJSIP video capture backend unavailable; "
+                               "Qt preview is local only."));
+        } else {
+            cardVideo->setValue(enabled ? tr("Requested") : tr("Not requested"));
+            cardVideo->setStatus(enabled ? QStringLiteral("warn") : QString{});
+        }
         if (SipManager::instance().callState() == CallState::Idle
             || SipManager::instance().callState() == CallState::Failed) {
             Logger::instance().info(LogCategory::Sip,
@@ -913,10 +929,13 @@ QWidget *MainWindow::buildClientsPage()
             cardVideo->setValue(tr("Failed"));
             cardVideo->setStatus(QStringLiteral("err"));
         } else {
+            const bool noCapture = videoActive && !SipManager::instance().hasPjsipVideoCapture();
             cardVideo->setValue(videoActive
-                                    ? tr("Active")
+                                    ? (noCapture ? tr("Negotiated, no local capture") : tr("Active"))
                                     : (requestVideoBtn->isChecked()
-                                           ? tr("Requested")
+                                           ? (SipManager::instance().hasPjsipVideoCapture()
+                                                  ? tr("Requested")
+                                                  : tr("Receive-only video"))
                                            : tr("Not requested")));
             cardVideo->setStatus(videoActive ? QStringLiteral("ok")
                                              : (requestVideoBtn->isChecked()
