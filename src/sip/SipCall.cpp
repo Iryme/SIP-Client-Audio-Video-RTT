@@ -40,6 +40,9 @@ static QString pjsipStatusText(pj_status_t st)
     return QString::fromLatin1(buf);
 }
 
+#endif
+
+#ifdef HAVE_PJSIP
 static QString mediaTypeName(pjmedia_type type)
 {
     switch (type) {
@@ -48,6 +51,18 @@ static QString mediaTypeName(pjmedia_type type)
     case PJMEDIA_TYPE_TEXT:  return QStringLiteral("text");
     default:                 return QStringLiteral("unknown");
     }
+}
+
+static bool isSessionTerminatedError(const pj::Error &e)
+{
+    return e.status == PJSIP_ESESSIONTERMINATED;
+}
+
+static bool isTeardownState(CallState state)
+{
+    return state == CallState::Disconnecting
+        || state == CallState::Idle
+        || state == CallState::Failed;
 }
 #endif
 
@@ -166,6 +181,22 @@ struct SipCall::Impl
             try {
                 ci = getInfo();
             } catch (const pj::Error &e) {
+                if (isSessionTerminatedError(e)) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("onCallState: call already terminated; treating as normal teardown"));
+                    QPointer<SipCall> self = m_impl->q;
+                    QMetaObject::invokeMethod(self, [self]() {
+                        if (!self)
+                            return;
+                        const CallState cur = self->m_stateMachine.state();
+                        if (!isTeardownState(cur)) {
+                            self->m_stateMachine.tryTransition(CallState::Idle,
+                                                               QStringLiteral("Call ended"),
+                                                               0);
+                        }
+                    }, Qt::QueuedConnection);
+                    return;
+                }
                 Logger::instance().warn(LogCategory::Sip,
                     QStringLiteral("onCallState: getInfo() threw: %1")
                         .arg(QString::fromStdString(e.reason)));
@@ -248,7 +279,22 @@ struct SipCall::Impl
             if (!m_impl || !m_impl->q)
                 return;
 
-            pj::CallInfo ci = getInfo();
+            pj::CallInfo ci;
+            try {
+                ci = getInfo();
+            } catch (const pj::Error &e) {
+                if (isSessionTerminatedError(e)) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("PJSIP media state callback ignored: call already terminated during teardown"));
+                    stopAudioBridge();
+                    stopVideoBridge();
+                    return;
+                }
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("onCallMediaState: getInfo() threw: %1")
+                        .arg(QString::fromStdString(e.reason)));
+                return;
+            }
             bool audioBridgeWired    = false;
             bool videoActive         = false;
             bool textMediaActive     = false;
@@ -1194,9 +1240,15 @@ bool SipCall::requestVideo(bool enabled)
                     .arg(vs.codecOrder.join(QStringLiteral(",")))
                     .arg(mediaState.isEmpty() ? QStringLiteral("(none)") : mediaState));
         } catch (const pj::Error &e) {
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("%1 summary unavailable: %2")
-                    .arg(phase, QString::fromStdString(e.reason)));
+            if (isSessionTerminatedError(e)) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("%1 summary unavailable: call already terminated")
+                        .arg(phase));
+            } else {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("%1 summary unavailable: %2")
+                        .arg(phase, QString::fromStdString(e.reason)));
+            }
         } catch (...) {
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("%1 summary unavailable: unknown error").arg(phase));
@@ -1258,6 +1310,11 @@ bool SipCall::requestVideo(bool enabled)
             logMediaSummary(QStringLiteral("After Request Video"));
             return true;
         } catch (const pj::Error &e) {
+            if (isSessionTerminatedError(e)) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("requestVideo() ignored: call already terminated during teardown"));
+                return false;
+            }
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("requestVideo() PJSIP error: %1")
                     .arg(QString::fromStdString(e.reason)));
@@ -1320,9 +1377,15 @@ bool SipCall::requestRtt(bool enabled)
                     .arg(vs.codecOrder.join(QStringLiteral(",")))
                     .arg(mediaState.isEmpty() ? QStringLiteral("(none)") : mediaState));
         } catch (const pj::Error &e) {
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("%1 summary unavailable: %2")
-                    .arg(phase, QString::fromStdString(e.reason)));
+            if (isSessionTerminatedError(e)) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("%1 summary unavailable: call already terminated")
+                        .arg(phase));
+            } else {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("%1 summary unavailable: %2")
+                        .arg(phase, QString::fromStdString(e.reason)));
+            }
         } catch (...) {
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("%1 summary unavailable: unknown error").arg(phase));
@@ -1358,6 +1421,11 @@ bool SipCall::requestRtt(bool enabled)
             logMediaSummary(QStringLiteral("After Request RTT"));
             return true;
         } catch (const pj::Error &e) {
+            if (isSessionTerminatedError(e)) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("requestRtt() ignored: call already terminated during teardown"));
+                return false;
+            }
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("requestRtt() PJSIP error: %1")
                     .arg(QString::fromStdString(e.reason)));
@@ -1383,6 +1451,10 @@ RtpStatsSnapshot SipCall::mediaRtpStats() const
 #ifdef HAVE_PJSIP
     if (!m_impl || !m_impl->pjCall) {
         snap.reason = QStringLiteral("No active call");
+        return snap;
+    }
+    if (isTeardownState(m_stateMachine.state())) {
+        snap.reason = QStringLiteral("Call teardown in progress");
         return snap;
     }
 
@@ -1499,6 +1571,8 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
     // invalid. PJSIP assigns the incoming render window lazily and the first
     // onCallMediaState callback may return -1 or 0 depending on timing.
     if (!isValidIncomingWinId(m_impl->videoIncomingWinId) && m_impl->pjCall) {
+        if (isTeardownState(m_stateMachine.state()))
+            return;
         try {
             pj::CallInfo ci = m_impl->pjCall->getInfo();
             for (const auto &mi : ci.media) {
@@ -1758,6 +1832,8 @@ void SipCall::onLevelTimerFired()
 {
 #ifdef HAVE_PJSIP
     if (!m_impl || !m_impl->pjCall || !m_impl->callAudioMedia)
+        return;
+    if (isTeardownState(m_stateMachine.state()))
         return;
     try {
         const pjsua_call_id cid = static_cast<pjsua_call_id>(m_impl->pjCall->getId());

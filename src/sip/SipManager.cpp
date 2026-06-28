@@ -929,6 +929,14 @@ RtpStatsSnapshot SipManager::currentRtpStats() const
         snap.reason = QStringLiteral("No active call");
         return snap;
     }
+    const CallState state = m_activeCall->state();
+    if (state == CallState::Disconnecting
+        || state == CallState::Idle
+        || state == CallState::Failed) {
+        RtpStatsSnapshot snap;
+        snap.reason = QStringLiteral("Call teardown in progress");
+        return snap;
+    }
     return m_activeCall->mediaRtpStats();
 }
 
