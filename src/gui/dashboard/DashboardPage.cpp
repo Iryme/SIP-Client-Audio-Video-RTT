@@ -123,10 +123,10 @@ DashboardPage::DashboardPage(QWidget *parent)
             Qt::UniqueConnection);
 
     auto &pm = SipProfileManager::instance();
-    connect(&pm, &SipProfileManager::profileAdded,    this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
-    connect(&pm, &SipProfileManager::profileUpdated,  this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
-    connect(&pm, &SipProfileManager::profileRemoved,  this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
-    connect(&pm, &SipProfileManager::activeProfileChanged, this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
+    connect(&pm, &SipProfileManager::profileAdded,         this, [this](const QString &) { refreshQuickSipPanel(); });
+    connect(&pm, &SipProfileManager::profileUpdated,        this, [this](const QString &) { refreshQuickSipPanel(); });
+    connect(&pm, &SipProfileManager::profileRemoved,        this, [this](const QString &) { refreshQuickSipPanel(); });
+    connect(&pm, &SipProfileManager::activeProfileChanged,  this, [this](const QString &) { refreshQuickSipPanel(); });
 
     // ── Periodic tick: uptime, call duration, memory ─────────────────────
     m_tickTimer = new QTimer(this);
