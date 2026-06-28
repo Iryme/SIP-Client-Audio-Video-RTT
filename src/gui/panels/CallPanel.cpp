@@ -919,16 +919,28 @@ void CallPanel::refreshVideoRequestButton()
     const bool acceptMode = m_videoRequested && !m_videoConnected;
     QSignalBlocker blocker(m_btnRequestVideo);
 
-    if (acceptMode) {
+    if (m_videoConnected) {
+        // Video stream active — disable the button to indicate "Video On".
+        m_btnRequestVideo->setText(tr("Video On"));
+        m_btnRequestVideo->setProperty("callRole", QStringLiteral("videoActive"));
+        m_btnRequestVideo->setProperty("videoAlert", false);
+        m_btnRequestVideo->setEnabled(false);
+        m_btnRequestVideo->setChecked(true);
+        m_videoRequestBlinkTimer.stop();
+        m_videoRequestBlinkOn = false;
+    } else if (acceptMode) {
         m_btnRequestVideo->setText(tr("Accept Video"));
         m_btnRequestVideo->setProperty("callRole", QStringLiteral("acceptVideo"));
         m_btnRequestVideo->setProperty("videoAlert", m_videoRequestBlinkOn);
+        m_btnRequestVideo->setEnabled(true);
         if (!m_videoRequestBlinkTimer.isActive())
             m_videoRequestBlinkTimer.start();
     } else {
         m_btnRequestVideo->setText(tr("Request Video"));
         m_btnRequestVideo->setProperty("callRole", QStringLiteral("requestVideo"));
         m_btnRequestVideo->setProperty("videoAlert", false);
+        m_btnRequestVideo->setEnabled(true);
+        m_btnRequestVideo->setChecked(false);
         m_videoRequestBlinkTimer.stop();
         m_videoRequestBlinkOn = false;
     }

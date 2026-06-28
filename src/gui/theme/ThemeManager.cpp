@@ -394,6 +394,21 @@ QPushButton#CallCtrlBtn[callRole="requestRtt"]:disabled {
     border-color: __B0__;
 }
 
+QPushButton#CallCtrlBtn[callRole="videoActive"] {
+    background-color: #144d23;
+    color: #4ade80;
+    border: 1px solid #2e7d32;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+QPushButton#CallCtrlBtn[callRole="videoActive"]:disabled {
+    background-color: #144d23;
+    color: #4ade80;
+    border-color: #2e7d32;
+}
+
 QPushButton#CallCtrlBtn[videoAlert="true"] {
     background-color: #c86b12;
     color: #1f1200;

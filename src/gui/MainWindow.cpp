@@ -526,6 +526,22 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&SipManager::instance(), &SipManager::callStateChanged,
             m_incomingCallDialog, &IncomingCallDialog::onCallStateChanged);
 
+    // Camera on/off must mute/unmute PJSIP video transmit regardless of which
+    // page is visible.  This connection lives here (not inside buildClientsPage)
+    // so it is always active — buildClientsPage is lazily built on first visit.
+    connect(&CameraController::instance(), &CameraController::enabledChanged,
+            this, [](bool enabled) {
+        SipManager::instance().setCallVideoMuted(!enabled);
+    });
+    // When a video stream first becomes active, sync the current camera state
+    // in case the user had turned the camera off before the stream negotiated.
+    connect(&SipManager::instance(), &SipManager::videoMediaConnected,
+            this, []() {
+        SipManager::instance().setCallVideoMuted(
+            !CameraController::instance().isEnabled());
+    });
+
+
     { PerfScope s("MainWindow::restoreLayout"); restoreLayout(); }
 
     if (m_navRail)
@@ -897,16 +913,28 @@ QWidget *MainWindow::buildClientsPage()
     videoRequestBlinkTimer->setInterval(500);
 
     auto refreshRequestVideoButton = [requestVideoBtn, videoRequestPending, videoRequestBlinkOn]() {
-        const bool acceptMode = *videoRequestPending && !VideoMediaManager::instance().isVideoActive();
+        const bool videoActive = VideoMediaManager::instance().isVideoActive();
+        const bool acceptMode  = *videoRequestPending && !videoActive;
         QSignalBlocker blocker(requestVideoBtn);
-        if (acceptMode) {
+        if (videoActive) {
+            // Video stream is active — button shows "Video On", disabled.
+            // The user cannot toggle it off; video ends via the remote or hangup.
+            requestVideoBtn->setText(MainWindow::tr("Video On"));
+            requestVideoBtn->setProperty("callRole", QStringLiteral("videoActive"));
+            requestVideoBtn->setProperty("videoAlert", false);
+            requestVideoBtn->setEnabled(false);
+            requestVideoBtn->setChecked(true);
+        } else if (acceptMode) {
             requestVideoBtn->setText(MainWindow::tr("Accept Video"));
             requestVideoBtn->setProperty("callRole", QStringLiteral("acceptVideo"));
             requestVideoBtn->setProperty("videoAlert", *videoRequestBlinkOn);
+            requestVideoBtn->setEnabled(true);
         } else {
             requestVideoBtn->setText(MainWindow::tr("Request Video"));
             requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
             requestVideoBtn->setProperty("videoAlert", false);
+            requestVideoBtn->setEnabled(true);
+            requestVideoBtn->setChecked(false);
         }
         requestVideoBtn->style()->unpolish(requestVideoBtn);
         requestVideoBtn->style()->polish(requestVideoBtn);
@@ -1073,13 +1101,6 @@ QWidget *MainWindow::buildClientsPage()
         cameraOnOffBtn->style()->polish(cameraOnOffBtn);
         cardCamera->setValue(enabled ? MainWindow::tr("On") : MainWindow::tr("Off"));
         cardCamera->setStatus(enabled ? QStringLiteral("ok") : QStringLiteral("warn"));
-    });
-
-    // Mirror camera on/off into PJSIP video-mute when a video call is active.
-    connect(&CameraController::instance(), &CameraController::enabledChanged,
-            this, [](bool enabled) {
-        if (VideoMediaManager::instance().isVideoActive())
-            SipManager::instance().setCallVideoMuted(!enabled);
     });
 
     auto refreshCards = [=]() {
