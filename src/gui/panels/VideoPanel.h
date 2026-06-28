@@ -84,6 +84,7 @@ private:
     int    m_idlePreviewCapDev{-3};
     bool   m_noVideoDeviceAvailable{false};
     bool   m_autoStartIdlePreview{true};
+    bool   m_previewFrameSeen{false};
 
     // Qt camera stack for idle local preview (used when no call is active).
     QCamera              *m_previewCamera{nullptr};

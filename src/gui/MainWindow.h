@@ -43,6 +43,7 @@ private:
     void buildCentralWidget();
     void buildStatusBar();
     void requestApplicationShutdown();
+    void refreshStatusBarMetrics();
     void restoreLayout();
     void saveLayout();
     QWidget *buildDashboardPage();

@@ -21,6 +21,7 @@
 #include "gui/panels/RttPanel.h"
 #include "gui/CameraController.h"
 #include "gui/widgets/AppStatusBar.h"
+#include "rtt/RttSession.h"
 #include "sip/CallStateMachine.h"
 #include "sip/CallMediaOptions.h"
 #include "sip/SipProfileManager.h"
@@ -28,6 +29,7 @@
 #include "sip/SipUriNormalizer.h"
 
 #include <QApplication>
+#include <QAbstractSocket>
 #include <QCoreApplication>
 #include <QComboBox>
 #include <QFormLayout>
@@ -36,6 +38,7 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
+#include <QHostAddress>
 #include <QFile>
 #include <QFileDialog>
 #include <QJsonArray>
@@ -43,6 +46,7 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 #include <QLineEdit>
+#include <QNetworkInterface>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSplitter>
@@ -358,6 +362,73 @@ static bool importProfilesJson(const QJsonObject &root, QString *errorMessage)
         *errorMessage = QStringLiteral("%1 profile(s) imported").arg(importedCount);
     return true;
 }
+
+static QString localIpSourceText(QString *ipOut)
+{
+    auto pickIp = [](bool requireUpAndRunning, QString *ifaceName) -> QString {
+        const auto interfaces = QNetworkInterface::allInterfaces();
+        QString fallbackIp;
+        QString fallbackName;
+
+        for (const QNetworkInterface &iface : interfaces) {
+            const auto flags = iface.flags();
+            if (flags.testFlag(QNetworkInterface::IsLoopBack))
+                continue;
+            if (requireUpAndRunning
+                && (!flags.testFlag(QNetworkInterface::IsUp)
+                    || !flags.testFlag(QNetworkInterface::IsRunning))) {
+                continue;
+            }
+
+            for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
+                const QHostAddress addr = entry.ip();
+                if (addr.protocol() != QAbstractSocket::IPv4Protocol || addr.isLoopback())
+                    continue;
+                if (ifaceName)
+                    *ifaceName = iface.humanReadableName();
+                return addr.toString();
+            }
+
+            if (fallbackIp.isEmpty()) {
+                for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
+                    const QHostAddress addr = entry.ip();
+                    if (addr.protocol() != QAbstractSocket::IPv4Protocol || addr.isLoopback())
+                        continue;
+                    fallbackIp = addr.toString();
+                    fallbackName = iface.humanReadableName();
+                    break;
+                }
+            }
+        }
+
+        if (!fallbackIp.isEmpty() && ifaceName)
+            *ifaceName = fallbackName;
+        return fallbackIp;
+    };
+
+    QString ifaceName;
+    QString ip = pickIp(true, &ifaceName);
+    if (!ip.isEmpty()) {
+        if (ipOut)
+            *ipOut = ip;
+        return ifaceName.isEmpty()
+            ? QStringLiteral("local network interface")
+            : QStringLiteral("local network interface %1").arg(ifaceName);
+    }
+
+    ip = pickIp(false, &ifaceName);
+    if (!ip.isEmpty()) {
+        if (ipOut)
+            *ipOut = ip;
+        return ifaceName.isEmpty()
+            ? QStringLiteral("fallback network interface")
+            : QStringLiteral("fallback network interface %1").arg(ifaceName);
+    }
+
+    if (ipOut)
+        ipOut->clear();
+    return QStringLiteral("no non-loopback IPv4 interface available");
+}
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -379,6 +450,30 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             m_statusBar, &AppStatusBar::setRegistrationStatus);
+    connect(&SipManager::instance(), &SipManager::callStateChanged,
+            this, [this](CallState, const QString &, int) { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::callConnected,
+            this, [this](const QString &) { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::callDisconnected,
+            this, [this](const QString &, const QString &, int) { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::callFailed,
+            this, [this](const QString &, const QString &, int) { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::audioMediaConnected,
+            this, [this]() { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::audioMediaDisconnected,
+            this, [this]() { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::videoMediaConnected,
+            this, [this]() { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::videoMediaDisconnected,
+            this, [this]() { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::rttMediaConnected,
+            this, [this]() { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
+            this, [this]() { refreshStatusBarMetrics(); });
+    if (auto *rttSession = SipManager::instance().rttSession()) {
+        connect(rttSession, &RttSession::rttStateChanged,
+                this, [this](RttState) { refreshStatusBarMetrics(); });
+    }
 
     // SIP backend ready/stopped → update backend label live.
     connect(&SipManager::instance(), &SipManager::initialized,
@@ -399,6 +494,7 @@ MainWindow::MainWindow(QWidget *parent)
             m_statusBar->setActiveAccount(p.effectiveSipUri());
             m_statusBar->setTransport(SipProfileManager::transportToString(p.transport));
         }
+        refreshStatusBarMetrics();
     };
     connect(&SipProfileManager::instance(), &SipProfileManager::activeProfileChanged,
             this, [refreshStatusBarAccount](const QString &) { refreshStatusBarAccount(); });
@@ -407,6 +503,7 @@ MainWindow::MainWindow(QWidget *parent)
         refreshStatusBarAccount();
     });
     refreshStatusBarAccount();
+    refreshStatusBarMetrics();
 
     { PerfScope s("MainWindow::restoreLayout"); restoreLayout(); }
 
@@ -750,6 +847,9 @@ QWidget *MainWindow::buildClientsPage()
         holdBtn->setEnabled(active);
         holdBtn->setChecked(held);
         holdBtn->setText(held ? MainWindow::tr("Unhold") : MainWindow::tr("Hold"));
+        holdBtn->setProperty("callRole", held ? QStringLiteral("unhold") : QStringLiteral("hold"));
+        holdBtn->style()->unpolish(holdBtn);
+        holdBtn->style()->polish(holdBtn);
     };
 
     auto videoRequestFailed = std::make_shared<bool>(false);
@@ -1486,10 +1586,32 @@ void MainWindow::updateSipBackendStatus()
     m_statusBar->setRegistrationStatus(sip.registrationState(),
                                        sip.registrationStatusText(),
                                        sip.registrationStatusCode());
+    refreshStatusBarMetrics();
 }
 
 void MainWindow::setInitializingStatus(const QString &message)
 {
     if (m_statusBar)
         m_statusBar->setSipBackend(message, false);
+}
+
+void MainWindow::refreshStatusBarMetrics()
+{
+    if (!m_statusBar)
+        return;
+
+    QString localIp;
+    const QString ipSource = localIpSourceText(&localIp);
+    m_statusBar->setLocalIp(localIp.isEmpty() ? QStringLiteral("N/A") : localIp,
+                            QStringLiteral("Source: %1").arg(ipSource));
+
+    const RttSession *rttSession = SipManager::instance().rttSession();
+    const RttState rttState = rttSession ? rttSession->state() : RttState::Disabled;
+    m_statusBar->setRttLatency(rttStateName(rttState),
+                               QStringLiteral("RTT real-time text state from RttSession"));
+
+    m_statusBar->setJitter(QStringLiteral("N/A"),
+                           QStringLiteral("RTP statistics not available in this build"));
+    m_statusBar->setPacketLoss(QStringLiteral("N/A"),
+                               QStringLiteral("RTP statistics not available in this build"));
 }

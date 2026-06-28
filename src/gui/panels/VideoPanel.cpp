@@ -278,7 +278,7 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
     connect(&CameraController::instance(), &CameraController::enabledChanged,
             this, [this](bool enabled) {
         if (enabled) {
-            if (m_autoStartIdlePreview)
+            if (m_autoStartIdlePreview || isVisible())
                 startIdlePreview();
             // autoStartIdlePreview=false (Settings panel): don't auto-start;
             // the user controls it via the camera toggle inside the panel overlay.
@@ -576,6 +576,8 @@ void VideoPanel::startIdlePreview()
     m_previewCamera  = new QCamera(qtDev);
     m_previewSession = new QMediaCaptureSession();
     m_previewSink    = new QVideoSink();
+    m_previewFrameSeen = false;
+    Logger::instance().info(LogCategory::Media, QStringLiteral("Camera object created"));
 
     // Apply configured resolution + fps via camera format
     const QCameraFormat fmt = VideoQualityManager::bestFormat(qtDev, vs.resolution, vs.fps);
@@ -589,7 +591,9 @@ void VideoPanel::startIdlePreview()
     }
 
     m_previewSession->setCamera(m_previewCamera);
+    Logger::instance().info(LogCategory::Media, QStringLiteral("Capture session attached"));
     m_previewSession->setVideoSink(m_previewSink);
+    Logger::instance().info(LogCategory::Media, QStringLiteral("Video sink attached"));
 
     connect(m_previewSink, &QVideoSink::videoFrameChanged,
             this, &VideoPanel::onIdlePreviewFrame, Qt::QueuedConnection);
@@ -602,6 +606,14 @@ void VideoPanel::startIdlePreview()
         QStringLiteral("VideoPanel: preview started — camera='%1' in %2 ms")
             .arg(qtDev.description()).arg(startTimer.elapsed()));
     Logger::instance().info(LogCategory::Media, QStringLiteral("Camera acquired"));
+    QTimer::singleShot(2000, this, [this]() {
+        if (m_idlePreviewRunning && CameraController::instance().isEnabled() && !m_previewFrameSeen) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("Camera active, no preview frames"));
+            if (m_localPreview && !m_videoActive)
+                m_localPreview->setText(tr("Camera active\nno preview frames"));
+        }
+    });
     applyVideoState();
 }
 
@@ -625,6 +637,7 @@ void VideoPanel::stopIdlePreview()
 
     m_idlePreviewRunning = false;
     m_idlePreviewCapDev  = -3;
+    m_previewFrameSeen   = false;
 
     m_localPreview->setPixmap(QPixmap());
 
@@ -702,8 +715,14 @@ void VideoPanel::onIdlePreviewFrame(const QVideoFrame &frame)
                              .scaled(m_localPreview->size(),
                                      Qt::KeepAspectRatio,
                                      Qt::FastTransformation);
-    if (!img.isNull())
+    if (!img.isNull()) {
         m_localPreview->setPixmap(QPixmap::fromImage(img));
+        if (!m_previewFrameSeen) {
+            m_previewFrameSeen = true;
+            Logger::instance().info(LogCategory::Media, QStringLiteral("First preview frame received"));
+            Logger::instance().info(LogCategory::Media, QStringLiteral("Preview visible"));
+        }
+    }
 
     VideoPipelineMonitor::instance().stageEnd(VideoPipelineMonitor::Stage::Render);
     VideoStatistics::instance().frameProduced();

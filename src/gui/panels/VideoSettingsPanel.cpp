@@ -396,6 +396,8 @@ void VideoSettingsPanel::onCameraToggled(bool on)
         QStringLiteral("Camera %1 requested from Settings")
             .arg(on ? QStringLiteral("On") : QStringLiteral("Off")));
     CameraController::instance().setEnabled(on, QStringLiteral("Settings"));
+    if (on && m_preview && m_preview->isVisible())
+        m_preview->startIdlePreview();
 }
 
 void VideoSettingsPanel::onBitrateChanged(int value)

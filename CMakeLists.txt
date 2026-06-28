@@ -28,6 +28,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Core
     Widgets
     Gui
+    Network
     Multimedia
     MultimediaWidgets
     Svg
@@ -197,6 +198,7 @@ target_link_libraries(SIPClient PRIVATE
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui
+    Qt6::Network
     Qt6::Multimedia
     Qt6::MultimediaWidgets
     Qt6::Svg

@@ -57,10 +57,30 @@ AppStatusBar::AppStatusBar(QWidget *parent)
 void AppStatusBar::setConnectionState(const QString &s) { m_connState->setText(s); }
 void AppStatusBar::setActiveAccount(const QString &s)   { m_account->setText(s); }
 void AppStatusBar::setTransport(const QString &s)       { m_transport->setText("Transport: " + s); }
-void AppStatusBar::setLocalIp(const QString &s)         { m_localIp->setText("IP: " + s); }
-void AppStatusBar::setJitter(const QString &s)          { m_jitter->setText("Jitter: " + s); }
-void AppStatusBar::setPacketLoss(const QString &s)      { m_loss->setText("Loss: " + s); }
-void AppStatusBar::setRttLatency(const QString &s)      { m_rttLatency->setText("RTT: " + s); }
+void AppStatusBar::setLocalIp(const QString &s, const QString &tooltip)
+{
+    m_localIp->setText("IP: " + s);
+    m_localIp->setToolTip(tooltip.isEmpty() ? QStringLiteral("Source: local network interface fallback")
+                                            : tooltip);
+}
+void AppStatusBar::setJitter(const QString &s, const QString &tooltip)
+{
+    m_jitter->setText("Jitter: " + s);
+    m_jitter->setToolTip(tooltip.isEmpty() ? QStringLiteral("RTP statistics not available in this build")
+                                           : tooltip);
+}
+void AppStatusBar::setPacketLoss(const QString &s, const QString &tooltip)
+{
+    m_loss->setText("Loss: " + s);
+    m_loss->setToolTip(tooltip.isEmpty() ? QStringLiteral("RTP statistics not available in this build")
+                                         : tooltip);
+}
+void AppStatusBar::setRttLatency(const QString &s, const QString &tooltip)
+{
+    m_rttLatency->setText("RTT: " + s);
+    m_rttLatency->setToolTip(tooltip.isEmpty() ? QStringLiteral("RTT real-time text state")
+                                               : tooltip);
+}
 
 void AppStatusBar::setSipBackend(const QString &name, bool initialized)
 {

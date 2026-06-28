@@ -1041,6 +1041,11 @@ bool SipCall::resume()
             prm.opt.audioCount = 1;
             prm.opt.videoCount = videoWasActive ? 1 : 0;
             prm.opt.textCount  = rttWasActive   ? 1 : 0;
+            prm.opt.mediaDir = {
+                PJMEDIA_DIR_ENCODING_DECODING, // audio: sendrecv
+                prm.opt.videoCount > 0 ? PJMEDIA_DIR_DECODING : PJMEDIA_DIR_NONE,
+                prm.opt.textCount  > 0 ? PJMEDIA_DIR_ENCODING_DECODING : PJMEDIA_DIR_NONE
+            };
             if (prm.opt.videoCount > 0)
                 applyVideoMediaDirectionIfNeeded(prm.opt);
 
@@ -1210,6 +1215,13 @@ bool SipCall::requestVideo(bool enabled)
             pj::CallOpParam prm(true);
             prm.opt.videoCount = enabled ? 1 : 0;
             prm.opt.textCount = textActive ? 1 : 0;
+            if (!enabled) {
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Request Video OFF ignored to preserve remote video stream; "
+                                   "no re-INVITE sent"));
+                logMediaSummary(QStringLiteral("After Request Video"));
+                return true;
+            }
             if (enabled) {
                 applyVideoMediaDirectionIfNeeded(prm.opt);
                 const bool captureAvail = hasPjsipVideoCaptureDevice();

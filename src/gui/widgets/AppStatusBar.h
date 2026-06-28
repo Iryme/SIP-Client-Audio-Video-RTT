@@ -13,10 +13,10 @@ public:
     void setConnectionState(const QString &state);
     void setActiveAccount(const QString &account);
     void setTransport(const QString &transport);
-    void setLocalIp(const QString &ip);
-    void setJitter(const QString &jitter);
-    void setPacketLoss(const QString &loss);
-    void setRttLatency(const QString &rtt);
+    void setLocalIp(const QString &ip, const QString &tooltip = {});
+    void setJitter(const QString &jitter, const QString &tooltip = {});
+    void setPacketLoss(const QString &loss, const QString &tooltip = {});
+    void setRttLatency(const QString &rtt, const QString &tooltip = {});
     void setSipBackend(const QString &name, bool initialized);
     void setRegistrationStatus(RegistrationState state,
                                const QString &statusText,
