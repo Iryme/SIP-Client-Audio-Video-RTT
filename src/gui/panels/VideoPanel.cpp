@@ -158,16 +158,8 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
             VideoMediaManager::instance().setCamera(id);
         refreshIdlePreview();
     });
-    connect(m_btnCameraToggle, &QPushButton::toggled, this, [this](bool on) {
-        Logger::instance().info(LogCategory::Media,
-            QStringLiteral("Camera %1").arg(on ? QStringLiteral("ON") : QStringLiteral("OFF")));
-        if (on) {
-            Logger::instance().info(LogCategory::Media, QStringLiteral("Camera acquired"));
-            startIdlePreview();
-        } else {
-            stopIdlePreview();
-            Logger::instance().info(LogCategory::Media, QStringLiteral("Camera released"));
-        }
+    connect(m_btnCameraToggle, &QPushButton::toggled, this, [](bool on) {
+        CameraController::instance().setEnabled(on, QStringLiteral("VideoPanel"));
     });
 
     // Video mute button → VideoMediaManager
@@ -269,6 +261,24 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
     }
     connect(&SipManager::instance(), &SipManager::shutdownComplete,
             this, [this]() { stopIdlePreview(); });
+
+    // Global camera on/off — both VideoPanel instances stay in sync.
+    connect(&CameraController::instance(), &CameraController::enabledChanged,
+            this, [this](bool enabled) {
+        if (enabled) {
+            if (m_autoStartIdlePreview)
+                startIdlePreview();
+            // autoStartIdlePreview=false (Settings panel): don't auto-start;
+            // the user controls it via the camera toggle inside the panel overlay.
+        } else {
+            stopIdlePreview();
+        }
+        if (m_btnCameraToggle) {
+            QSignalBlocker b(m_btnCameraToggle);
+            m_btnCameraToggle->setChecked(enabled);
+            m_btnCameraToggle->setText(enabled ? tr("Camera On") : tr("Camera Off"));
+        }
+    });
 
     // SipManager call state → update remote label text
     connect(&SipManager::instance(), &SipManager::callConnected,
@@ -497,6 +507,11 @@ void VideoPanel::populateCameraCombo()
 void VideoPanel::startIdlePreview()
 {
     Logger::instance().info(LogCategory::Media, "VideoPanel: preview start requested");
+    if (!CameraController::instance().isEnabled()) {
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("VideoPanel: preview start skipped — camera disabled globally"));
+        return;
+    }
     if (m_idlePreviewRunning || m_videoActive) {
         Logger::instance().info(LogCategory::Media,
             QStringLiteral("VideoPanel: preview start skipped (running=%1 videoActive=%2)")

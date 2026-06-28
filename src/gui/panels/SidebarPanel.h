@@ -4,7 +4,8 @@
 
 class QLabel;
 class QPushButton;
-class QComboBox;
+class QListWidget;
+class QListWidgetItem;
 
 class SidebarPanel : public QWidget
 {
@@ -13,9 +14,11 @@ public:
     explicit SidebarPanel(QWidget *parent = nullptr);
 
 private slots:
-    void onProfileSelectorChanged(int index);
+    void onProfileListItemClicked(QListWidgetItem *item);
+    void onProfileListDoubleClicked(QListWidgetItem *item);
     void onAddProfile();
     void onEditProfile();
+    void onDuplicateProfile();
     void onDeleteProfile();
     void onActiveProfileChanged(const QString &profileId);
     void onRegistrationClicked();
@@ -27,15 +30,18 @@ private slots:
     void onProfileSwitchFailed(const QString &newProfileId, const QString &reason);
 
 private:
-    void refreshProfileSelector();
+    void refreshProfileList();
     void updateAccountCard(const QString &profileId);
 
-    QComboBox    *m_profileSelector{nullptr};
+    QListWidget  *m_profileList{nullptr};
     QLabel       *m_accountName{nullptr};
     QLabel       *m_accountUri{nullptr};
     QLabel       *m_regStatus{nullptr};
     QPushButton  *m_addProfile{nullptr};
     QPushButton  *m_editProfile{nullptr};
+    QPushButton  *m_duplicateProfile{nullptr};
     QPushButton  *m_deleteProfile{nullptr};
     QPushButton  *m_registrationButton{nullptr};
+
+    bool m_registerAfterSwitch{false};
 };

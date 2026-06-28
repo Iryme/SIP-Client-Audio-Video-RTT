@@ -11,7 +11,7 @@ StatusCard::StatusCard(const QString &title, QWidget *parent)
 {
     setObjectName(QStringLiteral("StatusCard"));
     setFrameShape(QFrame::StyledPanel);
-    setMinimumWidth(88);
+    setMinimumWidth(130);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     auto *outer = new QVBoxLayout(this);

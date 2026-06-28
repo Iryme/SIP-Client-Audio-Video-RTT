@@ -61,6 +61,7 @@ set(SOURCES
     src/gui/panels/ContactsPanel.cpp
     src/gui/panels/CallPanel.cpp
     src/gui/panels/VideoPanel.cpp
+    src/gui/CameraController.cpp
     src/gui/panels/RttPanel.cpp
     src/gui/panels/DiagnosticsPanel.cpp
     src/gui/panels/MediaPanel.cpp
@@ -127,6 +128,7 @@ set(HEADERS
     src/gui/panels/ContactsPanel.h
     src/gui/panels/CallPanel.h
     src/gui/panels/VideoPanel.h
+    src/gui/CameraController.h
     src/gui/panels/RttPanel.h
     src/gui/panels/DiagnosticsPanel.h
     src/gui/panels/MediaPanel.h

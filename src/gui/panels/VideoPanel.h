@@ -2,6 +2,7 @@
 #include <QElapsedTimer>
 #include <QTimer>
 #include <QWidget>
+#include "gui/CameraController.h"
 
 class QCamera;
 class QMediaCaptureSession;

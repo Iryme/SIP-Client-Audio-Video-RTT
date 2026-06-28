@@ -78,4 +78,5 @@ private:
     // Splitters (saved for layout persistence)
     QSplitter *m_vertSplitter{nullptr};
     QSplitter *m_horzSplitter{nullptr};
+    QSplitter *m_clientsSplitter{nullptr};
 };

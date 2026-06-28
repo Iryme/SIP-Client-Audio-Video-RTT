@@ -19,6 +19,7 @@
 #include "media/VideoStatistics.h"
 #include "gui/panels/VideoPanel.h"
 #include "gui/panels/RttPanel.h"
+#include "gui/CameraController.h"
 #include "gui/widgets/AppStatusBar.h"
 #include "sip/CallStateMachine.h"
 #include "sip/CallMediaOptions.h"
@@ -379,6 +380,28 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
             m_statusBar, &AppStatusBar::setRegistrationStatus);
 
+    // Active account + transport in the status bar
+    auto refreshStatusBarAccount = [this]() {
+        const QString regId    = SipManager::instance().registeredProfileId();
+        const QString activeId = SipProfileManager::instance().activeProfileId();
+        const QString useId    = !regId.isEmpty() ? regId : activeId;
+        const SipProfile p     = SipProfileManager::instance().profile(useId);
+        if (p.isNull()) {
+            m_statusBar->setActiveAccount(tr("No account"));
+            m_statusBar->setTransport(QStringLiteral("—"));
+        } else {
+            m_statusBar->setActiveAccount(p.effectiveSipUri());
+            m_statusBar->setTransport(SipProfileManager::transportToString(p.transport));
+        }
+    };
+    connect(&SipProfileManager::instance(), &SipProfileManager::activeProfileChanged,
+            this, [refreshStatusBarAccount](const QString &) { refreshStatusBarAccount(); });
+    connect(&SipManager::instance(), &SipManager::registrationStateChanged,
+            this, [refreshStatusBarAccount](RegistrationState, const QString &, int) {
+        refreshStatusBarAccount();
+    });
+    refreshStatusBarAccount();
+
     { PerfScope s("MainWindow::restoreLayout"); restoreLayout(); }
 
     if (m_navRail)
@@ -417,7 +440,8 @@ QWidget *MainWindow::buildClientsPage()
     auto *root = new QHBoxLayout(page);
     root->setContentsMargins(0, 0, 0, 0);
 
-    auto *split = new QSplitter(Qt::Horizontal, page);
+    m_clientsSplitter = new QSplitter(Qt::Horizontal, page);
+    auto *split = m_clientsSplitter;
     split->setChildrenCollapsible(false);
     split->setHandleWidth(6);
 
@@ -634,7 +658,24 @@ QWidget *MainWindow::buildClientsPage()
     split->setStretchFactor(0, 1);
     split->setStretchFactor(1, 2);
     split->setStretchFactor(2, 1);
-    split->setSizes(QList<int>{420, 840, 420});
+
+    // Restore persisted column widths; fall back to default proportions
+    const QByteArray savedSplit = AppSettings::loadSplitterState(QStringLiteral("clients"));
+    if (savedSplit.isEmpty())
+        split->setSizes(QList<int>{380, 760, 380});
+    else
+        split->restoreState(savedSplit);
+
+    // Minimum widths prevent columns from collapsing to nothing
+    if (split->widget(0)) split->widget(0)->setMinimumWidth(260);
+    if (split->widget(1)) split->widget(1)->setMinimumWidth(340);
+    if (split->widget(2)) split->widget(2)->setMinimumWidth(220);
+
+    connect(split, &QSplitter::splitterMoved, this, [this]() {
+        if (m_clientsSplitter)
+            AppSettings::saveSplitterState(QStringLiteral("clients"),
+                                           m_clientsSplitter->saveState());
+    });
 
     root->addWidget(split);
 
@@ -813,52 +854,30 @@ QWidget *MainWindow::buildClientsPage()
         VideoMediaManager::instance().setCamera(cameraCombo->itemData(idx).toString());
     });
 
-    // Camera On/Off: controls hardware camera — stops/starts local preview and releases device
+    // Camera On/Off: delegates to CameraController singleton so Settings and
+    // Clients always reflect the same hardware state; LED turns off when released.
     connect(cameraOnOffBtn, &QPushButton::clicked, this,
-            [this, cameraOnOffBtn, cardLocalVideo, cardCamera](bool checked) {
-        if (checked) {
-            // Button checked = Camera Off requested
-            Logger::instance().info(LogCategory::Media,
-                QStringLiteral("Clients Camera Off requested"));
-            if (m_clientsVideoPanel) {
-                m_clientsVideoPanel->stopIdlePreview();
-                Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Camera device released — LED should be off after release"));
-                Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Local preview stopped"));
-            }
-            const CallState cs = SipManager::instance().callState();
-            if (cs == CallState::Active || cs == CallState::Held) {
-                Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Camera stopped locally; video inactive update not supported in current stub mode"));
-            }
-            cameraOnOffBtn->setText(tr("Camera On"));
-            cameraOnOffBtn->setProperty("callRole", QStringLiteral("cameraOff"));
-            cardCamera->setValue(tr("Off"));
-            cardCamera->setStatus(QStringLiteral("warn"));
-            cardLocalVideo->setValue(tr("Off"));
-            cardLocalVideo->setStatus({});
-        } else {
-            // Button unchecked = Camera On requested
-            Logger::instance().info(LogCategory::Media,
-                QStringLiteral("Clients Camera On requested"));
-            if (m_clientsVideoPanel) {
-                m_clientsVideoPanel->startIdlePreview();
-                Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Camera device acquired"));
-                Logger::instance().info(LogCategory::Media,
-                    QStringLiteral("Local preview started"));
-            }
-            cameraOnOffBtn->setText(tr("Camera Off"));
-            cameraOnOffBtn->setProperty("callRole", QStringLiteral("cameraOn"));
-            cardCamera->setValue(tr("On"));
-            cardCamera->setStatus(QStringLiteral("ok"));
-            cardLocalVideo->setValue(tr("On"));
-            cardLocalVideo->setStatus(QStringLiteral("ok"));
-        }
-        // Repolish the button so the new callRole property takes effect.
+            [cameraOnOffBtn](bool checked) {
+        // checked = camera OFF requested (button shows "Camera On" when camera is off)
+        CameraController::instance().setEnabled(!checked,
+            QStringLiteral("Clients"));
         cameraOnOffBtn->style()->unpolish(cameraOnOffBtn);
         cameraOnOffBtn->style()->polish(cameraOnOffBtn);
+    });
+
+    // Sync button + cards whenever CameraController changes (Settings, VideoPanel, or here)
+    connect(&CameraController::instance(), &CameraController::enabledChanged,
+            page, [cameraOnOffBtn, cardCamera](bool enabled) {
+        QSignalBlocker b(cameraOnOffBtn);
+        cameraOnOffBtn->setChecked(!enabled);
+        cameraOnOffBtn->setText(enabled ? MainWindow::tr("Camera Off")
+                                        : MainWindow::tr("Camera On"));
+        cameraOnOffBtn->setProperty("callRole",
+            enabled ? QStringLiteral("cameraOff") : QStringLiteral("cameraOn"));
+        cameraOnOffBtn->style()->unpolish(cameraOnOffBtn);
+        cameraOnOffBtn->style()->polish(cameraOnOffBtn);
+        cardCamera->setValue(enabled ? MainWindow::tr("On") : MainWindow::tr("Off"));
+        cardCamera->setStatus(enabled ? QStringLiteral("ok") : QStringLiteral("warn"));
     });
 
     auto refreshCards = [=]() {

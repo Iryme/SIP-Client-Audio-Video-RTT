@@ -1088,6 +1088,7 @@ bool SipCall::requestVideo(bool enabled)
             .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
 
     auto logMediaSummary = [this](const QString &phase) {
+#if defined(HAVE_PJSIP)
         if (!m_impl || !m_impl->pjCall)
             return;
         try {
@@ -1128,6 +1129,9 @@ bool SipCall::requestVideo(bool enabled)
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("%1 summary unavailable: unknown error").arg(phase));
         }
+#else
+        Q_UNUSED(phase)
+#endif
     };
 
     logMediaSummary(QStringLiteral("Before Request Video"));
@@ -1203,6 +1207,7 @@ bool SipCall::requestRtt(bool enabled)
             .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
 
     auto logMediaSummary = [this](const QString &phase) {
+#if defined(HAVE_PJSIP)
         if (!m_impl || !m_impl->pjCall)
             return;
         try {
@@ -1243,6 +1248,9 @@ bool SipCall::requestRtt(bool enabled)
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("%1 summary unavailable: unknown error").arg(phase));
         }
+#else
+        Q_UNUSED(phase)
+#endif
     };
 
     logMediaSummary(QStringLiteral("Before Request RTT"));
