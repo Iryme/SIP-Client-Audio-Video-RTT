@@ -37,7 +37,13 @@ static QLabel *sectionLabel(const QString &text, QWidget *parent)
 VideoSettingsPanel::VideoSettingsPanel(QWidget *parent)
     : QWidget(parent)
 {
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoSettingsPanel: constructing"));
+
     buildUi();
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoSettingsPanel: buildUi done, wiring signals"));
 
     connect(&VideoQualityManager::instance(), &VideoQualityManager::settingsChanged,
             this, &VideoSettingsPanel::onSettingsChanged);
@@ -46,6 +52,9 @@ VideoSettingsPanel::VideoSettingsPanel(QWidget *parent)
 
     populateCameras();
     loadFrom(VideoQualityManager::instance().current());
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoSettingsPanel: constructed OK"));
 }
 
 void VideoSettingsPanel::buildUi()
@@ -456,20 +465,34 @@ void VideoSettingsPanel::onSettingsChanged(const VideoSettings &s)
 void VideoSettingsPanel::showEvent(QShowEvent *event)
 {
     QWidget::showEvent(event);
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoSettingsPanel: showEvent"));
+
     if (!m_statsConnected) {
         connect(&VideoStatistics::instance(), &VideoStatistics::statsUpdated,
                 this, &VideoSettingsPanel::onStatsUpdated);
         m_statsConnected = true;
     }
-    // Sync button state from CameraController (don't set it — that would trigger setEnabled).
+
+    // Read global camera state and sync UI without triggering setEnabled.
     const bool camEnabled = CameraController::instance().isEnabled();
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoSettingsPanel: camera enabled=%1").arg(camEnabled));
+
     if (m_cameraToggle) {
         QSignalBlocker b(m_cameraToggle);
         m_cameraToggle->setChecked(camEnabled);
         m_cameraToggle->setText(camEnabled ? tr("Camera On") : tr("Camera Off"));
     }
-    if (camEnabled && m_preview)
+    if (camEnabled && m_preview) {
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("VideoSettingsPanel: starting idle preview"));
         m_preview->startIdlePreview();
+    }
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoSettingsPanel: showEvent done"));
 }
 
 void VideoSettingsPanel::hideEvent(QHideEvent *event)

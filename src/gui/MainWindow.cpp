@@ -455,7 +455,9 @@ QWidget *MainWindow::buildClientsPage()
         auto *btn = new QPushButton(text, parent);
         btn->setObjectName(QStringLiteral("CallCtrlBtn"));
         btn->setCheckable(checkable);
-        btn->setMinimumHeight(32);
+        btn->setMinimumHeight(44);
+        btn->setMinimumWidth(110);
+        btn->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
         return btn;
     };
 
@@ -466,9 +468,15 @@ QWidget *MainWindow::buildClientsPage()
     };
 
     // ------------------------------------------------------------------
-    // LEFT COLUMN: call control + dialpad + contacts
+    // LEFT COLUMN: call control + dialpad + contacts (wrapped in scroll area)
     // ------------------------------------------------------------------
-    auto *leftWidget = new QWidget(split);
+    auto *leftScroll = new QScrollArea(split);
+    leftScroll->setWidgetResizable(true);
+    leftScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    leftScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    leftScroll->setFrameShape(QFrame::NoFrame);
+    auto *leftWidget = new QWidget(leftScroll);
+    leftScroll->setWidget(leftWidget);
     auto *leftLayout = new QVBoxLayout(leftWidget);
     leftLayout->setContentsMargins(12, 12, 12, 12);
     leftLayout->setSpacing(10);
@@ -485,16 +493,17 @@ QWidget *MainWindow::buildClientsPage()
     m_clientsTargetInput->setMinimumHeight(34);
     callLayout->addWidget(m_clientsTargetInput);
 
-    auto *callRow = new QHBoxLayout();
-    callRow->setSpacing(6);
-    auto *callBtn = makeActionButton(tr("Call"), callGroup);
-    auto *answerBtn = makeActionButton(tr("Answer"), callGroup);
-    auto *rejectBtn = makeActionButton(tr("Reject"), callGroup);
-    auto *hangupBtn = makeActionButton(tr("Hangup"), callGroup);
-    auto *muteBtn = makeActionButton(tr("Mute"), callGroup, true);
-    auto *holdBtn = makeActionButton(tr("Hold"), callGroup, true);
-    auto *requestVideoBtn = makeActionButton(tr("Request Video"), callGroup, true);
-    auto *requestRttBtn = makeActionButton(tr("Request RTT"), callGroup, true);
+    auto *btnFlowHost = new QWidget(callGroup);
+    auto *btnFlow = new FlowLayout(btnFlowHost, 4, 4, 4);
+    btnFlowHost->setLayout(btnFlow);
+    auto *callBtn = makeActionButton(tr("Call"), btnFlowHost);
+    auto *answerBtn = makeActionButton(tr("Answer"), btnFlowHost);
+    auto *rejectBtn = makeActionButton(tr("Reject"), btnFlowHost);
+    auto *hangupBtn = makeActionButton(tr("Hangup"), btnFlowHost);
+    auto *muteBtn = makeActionButton(tr("Mute"), btnFlowHost, true);
+    auto *holdBtn = makeActionButton(tr("Hold"), btnFlowHost, true);
+    auto *requestVideoBtn = makeActionButton(tr("Request Video"), btnFlowHost, true);
+    auto *requestRttBtn = makeActionButton(tr("Request RTT"), btnFlowHost, true);
     callBtn->setProperty("callRole", QStringLiteral("call"));
     answerBtn->setProperty("callRole", QStringLiteral("answer"));
     rejectBtn->setProperty("callRole", QStringLiteral("reject"));
@@ -503,15 +512,15 @@ QWidget *MainWindow::buildClientsPage()
     holdBtn->setProperty("callRole", QStringLiteral("hold"));
     requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
     requestRttBtn->setProperty("callRole", QStringLiteral("requestRtt"));
-    callRow->addWidget(callBtn);
-    callRow->addWidget(answerBtn);
-    callRow->addWidget(rejectBtn);
-    callRow->addWidget(hangupBtn);
-    callRow->addWidget(muteBtn);
-    callRow->addWidget(holdBtn);
-    callRow->addWidget(requestVideoBtn);
-    callRow->addWidget(requestRttBtn);
-    callLayout->addLayout(callRow);
+    btnFlow->addWidget(callBtn);
+    btnFlow->addWidget(answerBtn);
+    btnFlow->addWidget(rejectBtn);
+    btnFlow->addWidget(hangupBtn);
+    btnFlow->addWidget(muteBtn);
+    btnFlow->addWidget(holdBtn);
+    btnFlow->addWidget(requestVideoBtn);
+    btnFlow->addWidget(requestRttBtn);
+    callLayout->addWidget(btnFlowHost);
 
     auto *actionRow = new QHBoxLayout();
     actionRow->setSpacing(6);
@@ -549,7 +558,7 @@ QWidget *MainWindow::buildClientsPage()
     m_contactsPanel = new ContactsPanel(leftWidget);
     leftLayout->addWidget(m_contactsPanel, 1);
 
-    split->addWidget(leftWidget);
+    split->addWidget(leftScroll);
 
     // ------------------------------------------------------------------
     // CENTER COLUMN: status/device controls + video PIP

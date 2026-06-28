@@ -67,8 +67,17 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
     setMinimumSize(320, 240);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_autoStartIdlePreview = autoStartIdlePreview;
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("VideoPanel: constructing (autoStartIdlePreview=%1)")
+            .arg(m_autoStartIdlePreview ? QStringLiteral("true") : QStringLiteral("false")));
+
     // Native window handle required for PJSIP video embedding via SetParent.
-    setAttribute(Qt::WA_NativeWindow);
+    // Only the call VideoPanel needs this; the Settings preview panel uses pure-Qt
+    // rendering (QVideoSink→QLabel) and setting WA_NativeWindow on a widget inside
+    // a non-current QTabWidget page on Windows causes a crash during HWND creation.
+    if (m_autoStartIdlePreview)
+        setAttribute(Qt::WA_NativeWindow);
 
     // --- Remote video label (bottom-left) ------------------------------------
     m_remoteLabel = new QLabel(tr("No active call"), this);
@@ -94,7 +103,10 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
     m_localPreview->setWordWrap(true);
     m_localPreview->setFixedSize(160, 90);
     // Native handle required so PJSIP can embed the local preview via SetParent.
-    m_localPreview->setAttribute(Qt::WA_NativeWindow);
+    // Only needed for the call panel; the Settings preview panel must NOT set this
+    // because non-current QTabWidget children with WA_NativeWindow crash on Windows.
+    if (m_autoStartIdlePreview)
+        m_localPreview->setAttribute(Qt::WA_NativeWindow);
 
     // --- Control overlay (hidden until a call is active) ---------------------
     m_controlOverlay = new QWidget(this);
