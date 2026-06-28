@@ -3,6 +3,7 @@
 #include <QCloseEvent>
 
 class DashboardPage;
+class IncomingCallDialog;
 class NavRail;
 class ContactsPanel;
 class VideoPanel;
@@ -71,7 +72,8 @@ private:
     SettingsPanel    *m_settingsPanel{nullptr};
     SipLadderPage    *m_ladderPage{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
-    QDialog          *m_settingsDialog{nullptr};
+    QDialog              *m_settingsDialog{nullptr};
+    IncomingCallDialog   *m_incomingCallDialog{nullptr};
 
     QLineEdit *m_clientsTargetInput{nullptr};
     bool m_shutdownRequested{false};

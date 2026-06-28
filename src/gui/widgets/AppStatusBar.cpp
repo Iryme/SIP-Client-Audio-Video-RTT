@@ -72,8 +72,21 @@ void AppStatusBar::setLocalIp(const QString &s, const QString &tooltip)
 }
 void AppStatusBar::setRtpStats(const RtpStatsSnapshot &stats)
 {
+    if (!stats.available) {
+        // No active call or call not in a state that can provide stats — reset to dash.
+        m_jitter->setText(QStringLiteral("Jitter: —"));
+        m_jitter->setToolTip(stats.reason.isEmpty()
+            ? QStringLiteral("No active call")
+            : stats.reason);
+        m_loss->setText(QStringLiteral("Loss: —"));
+        m_loss->setToolTip(m_jitter->toolTip());
+        m_rttLatency->setText(QStringLiteral("RTT: —"));
+        m_rttLatency->setToolTip(m_jitter->toolTip());
+        return;
+    }
+
     const QString baseTooltip = stats.reason.isEmpty()
-        ? QStringLiteral("No RTP statistics available")
+        ? QStringLiteral("PJSIP RTCP statistics")
         : stats.reason;
     const QString streamHint = stats.streamIndex >= 0
         ? QStringLiteral("Stream %1 (%2)")
@@ -93,7 +106,7 @@ void AppStatusBar::setRtpStats(const RtpStatsSnapshot &stats)
                        tooltipFor(QStringLiteral("PJSIP RTCP jitter")));
     } else {
         setMetricLabel(m_jitter, QStringLiteral("Jitter: "), QStringLiteral("N/A"),
-                       tooltipFor(QStringLiteral("jitter not measurable")));
+                       tooltipFor(QStringLiteral("RTCP samples not available yet")));
     }
 
     if (stats.packetLossAvailable) {
@@ -104,7 +117,7 @@ void AppStatusBar::setRtpStats(const RtpStatsSnapshot &stats)
                                   .arg(stats.packetLossPackets)));
     } else {
         setMetricLabel(m_loss, QStringLiteral("Loss: "), QStringLiteral("N/A"),
-                       tooltipFor(QStringLiteral("packet loss not yet measurable")));
+                       tooltipFor(QStringLiteral("RTCP samples not available yet")));
     }
 
     if (stats.rttAvailable) {
@@ -113,7 +126,7 @@ void AppStatusBar::setRtpStats(const RtpStatsSnapshot &stats)
                        tooltipFor(QStringLiteral("PJSIP RTCP RTT")));
     } else {
         setMetricLabel(m_rttLatency, QStringLiteral("RTT: "), QStringLiteral("N/A"),
-                       tooltipFor(QStringLiteral("RTCP RTT samples unavailable")));
+                       tooltipFor(QStringLiteral("RTCP samples not available yet")));
     }
 }
 void AppStatusBar::setJitter(const QString &s, const QString &tooltip)

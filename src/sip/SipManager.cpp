@@ -160,6 +160,7 @@ SipManager::SipManager() : QObject(nullptr)
     connect(&MediaDeviceManager::instance(),
             &MediaDeviceManager::devicesChanged,
             this, &SipManager::applyPersistedAudioDevices);
+
 }
 
 SipManager::~SipManager()

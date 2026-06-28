@@ -391,6 +391,9 @@ struct SipCall::Impl
                         videoCapDevId      = mi.videoCapDev;
                         const bool localRequestPending = m_impl->videoRequestPendingLocal;
                         m_impl->videoRequestPendingLocal = false;
+                        // Reset so a future remote video request after this one is detected.
+                        if (localRequestPending)
+                            m_impl->videoRequestNotified = false;
                         if (!localRequestPending && !m_impl->videoRequestNotified) {
                             m_impl->videoRequestNotified = true;
                             QPointer<SipCall> self = m_impl->q;
@@ -631,8 +634,15 @@ struct SipCall::Impl
             if (!hasVideoOffer)
                 return;
 
+            // If the local user initiated a video re-INVITE, let PJSIP handle it normally.
             if (m_impl->videoRequestPendingLocal)
                 return;
+
+            // Remote is requesting video. Decline it in the auto-response so PJSIP
+            // sends a 200 OK with m=video 0 (rejected). The user must explicitly
+            // accept via the "Accept Video" button (requestVideo(true)).
+            prm.opt.videoCount = 0;
+
             if (m_impl->videoRequestNotified)
                 return;
 
@@ -643,7 +653,8 @@ struct SipCall::Impl
                     emit self->videoRequested();
             }, Qt::QueuedConnection);
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Remote video request received: callId=%1").arg(getId()));
+                QStringLiteral("Remote video request received and declined (pending user accept): "
+                               "callId=%1").arg(getId()));
         }
 
     private:

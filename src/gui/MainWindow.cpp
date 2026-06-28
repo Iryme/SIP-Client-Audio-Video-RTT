@@ -20,6 +20,7 @@
 #include "gui/panels/VideoPanel.h"
 #include "gui/panels/RttPanel.h"
 #include "gui/CameraController.h"
+#include "gui/dialogs/IncomingCallDialog.h"
 #include "gui/widgets/AppStatusBar.h"
 #include "rtt/RttSession.h"
 #include "sip/CallStateMachine.h"
@@ -508,6 +509,23 @@ MainWindow::MainWindow(QWidget *parent)
     refreshStatusBarAccount();
     refreshStatusBarMetrics();
 
+    // Incoming call popup — visible regardless of active tab/page.
+    m_incomingCallDialog = new IncomingCallDialog(this);
+    connect(&SipManager::instance(), &SipManager::incomingCall,
+            this, [this](const QString &remoteUri) {
+        m_incomingCallDialog->setRemoteUri(remoteUri);
+        // Position the popup in the top-right corner of the main window.
+        const QRect wr = geometry();
+        m_incomingCallDialog->move(
+            wr.right() - m_incomingCallDialog->width() - 16,
+            wr.top() + 48);
+        m_incomingCallDialog->show();
+        m_incomingCallDialog->raise();
+        m_incomingCallDialog->activateWindow();
+    });
+    connect(&SipManager::instance(), &SipManager::callStateChanged,
+            m_incomingCallDialog, &IncomingCallDialog::onCallStateChanged);
+
     { PerfScope s("MainWindow::restoreLayout"); restoreLayout(); }
 
     if (m_navRail)
@@ -618,6 +636,11 @@ QWidget *MainWindow::buildClientsPage()
     holdBtn->setProperty("callRole", QStringLiteral("pause"));
     requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
     requestRttBtn->setProperty("callRole", QStringLiteral("requestRtt"));
+    // Initial visibility: no active call at startup
+    answerBtn->setVisible(false);
+    rejectBtn->setVisible(false);
+    hangupBtn->setVisible(false);
+
     btnGrid->addWidget(callBtn, 0, 0);
     btnGrid->addWidget(answerBtn, 0, 1);
     btnGrid->addWidget(rejectBtn, 0, 2);
@@ -1050,6 +1073,13 @@ QWidget *MainWindow::buildClientsPage()
         cameraOnOffBtn->style()->polish(cameraOnOffBtn);
         cardCamera->setValue(enabled ? MainWindow::tr("On") : MainWindow::tr("Off"));
         cardCamera->setStatus(enabled ? QStringLiteral("ok") : QStringLiteral("warn"));
+    });
+
+    // Mirror camera on/off into PJSIP video-mute when a video call is active.
+    connect(&CameraController::instance(), &CameraController::enabledChanged,
+            this, [](bool enabled) {
+        if (VideoMediaManager::instance().isVideoActive())
+            SipManager::instance().setCallVideoMuted(!enabled);
     });
 
     auto refreshCards = [=]() {

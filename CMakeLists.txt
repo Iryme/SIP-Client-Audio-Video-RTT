@@ -76,6 +76,7 @@ set(SOURCES
     src/sip/SipTraceLogger.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
+    src/gui/dialogs/IncomingCallDialog.cpp
     src/core/Logger.cpp
     src/core/ContactStore.cpp
     src/sip/SipManager.cpp
@@ -144,6 +145,7 @@ set(HEADERS
     src/gui/widgets/StatusCard.h
     src/gui/widgets/AppStatusBar.h
     src/gui/dialogs/SipProfileEditorDialog.h
+    src/gui/dialogs/IncomingCallDialog.h
     src/core/Logger.h
     src/core/AppSettings.h
     src/core/ContactStore.h
