@@ -403,6 +403,9 @@ target_link_libraries(test_codec_manager PRIVATE
     Qt6::Core
     Qt6::Test
 )
+if(WIN32)
+    target_link_libraries(test_codec_manager PRIVATE Ws2_32)
+endif()
 
 add_test(NAME test_codec_manager COMMAND test_codec_manager)
 
