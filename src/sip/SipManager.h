@@ -158,6 +158,7 @@ signals:
     // Video media signals (forwarded from the active SipCall)
     void videoMediaConnected();
     void videoMediaDisconnected();
+    void videoRequested();
     void callVideoMuteChanged(bool muted);
     void localVideoStarted();
     void localVideoStopped();

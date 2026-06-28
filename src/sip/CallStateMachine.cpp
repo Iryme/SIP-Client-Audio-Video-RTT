@@ -27,7 +27,7 @@ QString callStateDisplayText(CallState state)
     case CallState::IncomingRinging: return QStringLiteral("Incoming Call");
     case CallState::Connecting:      return QStringLiteral("Connecting...");
     case CallState::Active:          return QStringLiteral("Connected");
-    case CallState::Held:            return QStringLiteral("On Hold");
+    case CallState::Held:            return QStringLiteral("Paused");
     case CallState::Disconnecting:   return QStringLiteral("Ending...");
     case CallState::Failed:          return QStringLiteral("Call Failed");
     }

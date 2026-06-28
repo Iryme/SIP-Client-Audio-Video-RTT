@@ -165,6 +165,7 @@ struct SipAccount::Impl
     }
 
     QPointer<SipAccount> owner;
+    pj::AccountConfig accountConfig;
 
 #ifdef HAVE_PJSIP
     // Minimal pj::Call subclass created in onIncomingCall to claim the user_data
@@ -419,6 +420,7 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
                 .arg(transportId)
                 .arg(username,
                      proxy.isEmpty() ? QStringLiteral("(none)") : ensureSipUri(proxy)));
+        m_impl->accountConfig = config;
         m_impl->account = new Impl::Account(m_impl);
         m_impl->account->create(config, true);
         return true;
@@ -491,6 +493,52 @@ bool SipAccount::refreshRegistration()
     postRegistrationResult(RegistrationState::RegistrationFailed,
                            QStringLiteral("PJSIP unavailable; registration refresh not attempted"),
                            0);
+    return false;
+#endif
+}
+
+bool SipAccount::applyVideoSettings()
+{
+#ifdef HAVE_PJSIP
+#if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
+    if (!m_impl->account) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Video settings not applied to PJSIP: account not ready"));
+        return false;
+    }
+
+    try {
+        pj::AccountConfig cfg = m_impl->accountConfig;
+        const bool hasCaptureDev = hasPjsipVideoCaptureDevice();
+        const pjmedia_vid_dev_index defaultCaptureDev = preferredPjsipVideoCaptureDevice();
+
+        if (defaultCaptureDev != PJMEDIA_VID_INVALID_DEV)
+            cfg.videoConfig.defaultCaptureDevice = defaultCaptureDev;
+        cfg.videoConfig.autoTransmitOutgoing = hasCaptureDev;
+        cfg.videoConfig.autoShowIncoming = false;
+#if defined(_WIN32)
+        const pjmedia_vid_dev_index gdiRenderDev = PjsipGdiRenderer::deviceIndex();
+        if (gdiRenderDev != PJMEDIA_VID_INVALID_DEV)
+            cfg.videoConfig.defaultRenderDevice = gdiRenderDev;
+#endif
+
+        m_impl->account->modify(cfg);
+        m_impl->accountConfig = cfg;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP video settings applied: defaultCaptureDevice=%1 autoTransmitOutgoing=%2")
+                .arg(static_cast<int>(cfg.videoConfig.defaultCaptureDevice))
+                .arg(cfg.videoConfig.autoTransmitOutgoing ? QStringLiteral("true") : QStringLiteral("false")));
+        return true;
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Video settings not applied to PJSIP: %1")
+                .arg(QString::fromStdString(e.reason)));
+        return false;
+    }
+#else
+    return false;
+#endif
+#else
     return false;
 #endif
 }

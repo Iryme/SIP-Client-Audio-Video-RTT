@@ -41,6 +41,11 @@ CallPanel::CallPanel(QWidget *parent)
     : QWidget(parent)
 {
     setObjectName("CallPanel");
+    m_videoRequestBlinkTimer.setInterval(500);
+    connect(&m_videoRequestBlinkTimer, &QTimer::timeout, this, [this]() {
+        m_videoRequestBlinkOn = !m_videoRequestBlinkOn;
+        refreshVideoRequestButton();
+    });
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(12, 8, 12, 8);
@@ -174,7 +179,7 @@ CallPanel::CallPanel(QWidget *parent)
         };
 
         m_btnMute         = makeBtn(tr("Mute"),        true);
-        m_btnHold         = makeBtn(tr("Hold"),        true);
+        m_btnHold         = makeBtn(tr("Pause"),       true);
         m_btnRequestVideo = makeBtn(tr("Request Video"), true);
         m_btnAnswer       = makeBtn(tr("Answer"),      false);
         m_btnReject       = makeBtn(tr("Reject"),      false);
@@ -189,7 +194,7 @@ CallPanel::CallPanel(QWidget *parent)
         m_btnAnswer->setProperty("callRole", QStringLiteral("answer"));
         m_btnReject->setProperty("callRole", QStringLiteral("reject"));
         m_btnHangup->setProperty("callRole", QStringLiteral("hangup"));
-        m_btnHold->setProperty("callRole",   QStringLiteral("hold"));
+        m_btnHold->setProperty("callRole",   QStringLiteral("pause"));
 
         ctrlRow->addWidget(m_btnMute);
         ctrlRow->addWidget(m_btnHold);
@@ -404,32 +409,36 @@ CallPanel::CallPanel(QWidget *parent)
     connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
             this, &CallPanel::onOutputLevelChanged);
 
-    // Hold / Unhold — pending text on click, confirmed by callStateChanged
+    // Pause / Resume — pending text on click, confirmed by callStateChanged
     connect(m_btnHold, &QPushButton::clicked, this, [this](bool checked) {
         if (checked) {
-            Logger::instance().info(LogCategory::Sip, QStringLiteral("Hold button clicked"));
-            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP hold requested"));
-            m_btnHold->setText(tr("Holding…"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("Pause button clicked"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP pause requested"));
+            m_btnHold->setText(tr("Pausing…"));
             const bool ok = SipManager::instance().holdCall();
             if (!ok) {
-                Logger::instance().warn(LogCategory::Sip, QStringLiteral("SIP hold failed"));
+                Logger::instance().warn(LogCategory::Sip, QStringLiteral("SIP pause failed"));
                 QSignalBlocker b(m_btnHold);
                 m_btnHold->setChecked(false);
-                m_btnHold->setText(tr("Hold"));
+                m_btnHold->setText(tr("Pause"));
+            } else {
+                m_holdConfirmTimer.start();
             }
         } else {
-            Logger::instance().info(LogCategory::Sip, QStringLiteral("Unhold button clicked"));
-            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP unhold requested"));
-            m_btnHold->setText(tr("Unholding…"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("Resume button clicked"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP resume requested"));
+            m_btnHold->setText(tr("Resuming…"));
             const bool ok = SipManager::instance().resumeCall();
             if (!ok) {
-                Logger::instance().warn(LogCategory::Sip, QStringLiteral("SIP unhold failed"));
+                Logger::instance().warn(LogCategory::Sip, QStringLiteral("SIP resume failed"));
                 QSignalBlocker b(m_btnHold);
                 m_btnHold->setChecked(true);
-                m_btnHold->setText(tr("Unhold"));
-                m_btnHold->setProperty("callRole", QStringLiteral("hold"));
+                m_btnHold->setText(tr("Resume"));
+                m_btnHold->setProperty("callRole", QStringLiteral("resume"));
                 m_btnHold->style()->unpolish(m_btnHold);
                 m_btnHold->style()->polish(m_btnHold);
+            } else {
+                m_holdConfirmTimer.start();
             }
         }
     });
@@ -445,6 +454,7 @@ CallPanel::CallPanel(QWidget *parent)
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Request Video %1").arg(checked ? QStringLiteral("ON") : QStringLiteral("OFF")));
         const CallState state = SipManager::instance().callState();
+        const bool acceptMode = m_videoRequested && !m_videoConnected;
         if (state == CallState::Idle || state == CallState::Failed) {
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("Video renegotiation unsupported in current call; will apply on next call"));
@@ -452,12 +462,22 @@ CallPanel::CallPanel(QWidget *parent)
             return;
         }
         if (checked) {
-            // Enable video: send re-INVITE with video m-line
+            // Enable video: send re-INVITE with video m-line.
+            if (acceptMode)
+                Logger::instance().info(LogCategory::Sip, QStringLiteral("Accept Video requested"));
             if (!SipManager::instance().requestCallVideo(true)) {
                 Logger::instance().warn(LogCategory::Sip,
                     QStringLiteral("Request Video ON rejected by SipManager"));
-                QSignalBlocker b(m_btnRequestVideo);
-                m_btnRequestVideo->setChecked(false);
+                if (acceptMode) {
+                    m_videoRequested = true;
+                } else {
+                    QSignalBlocker b(m_btnRequestVideo);
+                    m_btnRequestVideo->setChecked(false);
+                }
+                refreshVideoRequestButton();
+            } else if (acceptMode) {
+                m_videoRequested = false;
+                refreshVideoRequestButton();
             }
         } else {
             // Disable video toggle: do NOT send re-INVITE — that would send m=video 0
@@ -497,6 +517,8 @@ CallPanel::CallPanel(QWidget *parent)
             this, &CallPanel::onVideoMediaConnected);
     connect(&SipManager::instance(), &SipManager::videoMediaDisconnected,
             this, &CallPanel::onVideoMediaDisconnected);
+    connect(&SipManager::instance(), &SipManager::videoRequested,
+            this, &CallPanel::onVideoRequested);
     connect(&SipManager::instance(), &SipManager::rttMediaConnected,
             this, &CallPanel::onRttMediaConnected);
     connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
@@ -618,6 +640,22 @@ CallPanel::CallPanel(QWidget *parent)
     // Duration timer
     m_durationTimer.setInterval(1000);
     connect(&m_durationTimer, &QTimer::timeout, this, &CallPanel::onDurationTick);
+    m_holdConfirmTimer.setSingleShot(true);
+    m_holdConfirmTimer.setInterval(1200);
+    connect(&m_holdConfirmTimer, &QTimer::timeout, this, [this]() {
+        const CallState state = SipManager::instance().callState();
+        const bool desiredHold = m_btnHold->isChecked();
+        const bool confirmed = desiredHold ? (state == CallState::Held)
+                                           : (state == CallState::Active);
+        if (confirmed) {
+            Logger::instance().info(LogCategory::Sip,
+                desiredHold ? QStringLiteral("Pause active")
+                            : QStringLiteral("Resume active"));
+        } else {
+            Logger::instance().warn(LogCategory::Sip, QStringLiteral("Pause/resume failed"));
+        }
+        applyCallState(state);
+    });
 
     populateDeviceCombos();
     applyCallState(CallState::Idle);
@@ -721,11 +759,13 @@ void CallPanel::applyCallState(CallState state)
         QSignalBlocker b(m_btnHold);
         m_btnHold->setChecked(isHeld);
         if (isHeld) {
-            m_btnHold->setText(tr("Unhold"));
-            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP hold confirmed"));
+            m_btnHold->setText(tr("Resume"));
+            m_btnHold->setProperty("callRole", QStringLiteral("resume"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP pause confirmed"));
         } else if (state == CallState::Active) {
-            m_btnHold->setText(tr("Hold"));
-            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP unhold confirmed"));
+            m_btnHold->setText(tr("Pause"));
+            m_btnHold->setProperty("callRole", QStringLiteral("pause"));
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP resume confirmed"));
         }
         // Repolish so :checked pseudo-state orange color applies
         m_btnHold->style()->unpolish(m_btnHold);
@@ -771,6 +811,7 @@ void CallPanel::applyCallState(CallState state)
 
     if (isIdle) {
         m_durationTimer.stop();
+        m_holdConfirmTimer.stop();
         m_durationSeconds = 0;
         resetStatusCards();
     }
@@ -792,9 +833,8 @@ void CallPanel::updateStatusCards()
     m_cardAudio->setValue(m_audioConnected ? tr("Connected") : QStringLiteral("—"));
     m_cardAudio->setStatus(m_audioConnected ? QStringLiteral("ok") : QString{});
 
-    // Local video — PJSIP may negotiate video but lack a capture backend.
-    // When PJMEDIA_VIDEO_DEV_HAS_DSHOW=0 (this build), PJSIP is recvonly:
-    // Qt camera preview is local-only; remote cannot see video from this app.
+    // Local video — when PJSIP negotiates video, we show whether the local
+    // camera is actually transmitting or only available for preview.
     if (m_localVideoActive) {
         if (SipManager::instance().hasPjsipVideoCapture()) {
             m_cardLocalVideo->setValue(tr("Transmitting"));
@@ -809,8 +849,16 @@ void CallPanel::updateStatusCards()
     }
 
     // Remote video
-    m_cardRemoteVideo->setValue(m_remoteVideoActive ? tr("Receiving") : QStringLiteral("—"));
-    m_cardRemoteVideo->setStatus(m_remoteVideoActive ? QStringLiteral("ok") : QString{});
+    if (m_remoteVideoActive) {
+        m_cardRemoteVideo->setValue(tr("Receiving"));
+        m_cardRemoteVideo->setStatus(QStringLiteral("ok"));
+    } else if (m_videoRequested) {
+        m_cardRemoteVideo->setValue(tr("Requested"));
+        m_cardRemoteVideo->setStatus(QStringLiteral("warn"));
+    } else {
+        m_cardRemoteVideo->setValue(QStringLiteral("—"));
+        m_cardRemoteVideo->setStatus({});
+    }
 
     // RTT
     m_cardRtt->setValue(m_rttConnected ? tr("Connected") : QStringLiteral("—"));
@@ -863,14 +911,44 @@ void CallPanel::updateStatusCards()
     m_cardLatency->setStatus({});
 }
 
+void CallPanel::refreshVideoRequestButton()
+{
+    if (!m_btnRequestVideo)
+        return;
+
+    const bool acceptMode = m_videoRequested && !m_videoConnected;
+    QSignalBlocker blocker(m_btnRequestVideo);
+
+    if (acceptMode) {
+        m_btnRequestVideo->setText(tr("Accept Video"));
+        m_btnRequestVideo->setProperty("callRole", QStringLiteral("acceptVideo"));
+        m_btnRequestVideo->setProperty("videoAlert", m_videoRequestBlinkOn);
+        if (!m_videoRequestBlinkTimer.isActive())
+            m_videoRequestBlinkTimer.start();
+    } else {
+        m_btnRequestVideo->setText(tr("Request Video"));
+        m_btnRequestVideo->setProperty("callRole", QStringLiteral("requestVideo"));
+        m_btnRequestVideo->setProperty("videoAlert", false);
+        m_videoRequestBlinkTimer.stop();
+        m_videoRequestBlinkOn = false;
+    }
+
+    m_btnRequestVideo->style()->unpolish(m_btnRequestVideo);
+    m_btnRequestVideo->style()->polish(m_btnRequestVideo);
+}
+
 void CallPanel::resetStatusCards()
 {
     m_remoteUri.clear();
     m_audioConnected    = false;
     m_videoConnected    = false;
+    m_videoRequested    = false;
     m_localVideoActive  = false;
     m_remoteVideoActive = false;
     m_rttConnected      = false;
+    m_videoRequestBlinkTimer.stop();
+    m_videoRequestBlinkOn = false;
+    refreshVideoRequestButton();
 
     m_cardDuration->setValue(QStringLiteral("00:00:00"));
     m_cardDuration->setStatus({});
@@ -969,12 +1047,24 @@ void CallPanel::onAudioMediaDisconnected()
 void CallPanel::onVideoMediaConnected()
 {
     m_videoConnected = true;
+    m_videoRequested = false;
+    refreshVideoRequestButton();
     updateStatusCards();
 }
 
 void CallPanel::onVideoMediaDisconnected()
 {
     m_videoConnected = false;
+    m_videoRequested = false;
+    refreshVideoRequestButton();
+    updateStatusCards();
+}
+
+void CallPanel::onVideoRequested()
+{
+    m_videoRequested = true;
+    m_videoRequestBlinkOn = true;
+    refreshVideoRequestButton();
     updateStatusCards();
 }
 
@@ -993,12 +1083,16 @@ void CallPanel::onLocalVideoStopped()
 void CallPanel::onRemoteVideoStarted()
 {
     m_remoteVideoActive = true;
+    m_videoRequested = false;
+    refreshVideoRequestButton();
     updateStatusCards();
 }
 
 void CallPanel::onRemoteVideoStopped()
 {
     m_remoteVideoActive = false;
+    m_videoRequested = false;
+    refreshVideoRequestButton();
     updateStatusCards();
 }
 

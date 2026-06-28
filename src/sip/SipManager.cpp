@@ -894,6 +894,11 @@ bool SipManager::requestCallVideo(bool enabled)
             QStringLiteral("requestCallVideo: no active call"));
         return false;
     }
+    if (enabled) {
+        // Audio-only calls may have zeroed the video codec priorities during
+        // makeCall(); restore the current video profile before renegotiating.
+        applyVideoSettingsForCall();
+    }
     return m_activeCall->requestVideo(enabled);
 }
 
@@ -1002,6 +1007,8 @@ void SipManager::wireActiveCall(SipCall *call)
             this, &SipManager::videoMediaConnected);
     connect(call, &SipCall::videoMediaDisconnected,
             this, &SipManager::videoMediaDisconnected);
+    connect(call, &SipCall::videoRequested,
+            this, &SipManager::videoRequested);
     connect(call, &SipCall::videoMuteChanged,
             this, &SipManager::callVideoMuteChanged);
     connect(call, &SipCall::localVideoStarted,
@@ -1180,7 +1187,7 @@ bool SipManager::holdCall()
 {
     if (!m_activeCall || m_activeCall->state() != CallState::Active) {
         Logger::instance().warn(LogCategory::Sip,
-            QStringLiteral("holdCall: not in Active state"));
+            QStringLiteral("pauseCall: not in Active state"));
         return false;
     }
     return m_activeCall->hold();
@@ -1415,14 +1422,17 @@ void SipManager::applyVideoSettingsForCall()
         CodecManager::instance().applyVideoCodecBitrate(vs.codecOrder.first(), vs.bitrateKbps);
 
     CodecManager::instance().applyVideoCodecFormat(vs.codecOrder, vs.resolution, vs.fps);
-
-    // Camera capture device: PJSIP video capture requires a DirectShow backend
-    // (PJMEDIA_VIDEO_DEV_HAS_DSHOW) which is not compiled in this build.
-    // The Qt camera preview uses VideoQualityManager camera ID via QCamera directly.
-    Logger::instance().info(LogCategory::Media,
-        QStringLiteral("Video setting not applied to PJSIP: camera device selection "
-                       "requires PJMEDIA_VIDEO_DEV_HAS_DSHOW "
-                       "(Qt preview uses \"%1\")").arg(vs.cameraId));
+    if (m_account) {
+        if (!m_account->applyVideoSettings()) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("Video settings could not be applied to PJSIP "
+                               "(Qt preview still uses \"%1\")")
+                    .arg(vs.cameraId.isEmpty() ? QStringLiteral("(default)") : vs.cameraId));
+        }
+    } else {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("Video settings could not be applied to PJSIP: no active account"));
+    }
 #else
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("Video setting not applied to PJSIP: "

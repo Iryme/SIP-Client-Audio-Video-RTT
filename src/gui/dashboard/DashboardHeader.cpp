@@ -180,7 +180,7 @@ void DashboardHeader::setCallStatus(CallState state)
         applyDot(m_callDot, m_callText, "#ffa726", tr("Connecting…"));
         break;
     case CallState::Held:
-        applyDot(m_callDot, m_callText, "#ff7043", tr("On Hold"));
+        applyDot(m_callDot, m_callText, "#ff7043", tr("Paused"));
         break;
     case CallState::Disconnecting:
         applyDot(m_callDot, m_callText, "#ffa726", tr("Ending…"));

@@ -33,6 +33,7 @@ public:
                            int transportId = -1);
     bool startUnregistration();
     bool refreshRegistration();
+    bool applyVideoSettings();
 
     // Returns the internal pj::Account as a void* for use by SipCall in PJSIP mode.
     // Returns nullptr in stub mode. Cast to pj::Account* inside HAVE_PJSIP guards.

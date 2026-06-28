@@ -85,14 +85,11 @@ static bool hasPjsipVideoCaptureDevice()
 
 static void applyVideoMediaDirectionIfNeeded(pj::CallSetting &setting)
 {
-    // Force receive-only video: our dshow camera outputs YUY2 but VP8 needs
-    // I420, and PJSIP has no format converter (PJMEDIA_HAS_FFMPEG=0,
-    // PJMEDIA_HAS_LIBYUV=0).  The GDI renderer converts I420→BGRA itself, so
-    // the VP8-decode → GDI-render path works without any converter.
-    // Local camera preview continues via Qt Camera in the PiP widget.
+    // Negotiate bidirectional video so the local camera can be transmitted
+    // and the remote peer can still send video back.
     setting.mediaDir = {
         PJMEDIA_DIR_ENCODING_DECODING, // audio: bidirectional
-        PJMEDIA_DIR_DECODING,          // video: receive only
+        PJMEDIA_DIR_ENCODING_DECODING, // video: bidirectional
         PJMEDIA_DIR_ENCODING_DECODING  // text: bidirectional
     };
 }
@@ -392,13 +389,23 @@ struct SipCall::Impl
                         videoActive        = true;
                         videoIncomingWinId = mi.videoIncomingWindowId;
                         videoCapDevId      = mi.videoCapDev;
+                        const bool localRequestPending = m_impl->videoRequestPendingLocal;
+                        m_impl->videoRequestPendingLocal = false;
+                        if (!localRequestPending && !m_impl->videoRequestNotified) {
+                            m_impl->videoRequestNotified = true;
+                            QPointer<SipCall> self = m_impl->q;
+                            QMetaObject::invokeMethod(self, [self]() {
+                                if (self)
+                                    emit self->videoRequested();
+                            }, Qt::QueuedConnection);
+                        }
                         {
                             const bool captureAvail = hasPjsipVideoCaptureDevice();
                             Logger::instance().info(LogCategory::Sip,
                                 QStringLiteral("PJSIP video media active: pjsipCallId=%1 "
                                                "mediaIndex=%2 winId=%3 capDev=%4 "
                                                "pjsipCaptureAvailable=%5 "
-                                               "videoDir=DECODING(recvonly)")
+                                               "videoDir=ENCODING_DECODING(sendrecv)")
                                     .arg(getId())
                                     .arg(mi.index)
                                     .arg(mi.videoIncomingWindowId)
@@ -407,9 +414,8 @@ struct SipCall::Impl
                             if (!captureAvail) {
                                 Logger::instance().warn(LogCategory::Sip,
                                     QStringLiteral("Remote video negotiated but local transmit "
-                                                   "unavailable: PJSIP capture backend missing "
-                                                   "(PJMEDIA_VIDEO_DEV_HAS_DSHOW=0); "
-                                                   "Qt camera preview is local only"));
+                                                   "may be unavailable: PJSIP capture backend missing "
+                                                   "or no usable capture device is exposed"));
                             }
                         }
                         // Log negotiated video codec.
@@ -615,6 +621,31 @@ struct SipCall::Impl
             }, Qt::QueuedConnection);
         }
 
+        void onCallRxReinvite(pj::OnCallRxReinviteParam &prm) override
+        {
+            if (!m_impl || !m_impl->q)
+                return;
+
+            const QString offerSdp = QString::fromStdString(prm.offer.wholeSdp);
+            const bool hasVideoOffer = offerSdp.contains(QStringLiteral("m=video"), Qt::CaseInsensitive);
+            if (!hasVideoOffer)
+                return;
+
+            if (m_impl->videoRequestPendingLocal)
+                return;
+            if (m_impl->videoRequestNotified)
+                return;
+
+            m_impl->videoRequestNotified = true;
+            QPointer<SipCall> self = m_impl->q;
+            QMetaObject::invokeMethod(self, [self]() {
+                if (self)
+                    emit self->videoRequested();
+            }, Qt::QueuedConnection);
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Remote video request received: callId=%1").arg(getId()));
+        }
+
     private:
         Impl *m_impl;
     };
@@ -637,6 +668,8 @@ struct SipCall::Impl
         }
         videoCapDev        = PJMEDIA_VID_INVALID_DEV;
         videoIncomingWinId = PJSUA_INVALID_ID;
+        videoRequestPendingLocal = false;
+        videoRequestNotified = false;
     }
 
     PjCall             *pjCall{nullptr};
@@ -646,6 +679,8 @@ struct SipCall::Impl
     pj::VideoMedia     *callVideoMedia{nullptr};      // valid only while video media is active
     pjsua_vid_win_id    videoIncomingWinId{PJSUA_INVALID_ID}; // incoming video window id
     int                 videoCapDev{PJMEDIA_VID_INVALID_DEV}; // capture device; -1=default, >=0=specific
+    bool                videoRequestPendingLocal{false}; // local user requested video and is awaiting completion
+    bool                videoRequestNotified{false}; // first video negotiation notification emitted
     bool                rttMediaActive{false};         // true while T.140 text stream is active
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
 #endif
@@ -1001,7 +1036,7 @@ bool SipCall::hold()
     }
 
     Logger::instance().info(LogCategory::Sip,
-        QStringLiteral("SIP hold requested: callId=%1 currentState=%2")
+        QStringLiteral("SIP pause requested: callId=%1 currentState=%2")
             .arg(m_callId, callStateName(m_stateMachine.state())));
 
 #ifdef HAVE_PJSIP
@@ -1010,7 +1045,7 @@ bool SipCall::hold()
         try {
             const pj::CallInfo ci = m_impl->pjCall->getInfo();
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("SIP hold pre-send: operation=Hold callId=%1 "
+                QStringLiteral("SIP pause pre-send: operation=Pause callId=%1 "
                                "pjsipCallId=%2 pjsipState=%3 "
                                "remoteUri=%4 localUri=%5 mediaCount=%6")
                     .arg(m_callId)
@@ -1030,16 +1065,16 @@ bool SipCall::hold()
             // and suppress the CONFIRMED callback in onCallState via holdActive.
             m_impl->holdActive = true;
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("SIP hold re-INVITE sent: callId=%1 "
+                QStringLiteral("SIP pause re-INVITE sent: callId=%1 "
                                "sdpDirection=a=sendonly → transitioning to Held")
                     .arg(m_callId));
             m_stateMachine.tryTransition(CallState::Held,
-                                         QStringLiteral("Hold re-INVITE sent"));
+                                         QStringLiteral("Pause re-INVITE sent"));
             return true;
         } catch (const pj::Error &e) {
-            // Hold failed at transport level — UI must NOT transition to Held.
+            // Pause failed at transport level — UI must NOT transition to Held.
             Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("Hold/Unhold failed due to unsuitable transport: "
+                QStringLiteral("Pause/Resume failed due to unsuitable transport: "
                                "callId=%1 pjsipError=%2; UI remains Active")
                     .arg(m_callId, QString::fromStdString(e.reason)));
             return false;
@@ -1047,7 +1082,7 @@ bool SipCall::hold()
     }
 #endif
 
-    m_stateMachine.tryTransition(CallState::Held, QStringLiteral("On hold"));
+    m_stateMachine.tryTransition(CallState::Held, QStringLiteral("Paused"));
     return true;
 }
 
@@ -1061,7 +1096,7 @@ bool SipCall::resume()
     }
 
     Logger::instance().info(LogCategory::Sip,
-        QStringLiteral("SIP unhold requested: callId=%1 currentState=%2")
+        QStringLiteral("SIP resume requested: callId=%1 currentState=%2")
             .arg(m_callId, callStateName(m_stateMachine.state())));
 
 #ifdef HAVE_PJSIP
@@ -1072,7 +1107,7 @@ bool SipCall::resume()
         try {
             const pj::CallInfo ci = m_impl->pjCall->getInfo();
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("SIP unhold pre-send: operation=Unhold callId=%1 "
+                QStringLiteral("SIP resume pre-send: operation=Resume callId=%1 "
                                "pjsipCallId=%2 pjsipState=%3 "
                                "remoteUri=%4 localUri=%5 mediaCount=%6 "
                                "videoWasActive=%7 rttWasActive=%8")
@@ -1105,26 +1140,28 @@ bool SipCall::resume()
             };
             if (prm.opt.videoCount > 0)
                 applyVideoMediaDirectionIfNeeded(prm.opt);
+            prm.opt.flag |= PJSUA_CALL_UNHOLD;
 
             // Clear holdActive before reinvite so the CONFIRMED callback
             // (arriving when the remote answers the unhold re-INVITE) is no
             // longer suppressed and transitions the SM back to Active.
             m_impl->holdActive = false;
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("SIP unhold re-INVITE: callId=%1 "
+                QStringLiteral("SIP resume re-INVITE: callId=%1 "
                                "audioCount=1 videoCount=%2 textCount=%3 "
                                "sdpDirection=a=sendrecv — waiting for PJSIP CONFIRMED")
                     .arg(m_callId)
                     .arg(prm.opt.videoCount)
                     .arg(prm.opt.textCount));
             m_impl->pjCall->reinvite(prm);
+            m_stateMachine.tryTransition(CallState::Active, QStringLiteral("Call resumed"));
             return true;
         } catch (const pj::Error &e) {
             // Restore holdActive because the reinvite did not go out.
             m_impl->holdActive = true;
-            // Unhold failed at transport level — UI must NOT transition to Active.
+            // Resume failed at transport level — UI must NOT transition to Active.
             Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("Hold/Unhold failed due to unsuitable transport: "
+                QStringLiteral("Pause/Resume failed due to unsuitable transport: "
                                "callId=%1 pjsipError=%2; UI remains Held")
                     .arg(m_callId, QString::fromStdString(e.reason)));
             return false;
@@ -1287,23 +1324,23 @@ bool SipCall::requestVideo(bool enabled)
             }
             if (enabled) {
                 applyVideoMediaDirectionIfNeeded(prm.opt);
+                m_impl->videoRequestPendingLocal = true;
                 const bool captureAvail = hasPjsipVideoCaptureDevice();
                 Logger::instance().info(LogCategory::Sip,
                     QStringLiteral("Request Video ON re-INVITE: callId=%1 "
                                    "videoCount=%2 pjsipVideoDevCount=%3 "
                                    "captureAvailable=%4 "
-                                   "videoMediaDir=DECODING(recvonly) textCount=%5")
+                                   "videoMediaDir=ENCODING_DECODING(sendrecv) textCount=%5")
                         .arg(m_callId)
                         .arg(prm.opt.videoCount)
                         .arg(pjsipVideoDeviceCount())
                         .arg(captureAvail ? QStringLiteral("yes") : QStringLiteral("no"))
                         .arg(prm.opt.textCount));
                 if (!captureAvail) {
-                    Logger::instance().warn(LogCategory::Sip,
-                        QStringLiteral("PJSIP video capture backend not active; "
-                                       "local transmit unavailable: "
-                                       "PJMEDIA_VIDEO_DEV_HAS_DSHOW=0 — "
-                                       "Qt preview is local-only, remote cannot see video from this app"));
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("PJSIP video capture backend not active; "
+                                   "outgoing video may be unavailable if the selected camera "
+                                   "cannot be opened by PJSIP"));
                 }
             }
             m_impl->pjCall->reinvite(prm);
@@ -1318,6 +1355,7 @@ bool SipCall::requestVideo(bool enabled)
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("requestVideo() PJSIP error: %1")
                     .arg(QString::fromStdString(e.reason)));
+            m_impl->videoRequestPendingLocal = false;
             return false;
         }
     }

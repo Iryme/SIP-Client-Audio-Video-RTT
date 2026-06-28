@@ -50,6 +50,7 @@ private slots:
     void onAudioMediaDisconnected();
     void onVideoMediaConnected();
     void onVideoMediaDisconnected();
+    void onVideoRequested();
     void onLocalVideoStarted();
     void onLocalVideoStopped();
     void onRemoteVideoStarted();
@@ -71,6 +72,7 @@ private:
     void applyCallState(CallState state);
     void populateDeviceCombos();
     void updateStatusCards();
+    void refreshVideoRequestButton();
     void resetStatusCards();
     QString formatDuration(int seconds) const;
 
@@ -118,10 +120,14 @@ private:
     // Duration tracking
     QTimer  m_durationTimer;
     int     m_durationSeconds{0};
+    QTimer  m_holdConfirmTimer;
+    QTimer  m_videoRequestBlinkTimer;
+    bool    m_videoRequestBlinkOn{false};
 
     // Media state
     bool m_audioConnected{false};
     bool m_videoConnected{false};
+    bool m_videoRequested{false};
     bool m_localVideoActive{false};
     bool m_remoteVideoActive{false};
     bool m_rttConnected{false};

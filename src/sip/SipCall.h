@@ -135,6 +135,10 @@ signals:
     void videoMediaConnected();
     void videoMediaDisconnected();
 
+    // Emitted when the call first negotiates a video media stream.
+    // This is useful as a user-visible "video requested" notification.
+    void videoRequested();
+
     // Granular local/remote video availability signals.
     void localVideoStarted();
     void localVideoStopped();
