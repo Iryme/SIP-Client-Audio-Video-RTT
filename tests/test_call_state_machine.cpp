@@ -66,7 +66,7 @@ void TestCallStateMachine::stateNamesAreStable()
     QCOMPARE(callStateDisplayText(CallState::IncomingRinging), QStringLiteral("Incoming Call"));
     QCOMPARE(callStateDisplayText(CallState::Connecting),      QStringLiteral("Connecting..."));
     QCOMPARE(callStateDisplayText(CallState::Active),          QStringLiteral("Connected"));
-    QCOMPARE(callStateDisplayText(CallState::Held),            QStringLiteral("On Hold"));
+    QCOMPARE(callStateDisplayText(CallState::Held),            QStringLiteral("Paused"));
     QCOMPARE(callStateDisplayText(CallState::Disconnecting),   QStringLiteral("Ending..."));
     QCOMPARE(callStateDisplayText(CallState::Failed),          QStringLiteral("Call Failed"));
 }
