@@ -529,11 +529,15 @@ struct SipCall::Impl
                     self->m_impl->videoCapDev = videoCapDevId;
                     self->m_localVideoAvailable  = true;
                     self->m_remoteVideoAvailable = true;
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("Video negotiation active"));
                     emit self->videoMediaConnected();
                     emit self->localVideoStarted();
                     emit self->remoteVideoStarted();
                 } else if (self->m_localVideoAvailable || self->m_remoteVideoAvailable) {
                     // Video stream became inactive (re-negotiation removed it).
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("Video negotiation failed or inactive"));
                     self->m_impl->stopLocalPreview(); // also resets videoIncomingWinId/videoCapDev
                     self->m_localVideoAvailable  = false;
                     self->m_remoteVideoAvailable = false;
@@ -631,8 +635,25 @@ struct SipCall::Impl
 
             const QString offerSdp = QString::fromStdString(prm.offer.wholeSdp);
             const bool hasVideoOffer = offerSdp.contains(QStringLiteral("m=video"), Qt::CaseInsensitive);
-            if (!hasVideoOffer)
+            if (!hasVideoOffer) {
+                // Peer sent re-INVITE without video. If we had a pending video request
+                // from this peer, reset it so the user can accept a future offer.
+                if (m_impl->videoRequestNotified && !m_impl->videoRequestPendingLocal) {
+                    m_impl->videoRequestNotified = false;
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("Peer withdrew video offer; resetting pending video state: callId=%1")
+                            .arg(getId()));
+                    QPointer<SipCall> self = m_impl->q;
+                    QMetaObject::invokeMethod(self, [self]() {
+                        if (self) {
+                            Logger::instance().info(LogCategory::Sip,
+                                QStringLiteral("Peer video stopped; request video available again"));
+                            emit self->videoMediaDisconnected();
+                        }
+                    }, Qt::QueuedConnection);
+                }
                 return;
+            }
 
             // If the local user initiated a video re-INVITE, let PJSIP handle it normally.
             if (m_impl->videoRequestPendingLocal)
@@ -647,14 +668,14 @@ struct SipCall::Impl
                 return;
 
             m_impl->videoRequestNotified = true;
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Incoming video request pending — declined auto-response, "
+                               "awaiting user accept: callId=%1").arg(getId()));
             QPointer<SipCall> self = m_impl->q;
             QMetaObject::invokeMethod(self, [self]() {
                 if (self)
                     emit self->videoRequested();
             }, Qt::QueuedConnection);
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Remote video request received and declined (pending user accept): "
-                               "callId=%1").arg(getId()));
         }
 
     private:
@@ -1224,14 +1245,24 @@ bool SipCall::setVideoMuted(bool muted)
 
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
-        try {
-            pj::CallVidSetStreamParam prm;
-            prm.medIdx = -1; // default video stream
-            if (muted)
-                m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_STOP_TRANSMIT, prm);
-            else
-                m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_START_TRANSMIT, prm);
-        } catch (...) {}
+        if (!m_impl->callVideoMedia) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Video mute ignored: no active PJSIP video stream (call id=%1)")
+                    .arg(m_callId));
+        } else {
+            try {
+                pj::CallVidSetStreamParam prm;
+                prm.medIdx = -1; // default video stream
+                if (muted)
+                    m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_STOP_TRANSMIT, prm);
+                else
+                    m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_START_TRANSMIT, prm);
+            } catch (const pj::Error &e) {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("vidSetStream error (call id=%1): %2")
+                        .arg(m_callId, QString::fromStdString(e.reason)));
+            } catch (...) {}
+        }
     }
 #endif
 
@@ -1336,9 +1367,15 @@ bool SipCall::requestVideo(bool enabled)
             if (enabled) {
                 applyVideoMediaDirectionIfNeeded(prm.opt);
                 m_impl->videoRequestPendingLocal = true;
+                if (m_impl->videoRequestNotified) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("Accepting pending incoming video request: callId=%1")
+                            .arg(m_callId));
+                    m_impl->videoRequestNotified = false;
+                }
                 const bool captureAvail = hasPjsipVideoCaptureDevice();
                 Logger::instance().info(LogCategory::Sip,
-                    QStringLiteral("Request Video ON re-INVITE: callId=%1 "
+                    QStringLiteral("Video negotiation started: callId=%1 "
                                    "videoCount=%2 pjsipVideoDevCount=%3 "
                                    "captureAvailable=%4 "
                                    "videoMediaDir=ENCODING_DECODING(sendrecv) textCount=%5")

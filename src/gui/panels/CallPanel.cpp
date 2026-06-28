@@ -461,22 +461,28 @@ CallPanel::CallPanel(QWidget *parent)
             emit requestVideoToggled(checked);
             return;
         }
-        if (checked) {
+        // In acceptMode, the button always means "Accept Video" (video ON re-INVITE)
+        // regardless of checked direction. Without this, if the button retained checked=true
+        // from "Video On", clicking in acceptMode would fire toggled(false) → video OFF.
+        if (acceptMode) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Accepting pending incoming video request"));
+            if (!SipManager::instance().requestCallVideo(true)) {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("Accept Video rejected by SipManager"));
+                m_videoRequested = true;
+                refreshVideoRequestButton();
+            } else {
+                m_videoRequested = false;
+                refreshVideoRequestButton();
+            }
+        } else if (checked) {
             // Enable video: send re-INVITE with video m-line.
-            if (acceptMode)
-                Logger::instance().info(LogCategory::Sip, QStringLiteral("Accept Video requested"));
             if (!SipManager::instance().requestCallVideo(true)) {
                 Logger::instance().warn(LogCategory::Sip,
                     QStringLiteral("Request Video ON rejected by SipManager"));
-                if (acceptMode) {
-                    m_videoRequested = true;
-                } else {
-                    QSignalBlocker b(m_btnRequestVideo);
-                    m_btnRequestVideo->setChecked(false);
-                }
-                refreshVideoRequestButton();
-            } else if (acceptMode) {
-                m_videoRequested = false;
+                QSignalBlocker b(m_btnRequestVideo);
+                m_btnRequestVideo->setChecked(false);
                 refreshVideoRequestButton();
             }
         } else {
@@ -933,6 +939,7 @@ void CallPanel::refreshVideoRequestButton()
         m_btnRequestVideo->setProperty("callRole", QStringLiteral("acceptVideo"));
         m_btnRequestVideo->setProperty("videoAlert", m_videoRequestBlinkOn);
         m_btnRequestVideo->setEnabled(true);
+        m_btnRequestVideo->setChecked(false); // must be unchecked so click fires toggled(true)
         if (!m_videoRequestBlinkTimer.isActive())
             m_videoRequestBlinkTimer.start();
     } else {

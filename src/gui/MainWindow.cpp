@@ -929,6 +929,7 @@ QWidget *MainWindow::buildClientsPage()
             requestVideoBtn->setProperty("callRole", QStringLiteral("acceptVideo"));
             requestVideoBtn->setProperty("videoAlert", *videoRequestBlinkOn);
             requestVideoBtn->setEnabled(true);
+            requestVideoBtn->setChecked(false); // must be unchecked so click fires toggled(true)
         } else {
             requestVideoBtn->setText(MainWindow::tr("Request Video"));
             requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
@@ -1032,7 +1033,16 @@ QWidget *MainWindow::buildClientsPage()
                     .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF")));
             return;
         }
-        if (!SipManager::instance().requestCallVideo(enabled)) {
+        // In acceptMode, the button click always means "Accept Video" (send re-INVITE with
+        // video ON), regardless of whether the click unchecked or checked the button.
+        // Without this, a button that was previously checked=true (from "Video On") will
+        // fire toggled(false) when clicked in acceptMode, wrongly sending video=OFF.
+        const bool sendEnabled = acceptMode ? true : enabled;
+        if (acceptMode) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Accepting pending incoming video request"));
+        }
+        if (!SipManager::instance().requestCallVideo(sendEnabled)) {
             *videoRequestFailed = true;
             cardVideo->setValue(tr("Failed"));
             cardVideo->setStatus(QStringLiteral("err"));
