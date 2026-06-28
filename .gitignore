@@ -4,6 +4,7 @@ build-*/
 build_tests/
 cmake-build-*/
 out/
+dist/
 .deps/
 
 # CMake generated

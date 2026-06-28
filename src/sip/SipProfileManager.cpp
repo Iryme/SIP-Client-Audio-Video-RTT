@@ -1,6 +1,7 @@
 #include "sip/SipProfileManager.h"
 #include "core/Logger.h"
 #include "security/CredentialStore.h"
+#include <QSet>
 
 // -----------------------------------------------------------------------
 // Singleton
@@ -305,9 +306,19 @@ void SipProfileManager::loadAll()
 {
     m_profiles.clear();
 
-    m_settings.beginGroup("profiles");
-    const QStringList ids = m_settings.childGroups();
-    m_settings.endGroup();
+    QSet<QString> idSet;
+    const QStringList keys = m_settings.allKeys();
+    for (const QString &key : keys) {
+        if (!key.startsWith(QStringLiteral("profiles/")))
+            continue;
+        const QString rest = key.mid(QStringLiteral("profiles/").size());
+        const int slash = rest.indexOf(u'/');
+        if (slash <= 0)
+            continue;
+        idSet.insert(rest.left(slash));
+    }
+    QStringList ids = QStringList(idSet.begin(), idSet.end());
+    ids.sort();
 
     for (const QString &id : ids) {
         const QString grp = QStringLiteral("profiles/") + id;

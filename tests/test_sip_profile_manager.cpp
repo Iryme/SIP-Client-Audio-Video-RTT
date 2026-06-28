@@ -1,13 +1,27 @@
 #include <QtTest>
+#include <QTemporaryDir>
 #include <QSettings>
 #include "sip/SipProfileManager.h"
 
 // Isolated settings: never touches the real user SIPClientProfiles INI
 static constexpr const char *kTestOrg = "IrymeTest";
 static constexpr const char *kTestApp = "SIPClientTest_Profiles";
+static QTemporaryDir *g_settingsDir = nullptr;
+
+static void ensureTestSettingsPath()
+{
+    if (g_settingsDir)
+        return;
+
+    g_settingsDir = new QTemporaryDir;
+    if (!g_settingsDir->isValid())
+        qFatal("Failed to create temporary settings directory");
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, g_settingsDir->path());
+}
 
 static void purgeTestSettings()
 {
+    ensureTestSettingsPath();
     QSettings s(QSettings::IniFormat, QSettings::UserScope, kTestOrg, kTestApp);
     s.clear();
     s.sync();
