@@ -1,6 +1,7 @@
 #pragma once
 #include <QStatusBar>
 #include "sip/SipAccount.h"
+#include "media/RtpStats.h"
 
 class QLabel;
 
@@ -14,6 +15,7 @@ public:
     void setActiveAccount(const QString &account);
     void setTransport(const QString &transport);
     void setLocalIp(const QString &ip, const QString &tooltip = {});
+    void setRtpStats(const RtpStatsSnapshot &stats);
     void setJitter(const QString &jitter, const QString &tooltip = {});
     void setPacketLoss(const QString &loss, const QString &tooltip = {});
     void setRttLatency(const QString &rtt, const QString &tooltip = {});

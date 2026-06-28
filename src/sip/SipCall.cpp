@@ -8,6 +8,7 @@
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoQualityManager.h"
+#include "media/RtpStats.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -37,6 +38,16 @@ static QString pjsipStatusText(pj_status_t st)
     char buf[PJ_ERR_MSG_SIZE] = {};
     pj_strerror(st, buf, sizeof(buf));
     return QString::fromLatin1(buf);
+}
+
+static QString mediaTypeName(pjmedia_type type)
+{
+    switch (type) {
+    case PJMEDIA_TYPE_AUDIO: return QStringLiteral("audio");
+    case PJMEDIA_TYPE_VIDEO: return QStringLiteral("video");
+    case PJMEDIA_TYPE_TEXT:  return QStringLiteral("text");
+    default:                 return QStringLiteral("unknown");
+    }
 }
 #endif
 
@@ -1363,6 +1374,79 @@ bool SipCall::requestRtt(bool enabled)
 bool SipCall::isVideoMuted()           const { return m_videoMuted; }
 bool SipCall::isLocalVideoAvailable()  const { return m_localVideoAvailable; }
 bool SipCall::isRemoteVideoAvailable() const { return m_remoteVideoAvailable; }
+
+RtpStatsSnapshot SipCall::mediaRtpStats() const
+{
+    RtpStatsSnapshot snap;
+    snap.source = QStringLiteral("pjsua2 Call::getStreamStat");
+
+#ifdef HAVE_PJSIP
+    if (!m_impl || !m_impl->pjCall) {
+        snap.reason = QStringLiteral("No active call");
+        return snap;
+    }
+
+    try {
+        const pj::CallInfo ci = m_impl->pjCall->getInfo();
+        int activeStreamIndex = -1;
+        pjmedia_type activeStreamType = PJMEDIA_TYPE_NONE;
+
+        for (const auto &mi : ci.media) {
+            if (mi.status != PJSUA_CALL_MEDIA_ACTIVE)
+                continue;
+            if (mi.type == PJMEDIA_TYPE_AUDIO) {
+                activeStreamIndex = static_cast<int>(mi.index);
+                activeStreamType = mi.type;
+                break;
+            }
+            if (activeStreamIndex < 0 && mi.type == PJMEDIA_TYPE_VIDEO) {
+                activeStreamIndex = static_cast<int>(mi.index);
+                activeStreamType = mi.type;
+            }
+        }
+
+        if (activeStreamIndex < 0) {
+            snap.reason = QStringLiteral("No active RTP stream");
+            return snap;
+        }
+
+        pj::StreamStat stat = m_impl->pjCall->getStreamStat(static_cast<unsigned>(activeStreamIndex));
+        const auto rxTotal = stat.rtcp.rxStat.pkt + stat.rtcp.rxStat.loss;
+
+        snap.available = true;
+        snap.streamIndex = activeStreamIndex;
+        snap.streamType = mediaTypeName(activeStreamType);
+        snap.reason = QStringLiteral("PJSIP RTCP stats available");
+
+        if (stat.rtcp.rxStat.jitterUsec.n > 0 && stat.rtcp.rxStat.jitterUsec.mean >= 0) {
+            snap.jitterAvailable = true;
+            snap.jitterMs = static_cast<double>(stat.rtcp.rxStat.jitterUsec.mean) / 1000.0;
+        }
+
+        if (rxTotal > 0) {
+            snap.packetLossAvailable = true;
+            snap.packetReceivedPackets = stat.rtcp.rxStat.pkt;
+            snap.packetLossPackets = stat.rtcp.rxStat.loss;
+            snap.packetLossPercent = static_cast<double>(stat.rtcp.rxStat.loss) * 100.0
+                / static_cast<double>(rxTotal);
+        }
+
+        if (stat.rtcp.rttUsec.n > 0 && stat.rtcp.rttUsec.mean >= 0) {
+            snap.rttAvailable = true;
+            snap.rttMs = static_cast<double>(stat.rtcp.rttUsec.mean) / 1000.0;
+        }
+        return snap;
+    } catch (const pj::Error &e) {
+        snap.reason = QStringLiteral("PJSIP stream statistics unavailable: %1")
+                          .arg(QString::fromStdString(e.reason));
+    } catch (...) {
+        snap.reason = QStringLiteral("PJSIP stream statistics unavailable");
+    }
+#else
+    snap.reason = QStringLiteral("PJSIP backend unavailable");
+#endif
+    return snap;
+}
 
 void SipCall::releasePjsipCall()
 {

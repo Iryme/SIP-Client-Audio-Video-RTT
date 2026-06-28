@@ -12,6 +12,7 @@
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
 #include "rtt/RttSession.h"
+#include "media/RtpStats.h"
 
 // Owns the SIP endpoint lifecycle and the account for the active profile.
 // Registration flow is governed by RegistrationStateMachine; invalid operations
@@ -89,6 +90,7 @@ public:
 
     // Access the RTT session for the current call (never null).
     RttSession *rttSession();
+    RtpStatsSnapshot currentRtpStats() const;
 
     CallState callState()          const;
     QString   callStatusText()     const;
@@ -166,6 +168,7 @@ signals:
     void rttMediaConnected();
     void rttMediaDisconnected();
     void rttTextReceived(const QString &text);
+    void rtpStatsChanged(const RtpStatsSnapshot &stats);
 
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,
@@ -177,6 +180,7 @@ private slots:
     void onRefreshTimerFired();
     void onAccountIncomingCall(const QString &remoteUri);
     void onActiveCallStateChanged(CallState state, const QString &statusText, int statusCode);
+    void refreshRtpStats();
 
 private:
     SipManager();
@@ -186,6 +190,7 @@ private:
     void scheduleRetryIfEligible(int statusCode);
     void completePendingSwitch();
     void destroyActiveCall();
+    void wireActiveCall(SipCall *call);
 
     // Shared setup for makeCall() and makeEmergencyCall():
     // guards, creates m_activeCall, wires signals, sets PJSIP handle.
@@ -212,6 +217,7 @@ private:
 
     SipCall                 *m_activeCall{nullptr};
     RttSession               m_rttSession;
+    QTimer                   m_rtpStatsTimer;
     bool                     m_initialized{false};
     QString                  m_lastError;
     SipAccount              *m_account{nullptr};

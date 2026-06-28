@@ -133,6 +133,7 @@ SipManager::SipManager() : QObject(nullptr)
 {
     qRegisterMetaType<RegistrationState>("RegistrationState");
     qRegisterMetaType<CallState>("CallState");
+    qRegisterMetaType<RtpStatsSnapshot>("RtpStatsSnapshot");
 
     connect(&m_stateMachine, &RegistrationStateMachine::stateChanged,
             this, &SipManager::registrationStateChanged);
@@ -146,6 +147,10 @@ SipManager::SipManager() : QObject(nullptr)
     m_refreshTimer.setSingleShot(true);
     connect(&m_refreshTimer, &QTimer::timeout,
             this, &SipManager::onRefreshTimerFired);
+
+    m_rtpStatsTimer.setInterval(1000);
+    connect(&m_rtpStatsTimer, &QTimer::timeout,
+            this, &SipManager::refreshRtpStats);
 
     // Re-apply PJSIP audio device selection when the user picks a new device,
     // or when the device list is refreshed (which resolves persisted names).
@@ -360,44 +365,7 @@ bool SipManager::registerActiveProfile()
                 destroyActiveCall();
                 m_activeCall = new SipCall(this);
                 m_activeCall->setPjsipAccountHandle(m_account ? m_account->pjAccountHandle() : nullptr);
-                connect(m_activeCall, &SipCall::callStateChanged,
-                        this, &SipManager::onActiveCallStateChanged);
-                connect(m_activeCall, &SipCall::callConnected,
-                        this, &SipManager::callConnected);
-                connect(m_activeCall, &SipCall::callDisconnected,
-                        this, &SipManager::callDisconnected);
-                connect(m_activeCall, &SipCall::callFailed,
-                        this, &SipManager::callFailed);
-                connect(m_activeCall, &SipCall::audioMediaConnected,
-                        this, &SipManager::audioMediaConnected);
-                connect(m_activeCall, &SipCall::audioMediaDisconnected,
-                        this, &SipManager::audioMediaDisconnected);
-                connect(m_activeCall, &SipCall::muteChanged,
-                        this, &SipManager::callMuteChanged);
-                connect(m_activeCall, &SipCall::inputLevelChanged,
-                        this, &SipManager::callInputLevelChanged);
-                connect(m_activeCall, &SipCall::outputLevelChanged,
-                        this, &SipManager::callOutputLevelChanged);
-                connect(m_activeCall, &SipCall::videoMediaConnected,
-                        this, &SipManager::videoMediaConnected);
-                connect(m_activeCall, &SipCall::videoMediaDisconnected,
-                        this, &SipManager::videoMediaDisconnected);
-                connect(m_activeCall, &SipCall::videoMuteChanged,
-                        this, &SipManager::callVideoMuteChanged);
-                connect(m_activeCall, &SipCall::localVideoStarted,
-                        this, &SipManager::localVideoStarted);
-                connect(m_activeCall, &SipCall::localVideoStopped,
-                        this, &SipManager::localVideoStopped);
-                connect(m_activeCall, &SipCall::remoteVideoStarted,
-                        this, &SipManager::remoteVideoStarted);
-                connect(m_activeCall, &SipCall::remoteVideoStopped,
-                        this, &SipManager::remoteVideoStopped);
-                connect(m_activeCall, &SipCall::rttMediaConnected,
-                        this, &SipManager::rttMediaConnected);
-                connect(m_activeCall, &SipCall::rttMediaDisconnected,
-                        this, &SipManager::rttMediaDisconnected);
-                connect(m_activeCall, &SipCall::rttTextReceived,
-                        this, &SipManager::rttTextReceived);
+                wireActiveCall(m_activeCall);
                 AudioMediaManager::instance().attachCall(m_activeCall);
                 VideoMediaManager::instance().attachCall(m_activeCall);
                 m_rttSession.enableForCall(m_activeCall);
@@ -954,6 +922,16 @@ RttSession *SipManager::rttSession()
     return &m_rttSession;
 }
 
+RtpStatsSnapshot SipManager::currentRtpStats() const
+{
+    if (!m_activeCall) {
+        RtpStatsSnapshot snap;
+        snap.reason = QStringLiteral("No active call");
+        return snap;
+    }
+    return m_activeCall->mediaRtpStats();
+}
+
 bool SipManager::sendEmergencyLocationUpdate(const SipCallOptions &opts)
 {
     if (!opts.emergencyCall) {
@@ -974,12 +952,82 @@ void SipManager::destroyActiveCall()
 {
     if (!m_activeCall)
         return;
+    m_rtpStatsTimer.stop();
     m_rttSession.disable();
     AudioMediaManager::instance().detachCall();
     VideoMediaManager::instance().detachCall();
     disconnect(m_activeCall, nullptr, this, nullptr);
     delete m_activeCall;
     m_activeCall = nullptr;
+    emit rtpStatsChanged(currentRtpStats());
+}
+
+void SipManager::refreshRtpStats()
+{
+    emit rtpStatsChanged(currentRtpStats());
+}
+
+void SipManager::wireActiveCall(SipCall *call)
+{
+    if (!call)
+        return;
+
+    connect(call, &SipCall::callStateChanged,
+            this, &SipManager::onActiveCallStateChanged);
+    connect(call, &SipCall::callConnected,
+            this, &SipManager::callConnected);
+    connect(call, &SipCall::callDisconnected,
+            this, &SipManager::callDisconnected);
+    connect(call, &SipCall::callFailed,
+            this, &SipManager::callFailed);
+    connect(call, &SipCall::audioMediaConnected,
+            this, &SipManager::audioMediaConnected);
+    connect(call, &SipCall::audioMediaDisconnected,
+            this, &SipManager::audioMediaDisconnected);
+    connect(call, &SipCall::muteChanged,
+            this, &SipManager::callMuteChanged);
+    connect(call, &SipCall::inputLevelChanged,
+            this, &SipManager::callInputLevelChanged);
+    connect(call, &SipCall::outputLevelChanged,
+            this, &SipManager::callOutputLevelChanged);
+    connect(call, &SipCall::videoMediaConnected,
+            this, &SipManager::videoMediaConnected);
+    connect(call, &SipCall::videoMediaDisconnected,
+            this, &SipManager::videoMediaDisconnected);
+    connect(call, &SipCall::videoMuteChanged,
+            this, &SipManager::callVideoMuteChanged);
+    connect(call, &SipCall::localVideoStarted,
+            this, &SipManager::localVideoStarted);
+    connect(call, &SipCall::localVideoStopped,
+            this, &SipManager::localVideoStopped);
+    connect(call, &SipCall::remoteVideoStarted,
+            this, &SipManager::remoteVideoStarted);
+    connect(call, &SipCall::remoteVideoStopped,
+            this, &SipManager::remoteVideoStopped);
+    connect(call, &SipCall::rttMediaConnected,
+            this, &SipManager::rttMediaConnected);
+    connect(call, &SipCall::rttMediaDisconnected,
+            this, &SipManager::rttMediaDisconnected);
+    connect(call, &SipCall::rttTextReceived,
+            this, &SipManager::rttTextReceived);
+    connect(call, &SipCall::callStateChanged,
+            this, &SipManager::refreshRtpStats);
+    connect(call, &SipCall::audioMediaConnected,
+            this, &SipManager::refreshRtpStats);
+    connect(call, &SipCall::audioMediaDisconnected,
+            this, &SipManager::refreshRtpStats);
+    connect(call, &SipCall::videoMediaConnected,
+            this, &SipManager::refreshRtpStats);
+    connect(call, &SipCall::videoMediaDisconnected,
+            this, &SipManager::refreshRtpStats);
+    connect(call, &SipCall::rttMediaConnected,
+            this, &SipManager::refreshRtpStats);
+    connect(call, &SipCall::rttMediaDisconnected,
+            this, &SipManager::refreshRtpStats);
+
+    if (!m_rtpStatsTimer.isActive())
+        m_rtpStatsTimer.start();
+    refreshRtpStats();
 }
 
 bool SipManager::prepareOutgoingCall(const QString &remoteUri)
@@ -1000,44 +1048,7 @@ bool SipManager::prepareOutgoingCall(const QString &remoteUri)
 
     destroyActiveCall();
     m_activeCall = new SipCall(this);
-    connect(m_activeCall, &SipCall::callStateChanged,
-            this, &SipManager::onActiveCallStateChanged);
-    connect(m_activeCall, &SipCall::callConnected,
-            this, &SipManager::callConnected);
-    connect(m_activeCall, &SipCall::callDisconnected,
-            this, &SipManager::callDisconnected);
-    connect(m_activeCall, &SipCall::callFailed,
-            this, &SipManager::callFailed);
-    connect(m_activeCall, &SipCall::audioMediaConnected,
-            this, &SipManager::audioMediaConnected);
-    connect(m_activeCall, &SipCall::audioMediaDisconnected,
-            this, &SipManager::audioMediaDisconnected);
-    connect(m_activeCall, &SipCall::muteChanged,
-            this, &SipManager::callMuteChanged);
-    connect(m_activeCall, &SipCall::inputLevelChanged,
-            this, &SipManager::callInputLevelChanged);
-    connect(m_activeCall, &SipCall::outputLevelChanged,
-            this, &SipManager::callOutputLevelChanged);
-    connect(m_activeCall, &SipCall::videoMediaConnected,
-            this, &SipManager::videoMediaConnected);
-    connect(m_activeCall, &SipCall::videoMediaDisconnected,
-            this, &SipManager::videoMediaDisconnected);
-    connect(m_activeCall, &SipCall::videoMuteChanged,
-            this, &SipManager::callVideoMuteChanged);
-    connect(m_activeCall, &SipCall::localVideoStarted,
-            this, &SipManager::localVideoStarted);
-    connect(m_activeCall, &SipCall::localVideoStopped,
-            this, &SipManager::localVideoStopped);
-    connect(m_activeCall, &SipCall::remoteVideoStarted,
-            this, &SipManager::remoteVideoStarted);
-    connect(m_activeCall, &SipCall::remoteVideoStopped,
-            this, &SipManager::remoteVideoStopped);
-    connect(m_activeCall, &SipCall::rttMediaConnected,
-            this, &SipManager::rttMediaConnected);
-    connect(m_activeCall, &SipCall::rttMediaDisconnected,
-            this, &SipManager::rttMediaDisconnected);
-    connect(m_activeCall, &SipCall::rttTextReceived,
-            this, &SipManager::rttTextReceived);
+    wireActiveCall(m_activeCall);
     AudioMediaManager::instance().attachCall(m_activeCall);
     VideoMediaManager::instance().attachCall(m_activeCall);
     m_rttSession.enableForCall(m_activeCall);
@@ -1207,44 +1218,7 @@ void SipManager::onAccountIncomingCall(const QString &remoteUri)
 
     destroyActiveCall();
     m_activeCall = new SipCall(this);
-    connect(m_activeCall, &SipCall::callStateChanged,
-            this, &SipManager::onActiveCallStateChanged);
-    connect(m_activeCall, &SipCall::callConnected,
-            this, &SipManager::callConnected);
-    connect(m_activeCall, &SipCall::callDisconnected,
-            this, &SipManager::callDisconnected);
-    connect(m_activeCall, &SipCall::callFailed,
-            this, &SipManager::callFailed);
-    connect(m_activeCall, &SipCall::audioMediaConnected,
-            this, &SipManager::audioMediaConnected);
-    connect(m_activeCall, &SipCall::audioMediaDisconnected,
-            this, &SipManager::audioMediaDisconnected);
-    connect(m_activeCall, &SipCall::muteChanged,
-            this, &SipManager::callMuteChanged);
-    connect(m_activeCall, &SipCall::inputLevelChanged,
-            this, &SipManager::callInputLevelChanged);
-    connect(m_activeCall, &SipCall::outputLevelChanged,
-            this, &SipManager::callOutputLevelChanged);
-    connect(m_activeCall, &SipCall::videoMediaConnected,
-            this, &SipManager::videoMediaConnected);
-    connect(m_activeCall, &SipCall::videoMediaDisconnected,
-            this, &SipManager::videoMediaDisconnected);
-    connect(m_activeCall, &SipCall::videoMuteChanged,
-            this, &SipManager::callVideoMuteChanged);
-    connect(m_activeCall, &SipCall::localVideoStarted,
-            this, &SipManager::localVideoStarted);
-    connect(m_activeCall, &SipCall::localVideoStopped,
-            this, &SipManager::localVideoStopped);
-    connect(m_activeCall, &SipCall::remoteVideoStarted,
-            this, &SipManager::remoteVideoStarted);
-    connect(m_activeCall, &SipCall::remoteVideoStopped,
-            this, &SipManager::remoteVideoStopped);
-    connect(m_activeCall, &SipCall::rttMediaConnected,
-            this, &SipManager::rttMediaConnected);
-    connect(m_activeCall, &SipCall::rttMediaDisconnected,
-            this, &SipManager::rttMediaDisconnected);
-    connect(m_activeCall, &SipCall::rttTextReceived,
-            this, &SipManager::rttTextReceived);
+    wireActiveCall(m_activeCall);
     AudioMediaManager::instance().attachCall(m_activeCall);
     VideoMediaManager::instance().attachCall(m_activeCall);
     m_rttSession.enableForCall(m_activeCall);

@@ -470,10 +470,13 @@ MainWindow::MainWindow(QWidget *parent)
             this, [this]() { refreshStatusBarMetrics(); });
     connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
             this, [this]() { refreshStatusBarMetrics(); });
+    connect(&SipManager::instance(), &SipManager::rtpStatsChanged,
+            m_statusBar, &AppStatusBar::setRtpStats);
     if (auto *rttSession = SipManager::instance().rttSession()) {
         connect(rttSession, &RttSession::rttStateChanged,
                 this, [this](RttState) { refreshStatusBarMetrics(); });
     }
+    m_statusBar->setRtpStats(SipManager::instance().currentRtpStats());
 
     // SIP backend ready/stopped → update backend label live.
     connect(&SipManager::instance(), &SipManager::initialized,
@@ -1604,14 +1607,4 @@ void MainWindow::refreshStatusBarMetrics()
     const QString ipSource = localIpSourceText(&localIp);
     m_statusBar->setLocalIp(localIp.isEmpty() ? QStringLiteral("N/A") : localIp,
                             QStringLiteral("Source: %1").arg(ipSource));
-
-    const RttSession *rttSession = SipManager::instance().rttSession();
-    const RttState rttState = rttSession ? rttSession->state() : RttState::Disabled;
-    m_statusBar->setRttLatency(rttStateName(rttState),
-                               QStringLiteral("RTT real-time text state from RttSession"));
-
-    m_statusBar->setJitter(QStringLiteral("N/A"),
-                           QStringLiteral("RTP statistics not available in this build"));
-    m_statusBar->setPacketLoss(QStringLiteral("N/A"),
-                               QStringLiteral("RTP statistics not available in this build"));
 }

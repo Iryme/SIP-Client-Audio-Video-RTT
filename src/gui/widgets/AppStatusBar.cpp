@@ -10,6 +10,13 @@ static QLabel *makeStatusLabel(const QString &text, QWidget *parent)
     return lbl;
 }
 
+static void setMetricLabel(QLabel *label, const QString &prefix, const QString &value,
+                           const QString &tooltip)
+{
+    label->setText(prefix + value);
+    label->setToolTip(tooltip);
+}
+
 static QFrame *makeSep(QWidget *parent)
 {
     auto *sep = new QFrame(parent);
@@ -59,9 +66,55 @@ void AppStatusBar::setActiveAccount(const QString &s)   { m_account->setText(s);
 void AppStatusBar::setTransport(const QString &s)       { m_transport->setText("Transport: " + s); }
 void AppStatusBar::setLocalIp(const QString &s, const QString &tooltip)
 {
-    m_localIp->setText("IP: " + s);
-    m_localIp->setToolTip(tooltip.isEmpty() ? QStringLiteral("Source: local network interface fallback")
-                                            : tooltip);
+    setMetricLabel(m_localIp, QStringLiteral("IP: "), s,
+                   tooltip.isEmpty() ? QStringLiteral("Source: local network interface fallback")
+                                     : tooltip);
+}
+void AppStatusBar::setRtpStats(const RtpStatsSnapshot &stats)
+{
+    const QString baseTooltip = stats.reason.isEmpty()
+        ? QStringLiteral("No RTP statistics available")
+        : stats.reason;
+    const QString streamHint = stats.streamIndex >= 0
+        ? QStringLiteral("Stream %1 (%2)")
+              .arg(stats.streamIndex)
+              .arg(stats.streamType.isEmpty() ? QStringLiteral("unknown") : stats.streamType)
+        : QString();
+
+    const auto tooltipFor = [&](const QString &detail) {
+        return streamHint.isEmpty()
+            ? QStringLiteral("%1 | %2").arg(baseTooltip, detail)
+            : QStringLiteral("%1 | %2 | %3").arg(baseTooltip, detail, streamHint);
+    };
+
+    if (stats.jitterAvailable) {
+        setMetricLabel(m_jitter, QStringLiteral("Jitter: "),
+                       QStringLiteral("%1 ms").arg(stats.jitterMs, 0, 'f', 1),
+                       tooltipFor(QStringLiteral("PJSIP RTCP jitter")));
+    } else {
+        setMetricLabel(m_jitter, QStringLiteral("Jitter: "), QStringLiteral("N/A"),
+                       tooltipFor(QStringLiteral("jitter not measurable")));
+    }
+
+    if (stats.packetLossAvailable) {
+        setMetricLabel(m_loss, QStringLiteral("Loss: "),
+                       QStringLiteral("%1 %").arg(stats.packetLossPercent, 0, 'f', 1),
+                       tooltipFor(QStringLiteral("packets received=%1 lost=%2")
+                                  .arg(stats.packetReceivedPackets)
+                                  .arg(stats.packetLossPackets)));
+    } else {
+        setMetricLabel(m_loss, QStringLiteral("Loss: "), QStringLiteral("N/A"),
+                       tooltipFor(QStringLiteral("packet loss not yet measurable")));
+    }
+
+    if (stats.rttAvailable) {
+        setMetricLabel(m_rttLatency, QStringLiteral("RTT: "),
+                       QStringLiteral("%1 ms").arg(stats.rttMs, 0, 'f', 1),
+                       tooltipFor(QStringLiteral("PJSIP RTCP RTT")));
+    } else {
+        setMetricLabel(m_rttLatency, QStringLiteral("RTT: "), QStringLiteral("N/A"),
+                       tooltipFor(QStringLiteral("RTCP RTT samples unavailable")));
+    }
 }
 void AppStatusBar::setJitter(const QString &s, const QString &tooltip)
 {

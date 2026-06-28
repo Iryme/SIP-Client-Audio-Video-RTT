@@ -7,6 +7,7 @@
 
 #include "sip/CallStateMachine.h"
 #include "sip/SipCallOptions.h"
+#include "media/RtpStats.h"
 
 // Manages a single SIP call. Owns a CallStateMachine that enforces valid
 // call state transitions. In stub mode (ENABLE_PJSIP=OFF) all operations
@@ -72,6 +73,10 @@ public:
     // videoMediaConnected / videoMediaDisconnected).
     bool isLocalVideoAvailable()  const;
     bool isRemoteVideoAvailable() const;
+
+    // Current RTP/RTCP snapshot for the active call. Returns an unavailable
+    // snapshot when there is no active call or PJSIP cannot expose stats.
+    RtpStatsSnapshot mediaRtpStats() const;
 
     // Embed PJSIP video windows into Qt native widget handles.
     // remoteWidget: winId() of the main remote video area.
