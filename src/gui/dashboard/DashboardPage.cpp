@@ -8,11 +8,18 @@
 #include "core/PerfScope.h"
 #include "media/MediaDeviceManager.h"
 #include "sip/SipManager.h"
+#include "sip/SipProfile.h"
+#include "sip/SipProfileManager.h"
 
+#include <QComboBox>
 #include <QDateTime>
 #include <QFrame>
+#include <QGroupBox>
 #include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -44,6 +51,17 @@ DashboardPage::DashboardPage(QWidget *parent)
     cardsLayout->setSpacing(12);
     buildShortcutCards(cardsLayout);
     root->addWidget(cardsBar);
+
+    // ── Quick SIP Actions ────────────────────────────────────────────────────
+    auto *quickSipBar = new QWidget(this);
+    quickSipBar->setObjectName("QuickSipBar");
+    quickSipBar->setStyleSheet(
+        "QWidget#QuickSipBar { background-color: #0f1624; border-bottom: 1px solid #1a2438; }");
+    auto *quickSipLayout = new QHBoxLayout(quickSipBar);
+    quickSipLayout->setContentsMargins(20, 10, 20, 10);
+    quickSipLayout->setSpacing(12);
+    buildQuickSipActions(quickSipLayout);
+    root->addWidget(quickSipBar);
 
     // ── Bottom: statistics + recent events ──────────────────────────────────
     auto *bottomRow = new QHBoxLayout();
@@ -104,6 +122,12 @@ DashboardPage::DashboardPage(QWidget *parent)
             this, &DashboardPage::onLogEntryAdded,
             Qt::UniqueConnection);
 
+    auto &pm = SipProfileManager::instance();
+    connect(&pm, &SipProfileManager::profileAdded,    this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
+    connect(&pm, &SipProfileManager::profileUpdated,  this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
+    connect(&pm, &SipProfileManager::profileRemoved,  this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
+    connect(&pm, &SipProfileManager::activeProfileChanged, this, [this](const QString &) { refreshQuickSipPanel(); }, Qt::UniqueConnection);
+
     // ── Periodic tick: uptime, call duration, memory ─────────────────────
     m_tickTimer = new QTimer(this);
     m_tickTimer->setInterval(5000);
@@ -117,6 +141,7 @@ DashboardPage::DashboardPage(QWidget *parent)
     m_header->setMediaStatus(false);
     refreshDeviceStats();
     tickUptimeAndMemory();
+    refreshQuickSipPanel();
 }
 
 void DashboardPage::buildShortcutCards(QLayout *layout)
@@ -169,6 +194,181 @@ void DashboardPage::buildShortcutCards(QLayout *layout)
         hlay->addWidget(card, 1);
         connect(card, &DashboardShortcutCard::navigateTo,
                 this, &DashboardPage::navigateTo);
+    }
+}
+
+void DashboardPage::buildQuickSipActions(QLayout *layout)
+{
+    auto *hlay = qobject_cast<QHBoxLayout *>(layout);
+    if (!hlay) return;
+
+    // Section label
+    auto *sectionLabel = new QLabel(tr("Quick SIP Actions"), this);
+    sectionLabel->setStyleSheet("color: #6a7a9a; font-size: 10px; font-weight: bold; letter-spacing: 1px;");
+    hlay->addWidget(sectionLabel);
+
+    // Profile dropdown
+    auto *profileLabel = new QLabel(tr("Profile:"), this);
+    profileLabel->setStyleSheet("color: #aabbcc; font-size: 11px;");
+    hlay->addWidget(profileLabel);
+
+    m_profileCombo = new QComboBox(this);
+    m_profileCombo->setObjectName("QuickSipProfileCombo");
+    m_profileCombo->setMinimumWidth(180);
+    m_profileCombo->setFixedHeight(28);
+    m_profileCombo->setStyleSheet(
+        "QComboBox { background: #1a2438; color: #cce0ff; border: 1px solid #2a3a58;"
+        " border-radius: 4px; padding: 2px 8px; font-size: 11px; }"
+        "QComboBox::drop-down { border: none; }"
+        "QComboBox QAbstractItemView { background: #1a2438; color: #cce0ff; border: 1px solid #2a3a58; }");
+    hlay->addWidget(m_profileCombo);
+
+    // Register / Unregister button
+    m_registerBtn = new QPushButton(tr("Register"), this);
+    m_registerBtn->setObjectName("QuickRegisterBtn");
+    m_registerBtn->setFixedHeight(28);
+    m_registerBtn->setMinimumWidth(100);
+    m_registerBtn->setStyleSheet(
+        "QPushButton#QuickRegisterBtn { background: #1e3a1e; color: #50c878; border: 1px solid #2a5a2a;"
+        " border-radius: 4px; font-size: 11px; font-weight: bold; padding: 0 12px; }"
+        "QPushButton#QuickRegisterBtn:hover { background: #2a4a2a; }"
+        "QPushButton#QuickRegisterBtn:disabled { background: #151e15; color: #3a5a3a; border-color: #1a2a1a; }");
+    hlay->addWidget(m_registerBtn);
+
+    // Status label
+    m_quickSipStatus = new QLabel(tr("—"), this);
+    m_quickSipStatus->setObjectName("QuickSipStatus");
+    m_quickSipStatus->setStyleSheet("color: #888; font-size: 10px;");
+    m_quickSipStatus->setMinimumWidth(200);
+    hlay->addWidget(m_quickSipStatus, 1);
+
+    // Profile selection changes active profile (no auto-register)
+    connect(m_profileCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int idx) {
+        const QString profileId = m_profileCombo->itemData(idx).toString();
+        if (!profileId.isEmpty() && profileId != SipProfileManager::instance().activeProfileId()) {
+            SipProfileManager::instance().setActiveProfileId(profileId);
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Dashboard: active profile changed to %1").arg(profileId));
+        }
+        refreshQuickSipPanel();
+    });
+
+    // Register / Unregister button action
+    connect(m_registerBtn, &QPushButton::clicked, this, [this]() {
+        const RegistrationState st = SipManager::instance().registrationState();
+        if (st == RegistrationState::Registered || st == RegistrationState::Registering) {
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("Dashboard: unregister requested"));
+            SipManager::instance().unregisterActiveProfile();
+        } else {
+            // Select the combo profile as active before registering
+            const QString profileId = m_profileCombo->currentData().toString();
+            if (!profileId.isEmpty())
+                SipProfileManager::instance().setActiveProfileId(profileId);
+            Logger::instance().info(LogCategory::Sip, QStringLiteral("Dashboard: register requested"));
+            SipManager::instance().registerActiveProfile();
+        }
+    });
+}
+
+void DashboardPage::refreshQuickSipPanel()
+{
+    if (!m_profileCombo || !m_registerBtn || !m_quickSipStatus)
+        return;
+
+    const auto &pm     = SipProfileManager::instance();
+    const auto profiles = pm.profiles();
+    const QString activeId = pm.activeProfileId();
+
+    // Rebuild combo if profile list changed
+    {
+        QSignalBlocker b(m_profileCombo);
+        m_profileCombo->clear();
+        if (profiles.isEmpty()) {
+            m_profileCombo->addItem(tr("No SIP profiles configured"), QString{});
+            m_profileCombo->setEnabled(false);
+        } else {
+            m_profileCombo->setEnabled(true);
+            for (const SipProfile &p : profiles) {
+                const QString label = p.displayName.isEmpty()
+                    ? p.effectiveSipUri()
+                    : QStringLiteral("%1 (%2)").arg(p.displayName, p.effectiveSipUri());
+                m_profileCombo->addItem(label, p.profileId);
+            }
+            // Select active profile in combo
+            for (int i = 0; i < m_profileCombo->count(); ++i) {
+                if (m_profileCombo->itemData(i).toString() == activeId) {
+                    m_profileCombo->setCurrentIndex(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Button state
+    const RegistrationState regState = SipManager::instance().registrationState();
+    const bool hasProfiles = !profiles.isEmpty();
+    switch (regState) {
+    case RegistrationState::Registered:
+        m_registerBtn->setText(tr("Unregister"));
+        m_registerBtn->setEnabled(true);
+        m_registerBtn->setStyleSheet(
+            "QPushButton#QuickRegisterBtn { background: #2a1e1e; color: #e07070; border: 1px solid #5a2a2a;"
+            " border-radius: 4px; font-size: 11px; font-weight: bold; padding: 0 12px; }"
+            "QPushButton#QuickRegisterBtn:hover { background: #3a2020; }");
+        break;
+    case RegistrationState::Registering:
+        m_registerBtn->setText(tr("Registering…"));
+        m_registerBtn->setEnabled(false);
+        m_registerBtn->setStyleSheet(
+            "QPushButton#QuickRegisterBtn { background: #1a2020; color: #e0b850; border: 1px solid #3a3a20;"
+            " border-radius: 4px; font-size: 11px; font-weight: bold; padding: 0 12px; }");
+        break;
+    case RegistrationState::Unregistering:
+        m_registerBtn->setText(tr("Unregistering…"));
+        m_registerBtn->setEnabled(false);
+        m_registerBtn->setStyleSheet(
+            "QPushButton#QuickRegisterBtn { background: #1a2020; color: #e0b850; border: 1px solid #3a3a20;"
+            " border-radius: 4px; font-size: 11px; font-weight: bold; padding: 0 12px; }");
+        break;
+    default: // Unregistered / RegistrationFailed
+        m_registerBtn->setText(tr("Register"));
+        m_registerBtn->setEnabled(hasProfiles);
+        m_registerBtn->setStyleSheet(
+            "QPushButton#QuickRegisterBtn { background: #1e3a1e; color: #50c878; border: 1px solid #2a5a2a;"
+            " border-radius: 4px; font-size: 11px; font-weight: bold; padding: 0 12px; }"
+            "QPushButton#QuickRegisterBtn:hover { background: #2a4a2a; }"
+            "QPushButton#QuickRegisterBtn:disabled { background: #151e15; color: #3a5a3a; border-color: #1a2a1a; }");
+        break;
+    }
+
+    // Status text
+    const SipProfile activeProf = pm.hasProfile(activeId) ? pm.profile(activeId) : SipProfile{};
+    if (activeProf.isNull()) {
+        m_quickSipStatus->setText(tr("No profile selected"));
+        m_quickSipStatus->setStyleSheet("color: #888; font-size: 10px;");
+    } else {
+        QString regStateText;
+        QString color;
+        switch (regState) {
+        case RegistrationState::Registered:
+            regStateText = tr("registered"); color = QStringLiteral("#50c878"); break;
+        case RegistrationState::Registering:
+            regStateText = tr("pending"); color = QStringLiteral("#e0b850"); break;
+        case RegistrationState::Unregistering:
+            regStateText = tr("unregistering"); color = QStringLiteral("#e0b850"); break;
+        case RegistrationState::RegistrationFailed:
+            regStateText = tr("error"); color = QStringLiteral("#e05050"); break;
+        default:
+            regStateText = tr("unregistered"); color = QStringLiteral("#888888"); break;
+        }
+        const QString registrar = activeProf.registrar.isEmpty() ? activeProf.sipDomain : activeProf.registrar;
+        m_quickSipStatus->setText(
+            QStringLiteral("<span style='color:%1'>%2</span>"
+                           " &nbsp;|&nbsp; <span style='color:#aaa'>%3</span>"
+                           " &nbsp;|&nbsp; <span style='color:#7a9abc'>%4</span>")
+                .arg(color, regStateText, activeProf.effectiveSipUri(), registrar));
+        m_quickSipStatus->setStyleSheet("font-size: 10px;");
     }
 }
 
@@ -244,6 +444,7 @@ void DashboardPage::refreshDeviceStats()
 void DashboardPage::onSipStateChanged(RegistrationState state, const QString &, int)
 {
     m_header->setSipStatus(state);
+    refreshQuickSipPanel();
 
     const bool reg = state == RegistrationState::Registered;
     m_stats->setValue(QStringLiteral("registeredAccounts"), reg ? QStringLiteral("1") : QStringLiteral("0"));

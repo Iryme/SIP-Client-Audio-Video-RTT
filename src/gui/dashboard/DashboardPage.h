@@ -8,6 +8,9 @@ class DashboardHeader;
 class DashboardShortcutCard;
 class DashboardStatistics;
 class DashboardRecentEvents;
+class QComboBox;
+class QLabel;
+class QPushButton;
 class QTimer;
 
 class DashboardPage : public QWidget
@@ -28,9 +31,11 @@ private slots:
     void onSipInitialized();
     void onLogEntryAdded(const LogEntry &entry);
     void tickUptimeAndMemory();
+    void refreshQuickSipPanel();
 
 private:
     void buildShortcutCards(QLayout *layout);
+    void buildQuickSipActions(QLayout *layout);
     void populateStats();
     void refreshDeviceStats();
 
@@ -40,6 +45,11 @@ private:
 
     DashboardShortcutCard *m_clientsCard{nullptr};
     DashboardShortcutCard *m_mediaCard{nullptr};
+
+    // Quick SIP Actions panel
+    QComboBox   *m_profileCombo{nullptr};
+    QPushButton *m_registerBtn{nullptr};
+    QLabel      *m_quickSipStatus{nullptr};
 
     // Counters — track across signal events
     int       m_completedCalls{0};

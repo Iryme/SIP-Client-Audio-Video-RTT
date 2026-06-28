@@ -160,6 +160,10 @@ signals:
     void videoMediaDisconnected();
     void videoRequested();
     void callVideoMuteChanged(bool muted);
+
+    // RTT request signal (forwarded from the active SipCall)
+    // Emitted when the remote peer requests an RTT channel via re-INVITE.
+    void rttRequested();
     void localVideoStarted();
     void localVideoStopped();
     void remoteVideoStarted();

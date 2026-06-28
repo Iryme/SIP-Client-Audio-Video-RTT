@@ -4,6 +4,7 @@
 
 class DashboardPage;
 class IncomingCallDialog;
+class MediaRequestDialog;
 class NavRail;
 class ContactsPanel;
 class VideoPanel;
@@ -74,6 +75,7 @@ private:
     AppStatusBar     *m_statusBar{nullptr};
     QDialog              *m_settingsDialog{nullptr};
     IncomingCallDialog   *m_incomingCallDialog{nullptr};
+    MediaRequestDialog   *m_mediaRequestDialog{nullptr};
 
     QLineEdit *m_clientsTargetInput{nullptr};
     bool m_shutdownRequested{false};

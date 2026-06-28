@@ -880,7 +880,32 @@ bool SipManager::setCallVideoMuted(bool muted)
             QStringLiteral("setCallVideoMuted: no active call"));
         return false;
     }
-    return m_activeCall->setVideoMuted(muted);
+    const CallState st = callState();
+    const bool inCall  = (st == CallState::Active || st == CallState::Held);
+    if (muted) {
+        if (inCall) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Camera Off requested during active call"));
+            if (m_activeCall->isLocalVideoAvailable())
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Stopping local video transmit"));
+        }
+    } else {
+        if (inCall) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Camera On requested during active call"));
+            if (m_activeCall->isLocalVideoAvailable())
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Starting local video transmit"));
+        }
+    }
+    const bool ok = m_activeCall->setVideoMuted(muted);
+    if (ok && inCall && m_activeCall->isLocalVideoAvailable()) {
+        Logger::instance().info(LogCategory::Sip,
+            muted ? QStringLiteral("Local video transmit stopped")
+                  : QStringLiteral("Local video transmit started"));
+    }
+    return ok;
 }
 
 bool SipManager::isCallVideoMuted() const
@@ -1010,6 +1035,8 @@ void SipManager::wireActiveCall(SipCall *call)
             this, &SipManager::videoMediaDisconnected);
     connect(call, &SipCall::videoRequested,
             this, &SipManager::videoRequested);
+    connect(call, &SipCall::rttRequested,
+            this, &SipManager::rttRequested);
     connect(call, &SipCall::videoMuteChanged,
             this, &SipManager::callVideoMuteChanged);
     connect(call, &SipCall::localVideoStarted,

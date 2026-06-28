@@ -77,6 +77,7 @@ set(SOURCES
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
+    src/gui/dialogs/MediaRequestDialog.cpp
     src/core/Logger.cpp
     src/core/ContactStore.cpp
     src/sip/SipManager.cpp
@@ -146,6 +147,7 @@ set(HEADERS
     src/gui/widgets/AppStatusBar.h
     src/gui/dialogs/SipProfileEditorDialog.h
     src/gui/dialogs/IncomingCallDialog.h
+    src/gui/dialogs/MediaRequestDialog.h
     src/core/Logger.h
     src/core/AppSettings.h
     src/core/ContactStore.h

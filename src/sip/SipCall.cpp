@@ -515,7 +515,8 @@ struct SipCall::Impl
                     emit self->audioMediaDisconnected();
                 if (textMediaActive && !prevRttActive) {
                     Logger::instance().info(LogCategory::Sip,
-                        QStringLiteral("RTT SDP offered and text media negotiated — rttMediaConnected"));
+                        QStringLiteral("Text protocol active: protocol=RTT"));
+                    self->m_impl->rttRequestNotified = false; // RTT accepted — reset pending flag
                     emit self->rttMediaConnected();
                 } else if (!textMediaActive && prevRttActive) {
                     Logger::instance().info(LogCategory::Sip,
@@ -635,47 +636,62 @@ struct SipCall::Impl
 
             const QString offerSdp = QString::fromStdString(prm.offer.wholeSdp);
             const bool hasVideoOffer = offerSdp.contains(QStringLiteral("m=video"), Qt::CaseInsensitive);
-            if (!hasVideoOffer) {
-                // Peer sent re-INVITE without video. If we had a pending video request
-                // from this peer, reset it so the user can accept a future offer.
-                if (m_impl->videoRequestNotified && !m_impl->videoRequestPendingLocal) {
-                    m_impl->videoRequestNotified = false;
+            const bool hasTextOffer  = offerSdp.contains(QStringLiteral("m=text"),  Qt::CaseInsensitive);
+
+            // ── Video consent ───────────────────────────────────────────────
+            if (hasVideoOffer && !m_impl->videoRequestPendingLocal) {
+                // Remote requesting video — decline in auto-response; user must accept.
+                prm.opt.videoCount = 0;
+                if (!m_impl->videoRequestNotified) {
+                    m_impl->videoRequestNotified = true;
                     Logger::instance().info(LogCategory::Sip,
-                        QStringLiteral("Peer withdrew video offer; resetting pending video state: callId=%1")
-                            .arg(getId()));
+                        QStringLiteral("Incoming video request pending — declined auto-response, "
+                                       "awaiting user accept: callId=%1").arg(getId()));
                     QPointer<SipCall> self = m_impl->q;
                     QMetaObject::invokeMethod(self, [self]() {
-                        if (self) {
-                            Logger::instance().info(LogCategory::Sip,
-                                QStringLiteral("Peer video stopped; request video available again"));
-                            emit self->videoMediaDisconnected();
-                        }
+                        if (self)
+                            emit self->videoRequested();
                     }, Qt::QueuedConnection);
                 }
-                return;
+            } else if (!hasVideoOffer && m_impl->videoRequestNotified && !m_impl->videoRequestPendingLocal) {
+                // Peer withdrew the video offer — reset so UI can reflect "request video available".
+                m_impl->videoRequestNotified = false;
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Peer withdrew video offer; resetting pending video state: callId=%1")
+                        .arg(getId()));
+                QPointer<SipCall> self = m_impl->q;
+                QMetaObject::invokeMethod(self, [self]() {
+                    if (self) {
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("Peer video stopped; request video available again"));
+                        emit self->videoMediaDisconnected();
+                    }
+                }, Qt::QueuedConnection);
             }
 
-            // If the local user initiated a video re-INVITE, let PJSIP handle it normally.
-            if (m_impl->videoRequestPendingLocal)
-                return;
+            // ── RTT/text consent ────────────────────────────────────────────
+            if (hasTextOffer && !m_impl->rttMediaActive) {
+                // Remote requesting RTT — decline in auto-response; user must accept.
+                prm.opt.textCount = 0;
+                if (!m_impl->rttRequestNotified) {
+                    m_impl->rttRequestNotified = true;
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("Incoming text request pending: protocol=RTT — declined auto-response, "
+                                       "awaiting user accept: callId=%1").arg(getId()));
+                    QPointer<SipCall> self = m_impl->q;
+                    QMetaObject::invokeMethod(self, [self]() {
+                        if (self)
+                            emit self->rttRequested();
+                    }, Qt::QueuedConnection);
+                }
+            } else if (!hasTextOffer && m_impl->rttRequestNotified) {
+                // Peer withdrew the RTT offer.
+                m_impl->rttRequestNotified = false;
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Peer withdrew RTT offer: callId=%1").arg(getId()));
+            }
 
-            // Remote is requesting video. Decline it in the auto-response so PJSIP
-            // sends a 200 OK with m=video 0 (rejected). The user must explicitly
-            // accept via the "Accept Video" button (requestVideo(true)).
-            prm.opt.videoCount = 0;
-
-            if (m_impl->videoRequestNotified)
-                return;
-
-            m_impl->videoRequestNotified = true;
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Incoming video request pending — declined auto-response, "
-                               "awaiting user accept: callId=%1").arg(getId()));
-            QPointer<SipCall> self = m_impl->q;
-            QMetaObject::invokeMethod(self, [self]() {
-                if (self)
-                    emit self->videoRequested();
-            }, Qt::QueuedConnection);
+            // If neither video nor text is being offered/changed, nothing further to do.
         }
 
     private:
@@ -713,6 +729,7 @@ struct SipCall::Impl
     int                 videoCapDev{PJMEDIA_VID_INVALID_DEV}; // capture device; -1=default, >=0=specific
     bool                videoRequestPendingLocal{false}; // local user requested video and is awaiting completion
     bool                videoRequestNotified{false}; // first video negotiation notification emitted
+    bool                rttRequestNotified{false};    // incoming RTT request notified to UI; reset on RTT active
     bool                rttMediaActive{false};         // true while T.140 text stream is active
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
 #endif

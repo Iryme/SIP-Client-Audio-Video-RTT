@@ -139,6 +139,10 @@ signals:
     // This is useful as a user-visible "video requested" notification.
     void videoRequested();
 
+    // Emitted when the remote peer requests an RTT/text channel via re-INVITE.
+    // The auto-response declines it (textCount=0); user must call requestRtt(true).
+    void rttRequested();
+
     // Granular local/remote video availability signals.
     void localVideoStarted();
     void localVideoStopped();

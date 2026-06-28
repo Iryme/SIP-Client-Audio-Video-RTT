@@ -21,6 +21,7 @@
 #include "gui/panels/RttPanel.h"
 #include "gui/CameraController.h"
 #include "gui/dialogs/IncomingCallDialog.h"
+#include "gui/dialogs/MediaRequestDialog.h"
 #include "gui/widgets/AppStatusBar.h"
 #include "rtt/RttSession.h"
 #include "sip/CallStateMachine.h"
@@ -526,6 +527,41 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&SipManager::instance(), &SipManager::callStateChanged,
             m_incomingCallDialog, &IncomingCallDialog::onCallStateChanged);
 
+    // Media request popup — shown for incoming video and RTT requests regardless of active tab.
+    m_mediaRequestDialog = new MediaRequestDialog(this);
+    connect(&SipManager::instance(), &SipManager::videoRequested,
+            this, [this]() {
+        const QString remoteUri = SipManager::instance().activeCallRemoteUri();
+        m_mediaRequestDialog->showVideoRequest(remoteUri);
+        const QRect wr = geometry();
+        m_mediaRequestDialog->move(
+            wr.right() - m_mediaRequestDialog->width() - 16,
+            wr.top() + 48 + (m_incomingCallDialog->isVisible()
+                             ? m_incomingCallDialog->height() + 8 : 0));
+    });
+    connect(&SipManager::instance(), &SipManager::rttRequested,
+            this, [this]() {
+        const QString remoteUri = SipManager::instance().activeCallRemoteUri();
+        m_mediaRequestDialog->showRttRequest(remoteUri);
+        const QRect wr = geometry();
+        m_mediaRequestDialog->move(
+            wr.right() - m_mediaRequestDialog->width() - 16,
+            wr.top() + 48 + (m_incomingCallDialog->isVisible()
+                             ? m_incomingCallDialog->height() + 8 : 0));
+    });
+    connect(&SipManager::instance(), &SipManager::callStateChanged,
+            m_mediaRequestDialog, &MediaRequestDialog::onCallStateChanged);
+    connect(&SipManager::instance(), &SipManager::videoMediaConnected,
+            m_mediaRequestDialog, &MediaRequestDialog::onVideoMediaConnected);
+    connect(&SipManager::instance(), &SipManager::rttMediaConnected,
+            m_mediaRequestDialog, &MediaRequestDialog::onRttMediaConnected);
+    connect(&SipManager::instance(), &SipManager::videoMediaDisconnected,
+            m_mediaRequestDialog, [this]() {
+        // Peer withdrew video — dismiss if we were showing a video request popup
+        if (m_mediaRequestDialog->isVisible())
+            m_mediaRequestDialog->hide();
+    });
+
     // Camera on/off must mute/unmute PJSIP video transmit regardless of which
     // page is visible.  This connection lives here (not inside buildClientsPage)
     // so it is always active — buildClientsPage is lazily built on first visit.
@@ -904,6 +940,7 @@ QWidget *MainWindow::buildClientsPage()
     auto videoRequestPending = std::make_shared<bool>(false);
     auto videoRequestBlinkOn = std::make_shared<bool>(false);
     auto rttRequestFailed = std::make_shared<bool>(false);
+    auto rttRequestPending = std::make_shared<bool>(false); // incoming RTT request awaiting user accept
 
     auto holdConfirmTimer = new QTimer(page);
     holdConfirmTimer->setSingleShot(true);
@@ -911,6 +948,40 @@ QWidget *MainWindow::buildClientsPage()
     auto videoRequestBlinkTimer = new QTimer(page);
     videoRequestBlinkTimer->setSingleShot(false);
     videoRequestBlinkTimer->setInterval(500);
+
+    // Returns the label to use for the RTT/text button based on real profile capability.
+    // RTT is the only functionally implemented text protocol; LMPE is infrastructure only.
+    auto textProtocolLabel = []() -> QString {
+        const SipProfile prof = SipProfileManager::instance().activeProfile();
+        if (!prof.isNull() && prof.enableLmpe && !prof.enableRtt)
+            return QStringLiteral("LMPE"); // Profile configured for LMPE-only (infrastructure)
+        return QStringLiteral("RTT");      // Default: RTT is functional
+    };
+
+    auto refreshRequestRttButton = [requestRttBtn, rttRequestPending, textProtocolLabel]() {
+        const bool rttActive  = SipManager::instance().rttSession()->isActive();
+        const bool acceptMode = *rttRequestPending && !rttActive;
+        const QString proto   = textProtocolLabel();
+        QSignalBlocker b(requestRttBtn);
+        if (rttActive) {
+            requestRttBtn->setText(MainWindow::tr("%1 Active").arg(proto));
+            requestRttBtn->setProperty("callRole", QStringLiteral("rttActive"));
+            requestRttBtn->setEnabled(false);
+            requestRttBtn->setChecked(true);
+        } else if (acceptMode) {
+            requestRttBtn->setText(MainWindow::tr("Accept %1").arg(proto));
+            requestRttBtn->setProperty("callRole", QStringLiteral("acceptRtt"));
+            requestRttBtn->setEnabled(true);
+            requestRttBtn->setChecked(false);
+        } else {
+            requestRttBtn->setText(MainWindow::tr("Request %1").arg(proto));
+            requestRttBtn->setProperty("callRole", QStringLiteral("requestRtt"));
+            requestRttBtn->setEnabled(true);
+            requestRttBtn->setChecked(false);
+        }
+        requestRttBtn->style()->unpolish(requestRttBtn);
+        requestRttBtn->style()->polish(requestRttBtn);
+    };
 
     auto refreshRequestVideoButton = [requestVideoBtn, videoRequestPending, videoRequestBlinkOn]() {
         const bool videoActive = VideoMediaManager::instance().isVideoActive();
@@ -1060,21 +1131,44 @@ QWidget *MainWindow::buildClientsPage()
         }
     });
     connect(requestRttBtn, &QPushButton::toggled, this,
-            [this, cardRtt, requestRttBtn, rttRequestFailed](bool enabled) {
+            [this, cardRtt, requestRttBtn, rttRequestFailed, rttRequestPending,
+             refreshRequestRttButton, textProtocolLabel](bool checked) {
         *rttRequestFailed = false;
-        cardRtt->setValue(enabled ? tr("Requested") : tr("Not requested"));
-        cardRtt->setStatus(enabled ? QStringLiteral("warn") : QString{});
+        const bool acceptMode = *rttRequestPending && !SipManager::instance().rttSession()->isActive();
+        const QString proto = textProtocolLabel();
+        if (acceptMode) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Accepting text request: protocol=%1").arg(proto));
+            if (!SipManager::instance().requestCallRtt(true)) {
+                *rttRequestFailed = true;
+                cardRtt->setValue(tr("Failed"));
+                cardRtt->setStatus(QStringLiteral("err"));
+                *rttRequestPending = true;
+                refreshRequestRttButton();
+            } else {
+                *rttRequestPending = false;
+                refreshRequestRttButton();
+            }
+            return;
+        }
         if (SipManager::instance().callState() == CallState::Idle
             || SipManager::instance().callState() == CallState::Failed) {
             Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("RTT request will apply on next call"));
+                QStringLiteral("Requesting text protocol: protocol=%1 (will apply on next call)").arg(proto));
+            cardRtt->setValue(checked ? tr("Requested") : tr("Not requested"));
+            cardRtt->setStatus(checked ? QStringLiteral("warn") : QString{});
             return;
         }
-        if (!SipManager::instance().requestCallRtt(enabled)) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Requesting text protocol: protocol=%1 enabled=%2").arg(proto).arg(checked));
+        cardRtt->setValue(checked ? tr("Requested") : tr("Not requested"));
+        cardRtt->setStatus(checked ? QStringLiteral("warn") : QString{});
+        if (!SipManager::instance().requestCallRtt(checked)) {
             *rttRequestFailed = true;
             cardRtt->setValue(tr("Failed"));
             cardRtt->setStatus(QStringLiteral("err"));
         }
+        refreshRequestRttButton();
     });
 
     connect(micCombo, &QComboBox::currentIndexChanged, this, [micCombo](int idx) {
@@ -1234,7 +1328,9 @@ QWidget *MainWindow::buildClientsPage()
             *videoRequestPending = false;
             *videoRequestBlinkOn = false;
             videoRequestBlinkTimer->stop();
+            *rttRequestPending = false;
             refreshRequestVideoButton();
+            refreshRequestRttButton();
         }
         if (state == CallState::Active || state == CallState::Held)
             holdConfirmTimer->stop();
@@ -1256,7 +1352,9 @@ QWidget *MainWindow::buildClientsPage()
         *videoRequestPending = false;
         *videoRequestBlinkOn = false;
         videoRequestBlinkTimer->stop();
+        *rttRequestPending = false;
         refreshRequestVideoButton();
+        refreshRequestRttButton();
         refreshCards();
     });
     connect(&SipManager::instance(), &SipManager::callFailed,
@@ -1264,7 +1362,9 @@ QWidget *MainWindow::buildClientsPage()
         *videoRequestPending = false;
         *videoRequestBlinkOn = false;
         videoRequestBlinkTimer->stop();
+        *rttRequestPending = false;
         refreshRequestVideoButton();
+        refreshRequestRttButton();
         refreshCards();
     });
     connect(&SipManager::instance(), &SipManager::audioMediaConnected,
@@ -1297,10 +1397,26 @@ QWidget *MainWindow::buildClientsPage()
         videoRequestBlinkTimer->start();
         refreshCards();
     });
+    connect(&SipManager::instance(), &SipManager::rttRequested,
+            this, [=]() {
+        *rttRequestPending = true;
+        *rttRequestFailed  = false;
+        refreshRequestRttButton();
+        refreshCards();
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Incoming text request pending: protocol=RTT"));
+    });
     connect(&SipManager::instance(), &SipManager::rttMediaConnected,
-            this, [=]() { *rttRequestFailed = false; refreshCards(); });
+            this, [=]() {
+        *rttRequestFailed  = false;
+        *rttRequestPending = false;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Text protocol active: protocol=RTT"));
+        refreshRequestRttButton();
+        refreshCards();
+    });
     connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
-            this, [=]() { refreshCards(); });
+            this, [=]() { refreshRequestRttButton(); refreshCards(); });
     connect(&VideoStatistics::instance(), &VideoStatistics::statsUpdated,
             this, [=](float fps, int drops) {
         if (VideoMediaManager::instance().isVideoActive() || VideoMediaManager::instance().isLocalVideoAvailable()) {
@@ -1361,7 +1477,8 @@ QWidget *MainWindow::buildClientsPage()
     });
 
     refreshCards();
-    QTimer::singleShot(0, page, refreshCards);
+    refreshRequestRttButton();
+    QTimer::singleShot(0, page, [=]() { refreshCards(); refreshRequestRttButton(); });
     m_rttPanel->setRttSession(SipManager::instance().rttSession());
     return page;
 }
