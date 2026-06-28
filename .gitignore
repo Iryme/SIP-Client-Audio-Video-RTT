@@ -25,6 +25,8 @@ qrc_*.cpp
 # IDE / editor
 .vscode/
 .idea/
+.claude/
+codex_build_vsdev.cmd
 *.user
 *.creator
 *.qmlproject.user
