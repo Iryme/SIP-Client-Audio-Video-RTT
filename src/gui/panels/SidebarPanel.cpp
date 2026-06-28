@@ -1,4 +1,4 @@
-#include "SidebarPanel.h"
+﻿#include "SidebarPanel.h"
 
 #include "core/Logger.h"
 #include "gui/dialogs/SipProfileEditorDialog.h"
@@ -25,16 +25,12 @@ SidebarPanel::SidebarPanel(QWidget *parent)
     auto *title = new QLabel(tr("SIP Profiles / Accounts"), this);
     title->setStyleSheet("font-weight: bold; font-size: 13px;");
     layout->addWidget(title);
-
     auto *subtitle = new QLabel(
         tr("Select a profile to make it active. Double-click to select and register."),
         this);
     subtitle->setWordWrap(true);
     subtitle->setStyleSheet("color: #9aa8b8; font-size: 11px;");
     layout->addWidget(subtitle);
-
-    // Profile list — replaces the old QComboBox.
-    // Each item shows: display name, URI, and per-profile registration status.
     m_profileList = new QListWidget(this);
     m_profileList->setObjectName("ProfileList");
     m_profileList->setAlternatingRowColors(true);
@@ -42,8 +38,6 @@ SidebarPanel::SidebarPanel(QWidget *parent)
     m_profileList->setMinimumHeight(120);
     m_profileList->setToolTip(tr("Single-click: set active profile. Double-click: set active + register."));
     layout->addWidget(m_profileList, 1);
-
-    // Account card
     auto *accountCard = new QFrame(this);
     accountCard->setObjectName("AccountCard");
     accountCard->setFrameShape(QFrame::StyledPanel);
@@ -65,12 +59,10 @@ SidebarPanel::SidebarPanel(QWidget *parent)
     cardLayout->addWidget(m_accountUri);
     cardLayout->addWidget(m_regStatus);
     layout->addWidget(accountCard);
-
     m_registrationButton = new QPushButton(tr("Register"), this);
     m_registrationButton->setObjectName("RegistrationBtn");
     m_registrationButton->setEnabled(false);
     layout->addWidget(m_registrationButton);
-
     auto *profileBtnRow = new QHBoxLayout();
     profileBtnRow->setSpacing(4);
     m_addProfile       = new QPushButton(tr("+ Add"),    this);
@@ -126,7 +118,6 @@ SidebarPanel::SidebarPanel(QWidget *parent)
             this, &SidebarPanel::onProfileSwitchCompleted);
     connect(&SipManager::instance(), &SipManager::profileSwitchFailed,
             this, &SidebarPanel::onProfileSwitchFailed);
-
     refreshProfileList();
 }
 
@@ -134,6 +125,9 @@ SidebarPanel::SidebarPanel(QWidget *parent)
 
 void SidebarPanel::refreshProfileList()
 {
+    if (m_refreshing)
+        return;
+    m_refreshing = true;
     auto &mgr = SipProfileManager::instance();
     const QString activeId     = mgr.activeProfileId();
     const QString registeredId = SipManager::instance().registeredProfileId();
@@ -150,8 +144,8 @@ void SidebarPanel::refreshProfileList()
         if (isRegistered) {
             switch (regState) {
             case RegistrationState::Registered:        statusStr = tr("Registered");    break;
-            case RegistrationState::Registering:       statusStr = tr("Registering…");  break;
-            case RegistrationState::Unregistering:     statusStr = tr("Unregistering…");break;
+            case RegistrationState::Registering:       statusStr = tr("Registeringâ€¦");  break;
+            case RegistrationState::Unregistering:     statusStr = tr("Unregisteringâ€¦");break;
             case RegistrationState::RegistrationFailed:statusStr = tr("Failed");        break;
             default:                                   statusStr = tr("Unregistered");  break;
             }
@@ -163,7 +157,7 @@ void SidebarPanel::refreshProfileList()
         const QString text = QStringLiteral("%1\n%2\n%3")
             .arg(p.displayName,
                  uri.isEmpty() ? QStringLiteral("(no URI)") : uri,
-                 (isActive ? QStringLiteral("★ ") : QStringLiteral("  ")) + statusStr);
+                 (isActive ? QStringLiteral("â˜… ") : QStringLiteral("  ")) + statusStr);
 
         auto *item = new QListWidgetItem(text, m_profileList);
         item->setData(Qt::UserRole, p.profileId);
@@ -191,6 +185,7 @@ void SidebarPanel::refreshProfileList()
     m_duplicateProfile->setEnabled(hasActive);
     m_deleteProfile->setEnabled(hasActive);
     updateAccountCard(activeId);
+    m_refreshing = false;
 }
 
 void SidebarPanel::updateAccountCard(const QString &profileId)
@@ -236,7 +231,7 @@ void SidebarPanel::onProfileListItemClicked(QListWidgetItem *item)
         return;
 
     if (!SipManager::instance().switchActiveProfile(newId)) {
-        // Switch rejected (one already pending) — revert list display
+        // Switch rejected (one already pending) â€” revert list display
         refreshProfileList();
     }
 }
@@ -247,7 +242,7 @@ void SidebarPanel::onProfileListDoubleClicked(QListWidgetItem *item)
         return;
     const QString id = item->data(Qt::UserRole).toString();
     if (id == SipProfileManager::instance().activeProfileId()) {
-        // Profile is already active — just trigger register/unregister
+        // Profile is already active â€” just trigger register/unregister
         onRegistrationClicked();
         return;
     }
@@ -479,3 +474,4 @@ void SidebarPanel::onProfileSwitchFailed(const QString &newProfileId, const QStr
     m_registrationButton->setEnabled(hasActive);
     refreshProfileList();
 }
+

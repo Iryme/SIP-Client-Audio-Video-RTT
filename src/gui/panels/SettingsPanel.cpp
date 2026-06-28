@@ -1,4 +1,4 @@
-#include "SettingsPanel.h"
+﻿#include "SettingsPanel.h"
 
 #include "core/AppSettings.h"
 #include "core/Logger.h"
@@ -10,7 +10,7 @@
 #include <QComboBox>
 #include <QFormLayout>
 #include <QFont>
-#include <QFontComboBox>
+#include <QFontDatabase>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -30,7 +30,6 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(12, 12, 12, 12);
     root->setSpacing(10);
-
     auto *title = new QLabel(tr("Settings"), this);
     title->setStyleSheet("font-size: 18px; font-weight: 600;");
     root->addWidget(title);
@@ -41,11 +40,9 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     subtitle->setWordWrap(true);
     subtitle->setStyleSheet("color: #b7c4d6;");
     root->addWidget(subtitle);
-
     auto *split = new QSplitter(Qt::Horizontal, this);
     split->setChildrenCollapsible(false);
     split->setHandleWidth(8);
-
     auto *leftWrap = new QWidget(split);
     auto *leftLayout = new QVBoxLayout(leftWrap);
     leftLayout->setContentsMargins(0, 0, 0, 0);
@@ -53,7 +50,6 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     m_accountsPanel = new SidebarPanel(leftWrap);
     leftLayout->addWidget(m_accountsPanel);
     split->addWidget(leftWrap);
-
     auto *rightWrap = new QWidget(split);
     auto *rightLayout = new QVBoxLayout(rightWrap);
     rightLayout->setContentsMargins(0, 0, 0, 0);
@@ -145,16 +141,18 @@ SettingsPanel::SettingsPanel(QWidget *parent)
         m_tabs->addTab(appearWidget, tr("Appearance"));
     }
 
-    // â”€â”€ Text / Accessibility tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // â"€â"€ Text / Accessibility tab â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     {
         auto *textWidget = new QWidget(m_tabs);
         auto *textLayout = new QVBoxLayout(textWidget);
         textLayout->setContentsMargins(12, 12, 12, 12);
         textLayout->setSpacing(10);
+        const QStringList families = QFontDatabase::families();
 
         auto *rttGroup = new QGroupBox(tr("RTT"), textWidget);
         auto *rttForm = new QFormLayout(rttGroup);
-        m_rttFontFamily = new QFontComboBox(rttGroup);
+        m_rttFontFamily = new QComboBox(rttGroup);
+        m_rttFontFamily->addItems(families);
         m_rttFontSize = new QSpinBox(rttGroup);
         m_rttFontSize->setRange(8, 24);
         m_rttBold = new QCheckBox(tr("Bold"), rttGroup);
@@ -163,10 +161,10 @@ SettingsPanel::SettingsPanel(QWidget *parent)
         rttForm->addRow(tr("Font size:"), m_rttFontSize);
         rttForm->addRow(QString(), m_rttBold);
         rttForm->addRow(QString(), m_rttHighContrast);
-
         auto *lmpeGroup = new QGroupBox(tr("LMPE"), textWidget);
         auto *lmpeForm = new QFormLayout(lmpeGroup);
-        m_lmpeFontFamily = new QFontComboBox(lmpeGroup);
+        m_lmpeFontFamily = new QComboBox(lmpeGroup);
+        m_lmpeFontFamily->addItems(families);
         m_lmpeFontSize = new QSpinBox(lmpeGroup);
         m_lmpeFontSize->setRange(8, 24);
         m_lmpeBold = new QCheckBox(tr("Bold"), lmpeGroup);
@@ -182,7 +180,6 @@ SettingsPanel::SettingsPanel(QWidget *parent)
 
         m_tabs->addTab(textWidget, tr("Text / Accessibility"));
     }
-
     rightLayout->addWidget(m_tabs, 1);
     split->addWidget(rightWrap);
 
@@ -208,7 +205,6 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     // Theme combo: apply immediately on change (no Save required)
     connect(m_themeCombo, &QComboBox::currentIndexChanged,
             this, &SettingsPanel::onThemeChanged);
-
     load();
 }
 
@@ -246,11 +242,14 @@ void SettingsPanel::load()
 void SettingsPanel::loadTextAppearance()
 {
     auto &s = AppSettings::settings();
-    const auto load = [&s](const QString &prefix, QFontComboBox *family, QSpinBox *size,
+    const auto load = [&s](const QString &prefix, QComboBox *family, QSpinBox *size,
                            QCheckBox *bold, QCheckBox *contrast) {
-        if (family)
-            family->setCurrentFont(QFont(s.value(prefix + QStringLiteral("/fontFamily"),
-                                                 family->currentFont().family()).toString()));
+        if (family) {
+            const QString saved = s.value(prefix + QStringLiteral("/fontFamily"),
+                                          family->currentText()).toString();
+            const int idx = family->findText(saved);
+            family->setCurrentIndex(idx >= 0 ? idx : 0);
+        }
         if (size)
             size->setValue(s.value(prefix + QStringLiteral("/fontSize"), 12).toInt());
         if (bold)
@@ -277,11 +276,17 @@ void SettingsPanel::onLoadDefaults()
     m_debugSIP->setChecked(false);
     m_rawSIP->setChecked(false);
     m_persistMedia->setChecked(true);
-    if (m_rttFontFamily) m_rttFontFamily->setCurrentFont(QFont(QStringLiteral("Segoe UI")));
+    if (m_rttFontFamily) {
+        const int idx = m_rttFontFamily->findText(QStringLiteral("Segoe UI"));
+        m_rttFontFamily->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
     if (m_rttFontSize) m_rttFontSize->setValue(12);
     if (m_rttBold) m_rttBold->setChecked(false);
     if (m_rttHighContrast) m_rttHighContrast->setChecked(false);
-    if (m_lmpeFontFamily) m_lmpeFontFamily->setCurrentFont(QFont(QStringLiteral("Segoe UI")));
+    if (m_lmpeFontFamily) {
+        const int idx = m_lmpeFontFamily->findText(QStringLiteral("Segoe UI"));
+        m_lmpeFontFamily->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
     if (m_lmpeFontSize) m_lmpeFontSize->setValue(12);
     if (m_lmpeBold) m_lmpeBold->setChecked(false);
     if (m_lmpeHighContrast) m_lmpeHighContrast->setChecked(false);
@@ -306,10 +311,10 @@ void SettingsPanel::onSave()
 void SettingsPanel::saveTextAppearance()
 {
     auto &s = AppSettings::settings();
-    const auto save = [&s](const QString &prefix, QFontComboBox *family, QSpinBox *size,
+    const auto save = [&s](const QString &prefix, QComboBox *family, QSpinBox *size,
                            QCheckBox *bold, QCheckBox *contrast) {
         if (family)
-            s.setValue(prefix + QStringLiteral("/fontFamily"), family->currentFont().family());
+            s.setValue(prefix + QStringLiteral("/fontFamily"), family->currentText());
         if (size)
             s.setValue(prefix + QStringLiteral("/fontSize"), size->value());
         if (bold)
@@ -336,3 +341,4 @@ void SettingsPanel::onThemeChanged(int comboIndex)
     // apply() saves to QSettings + calls qApp->setStyleSheet() — no widget rebuilt.
     ThemeManager::instance().apply(theme);
 }
+

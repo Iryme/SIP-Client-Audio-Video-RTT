@@ -44,4 +44,5 @@ private:
     QPushButton  *m_registrationButton{nullptr};
 
     bool m_registerAfterSwitch{false};
+    bool m_refreshing{false};
 };

@@ -11,7 +11,6 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
-class QFontComboBox;
 class QSpinBox;
 
 class SettingsPanel : public QWidget
@@ -52,11 +51,11 @@ private:
     QComboBox  *m_themeCombo{nullptr};
 
     // Text / Accessibility tab
-    QFontComboBox *m_rttFontFamily{nullptr};
-    QSpinBox      *m_rttFontSize{nullptr};
-    QCheckBox     *m_rttBold{nullptr};
-    QCheckBox     *m_rttHighContrast{nullptr};
-    QFontComboBox *m_lmpeFontFamily{nullptr};
+    QComboBox *m_rttFontFamily{nullptr};
+    QSpinBox  *m_rttFontSize{nullptr};
+    QCheckBox *m_rttBold{nullptr};
+    QCheckBox *m_rttHighContrast{nullptr};
+    QComboBox *m_lmpeFontFamily{nullptr};
     QSpinBox      *m_lmpeFontSize{nullptr};
     QCheckBox     *m_lmpeBold{nullptr};
     QCheckBox     *m_lmpeHighContrast{nullptr};
