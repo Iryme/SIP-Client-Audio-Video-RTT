@@ -720,6 +720,47 @@ struct SipCall::Impl
         videoRequestNotified = false;
     }
 
+    // Release the DirectShow capture device without tearing down the call.
+    // Called on Camera Off during an active video call. PJSIP manages the
+    // call's capture through the preview subsystem — stopping it releases
+    // the hardware (camera LED off). videoCapDev is preserved so the device
+    // can be identified when Camera On calls resumeCapture().
+    // Side-effect: stopLocalPreview() at call teardown will find
+    // pjsua_vid_preview_get_win() == INVALID_ID and skip the stop, which
+    // prevents the pjsua2 internal errors that appear when the session is
+    // already terminated.
+    void pauseCapture()
+    {
+        if (videoCapDev < PJMEDIA_VID_DEFAULT_CAPTURE_DEV)
+            return;
+        const auto capDev = static_cast<pjmedia_vid_dev_index>(videoCapDev);
+        if (pjsua_vid_preview_get_win(capDev) == PJSUA_INVALID_ID)
+            return;
+        const pj_status_t st = pjsua_vid_preview_stop(capDev);
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("Camera Off: capture released capDev=%1 status=%2")
+                .arg(videoCapDev).arg(st));
+    }
+
+    // Re-open the DirectShow capture device after pauseCapture().
+    // Called on Camera On during an active video call before resuming transmit.
+    void resumeCapture()
+    {
+        if (videoCapDev < PJMEDIA_VID_DEFAULT_CAPTURE_DEV)
+            return;
+        const auto capDev = static_cast<pjmedia_vid_dev_index>(videoCapDev);
+        if (pjsua_vid_preview_get_win(capDev) != PJSUA_INVALID_ID)
+            return; // already open
+        pjsua_vid_preview_param pvp;
+        pjsua_vid_preview_param_default(&pvp);
+        pvp.rend_id = PJMEDIA_VID_DEFAULT_RENDER_DEV;
+        pvp.show    = PJ_FALSE;
+        const pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
+        Logger::instance().info(LogCategory::Media,
+            QStringLiteral("Camera On: capture re-opened capDev=%1 status=%2")
+                .arg(videoCapDev).arg(st));
+    }
+
     PjCall             *pjCall{nullptr};
     pj::Call           *earlyCall{nullptr};           // EarlyCall from SipAccount; freed after pjCall
     void               *pjAccountHandle{nullptr};     // pj::Account* cast to void*
@@ -1270,10 +1311,13 @@ bool SipCall::setVideoMuted(bool muted)
             try {
                 pj::CallVidSetStreamParam prm;
                 prm.medIdx = -1; // default video stream
-                if (muted)
+                if (muted) {
                     m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_STOP_TRANSMIT, prm);
-                else
+                    m_impl->pauseCapture();
+                } else {
+                    m_impl->resumeCapture();
                     m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_START_TRANSMIT, prm);
+                }
             } catch (const pj::Error &e) {
                 Logger::instance().warn(LogCategory::Sip,
                     QStringLiteral("vidSetStream error (call id=%1): %2")
