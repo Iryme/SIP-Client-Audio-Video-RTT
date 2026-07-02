@@ -11,10 +11,13 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSignalBlocker>
+#include <QSlider>
 #include <QVBoxLayout>
 
 #include "core/AppSettings.h"
 #include "core/Logger.h"
+#include "gui/CameraController.h"
 #include "emergency/EmergencyCallAdapter.h"
 #include "emergency/EmergencyCallController.h"
 #include "emergency/EmergencyInviteBuilder.h"
@@ -104,14 +107,14 @@ CallPanel::CallPanel(QWidget *parent)
         layout->addWidget(sep);
     }
 
-    // ── Level meters + device selectors ───────────────────────────────────
+    // ── Microphone: meter + volume slider + device selector ──────────────
     {
-        auto *meterRow = new QHBoxLayout();
-        meterRow->setSpacing(6);
+        auto *micRow = new QHBoxLayout();
+        micRow->setSpacing(6);
 
-        auto *micLabel = new QLabel(tr("Mic:"), this);
+        auto *micLabel = new QLabel(tr("Microphone"), this);
         micLabel->setStyleSheet("color: #888; font-size: 10px;");
-        micLabel->setFixedWidth(24);
+        micLabel->setFixedWidth(68);
 
         m_inputMeter = new QProgressBar(this);
         m_inputMeter->setRange(0, 100);
@@ -122,9 +125,39 @@ CallPanel::CallPanel(QWidget *parent)
             "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
             "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
 
-        auto *spkLabel = new QLabel(tr("Spk:"), this);
+        m_micVolumeSlider = new QSlider(Qt::Horizontal, this);
+        m_micVolumeSlider->setRange(0, 100);
+        m_micVolumeSlider->setValue(100);
+        m_micVolumeSlider->setFixedWidth(80);
+        m_micVolumeSlider->setFixedHeight(16);
+        m_micVolumeSlider->setEnabled(false);
+        m_micVolumeSlider->setToolTip(tr("Microphone volume — not available in current backend"));
+
+        micRow->addWidget(micLabel);
+        micRow->addWidget(m_inputMeter, 1);
+        micRow->addWidget(m_micVolumeSlider);
+        layout->addLayout(micRow);
+
+        auto *micDevRow = new QHBoxLayout();
+        micDevRow->setSpacing(6);
+        auto *micDevLabel = new QLabel(tr("Device:"), this);
+        micDevLabel->setStyleSheet("color: #666; font-size: 10px;");
+        micDevLabel->setFixedWidth(68);
+        m_micSelector = new QComboBox(this);
+        m_micSelector->setFixedHeight(22);
+        micDevRow->addWidget(micDevLabel);
+        micDevRow->addWidget(m_micSelector, 1);
+        layout->addLayout(micDevRow);
+    }
+
+    // ── Speaker: meter + volume slider + device selector ─────────────────
+    {
+        auto *spkRow = new QHBoxLayout();
+        spkRow->setSpacing(6);
+
+        auto *spkLabel = new QLabel(tr("Speaker"), this);
         spkLabel->setStyleSheet("color: #888; font-size: 10px;");
-        spkLabel->setFixedWidth(24);
+        spkLabel->setFixedWidth(68);
 
         m_outputMeter = new QProgressBar(this);
         m_outputMeter->setRange(0, 100);
@@ -135,33 +168,56 @@ CallPanel::CallPanel(QWidget *parent)
             "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
             "QProgressBar::chunk { background: #5090e0; border-radius: 2px; }");
 
-        meterRow->addWidget(micLabel);
-        meterRow->addWidget(m_inputMeter);
-        meterRow->addSpacing(8);
-        meterRow->addWidget(spkLabel);
-        meterRow->addWidget(m_outputMeter);
+        m_spkVolumeSlider = new QSlider(Qt::Horizontal, this);
+        m_spkVolumeSlider->setRange(0, 100);
+        m_spkVolumeSlider->setValue(100);
+        m_spkVolumeSlider->setFixedWidth(80);
+        m_spkVolumeSlider->setFixedHeight(16);
+        m_spkVolumeSlider->setEnabled(false);
+        m_spkVolumeSlider->setToolTip(tr("Speaker volume — not available in current backend"));
 
-        layout->addLayout(meterRow);
+        spkRow->addWidget(spkLabel);
+        spkRow->addWidget(m_outputMeter, 1);
+        spkRow->addWidget(m_spkVolumeSlider);
+        layout->addLayout(spkRow);
 
-        auto *devRow = new QHBoxLayout();
-        devRow->setSpacing(6);
-
-        auto *micDevLabel = new QLabel(tr("Microphone:"), this);
-        micDevLabel->setStyleSheet("color: #888; font-size: 10px;");
-        m_micSelector = new QComboBox(this);
-        m_micSelector->setFixedHeight(24);
-
-        auto *spkDevLabel = new QLabel(tr("Speaker:"), this);
-        spkDevLabel->setStyleSheet("color: #888; font-size: 10px;");
+        auto *spkDevRow = new QHBoxLayout();
+        spkDevRow->setSpacing(6);
+        auto *spkDevLabel = new QLabel(tr("Device:"), this);
+        spkDevLabel->setStyleSheet("color: #666; font-size: 10px;");
+        spkDevLabel->setFixedWidth(68);
         m_spkSelector = new QComboBox(this);
-        m_spkSelector->setFixedHeight(24);
+        m_spkSelector->setFixedHeight(22);
+        spkDevRow->addWidget(spkDevLabel);
+        spkDevRow->addWidget(m_spkSelector, 1);
+        layout->addLayout(spkDevRow);
+    }
 
-        devRow->addWidget(micDevLabel);
-        devRow->addWidget(m_micSelector, 1);
-        devRow->addWidget(spkDevLabel);
-        devRow->addWidget(m_spkSelector, 1);
+    // ── Video controls: Camera On/Off + Video Mute/Unmute ─────────────────
+    {
+        auto *videoCtrlRow = new QHBoxLayout();
+        videoCtrlRow->setSpacing(6);
 
-        layout->addLayout(devRow);
+        m_btnCameraToggle = new QPushButton(tr("Camera On"), this);
+        m_btnCameraToggle->setObjectName("CameraToggleBtn");
+        m_btnCameraToggle->setCheckable(true);
+        m_btnCameraToggle->setChecked(true);
+        m_btnCameraToggle->setFixedHeight(28);
+        m_btnCameraToggle->setMinimumWidth(90);
+        m_btnCameraToggle->setToolTip(tr("Enable or disable the camera hardware (turns off LED when disabled)"));
+
+        m_btnVideoMute = new QPushButton(tr("Mute Video"), this);
+        m_btnVideoMute->setObjectName("VideoMuteBtn");
+        m_btnVideoMute->setCheckable(true);
+        m_btnVideoMute->setFixedHeight(28);
+        m_btnVideoMute->setMinimumWidth(90);
+        m_btnVideoMute->setEnabled(false);
+        m_btnVideoMute->setToolTip(tr("No active video stream"));
+
+        videoCtrlRow->addWidget(m_btnCameraToggle);
+        videoCtrlRow->addWidget(m_btnVideoMute);
+        videoCtrlRow->addStretch();
+        layout->addLayout(videoCtrlRow);
     }
 
     // ── Call control buttons ───────────────────────────────────────────────
@@ -408,6 +464,19 @@ CallPanel::CallPanel(QWidget *parent)
             this, &CallPanel::onInputLevelChanged);
     connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
             this, &CallPanel::onOutputLevelChanged);
+
+    // Camera On/Off → CameraController (preserves LED-off fix)
+    connect(m_btnCameraToggle, &QPushButton::toggled, this, [](bool on) {
+        CameraController::instance().setEnabled(on, QStringLiteral("CallPanel"));
+    });
+    connect(&CameraController::instance(), &CameraController::enabledChanged,
+            this, &CallPanel::onCameraEnabledChanged);
+
+    // Video Mute/Unmute → VideoMediaManager
+    connect(m_btnVideoMute, &QPushButton::toggled,
+            [](bool checked){ VideoMediaManager::instance().setVideoMuted(checked); });
+    connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMutedChanged,
+            this, &CallPanel::onVideoMutedChanged);
 
     // Pause / Resume — pending text on click, confirmed by callStateChanged
     connect(m_btnHold, &QPushButton::clicked, this, [this](bool checked) {
@@ -968,6 +1037,7 @@ void CallPanel::resetStatusCards()
     m_videoRequestBlinkTimer.stop();
     m_videoRequestBlinkOn = false;
     refreshVideoRequestButton();
+    updateVideoMuteState();
 
     m_cardDuration->setValue(QStringLiteral("00:00:00"));
     m_cardDuration->setStatus({});
@@ -1068,6 +1138,7 @@ void CallPanel::onVideoMediaConnected()
     m_videoConnected = true;
     m_videoRequested = false;
     refreshVideoRequestButton();
+    updateVideoMuteState();
     updateStatusCards();
 }
 
@@ -1076,6 +1147,7 @@ void CallPanel::onVideoMediaDisconnected()
     m_videoConnected = false;
     m_videoRequested = false;
     refreshVideoRequestButton();
+    updateVideoMuteState();
     updateStatusCards();
 }
 
@@ -1090,12 +1162,14 @@ void CallPanel::onVideoRequested()
 void CallPanel::onLocalVideoStarted()
 {
     m_localVideoActive = true;
+    updateVideoMuteState();
     updateStatusCards();
 }
 
 void CallPanel::onLocalVideoStopped()
 {
     m_localVideoActive = false;
+    updateVideoMuteState();
     updateStatusCards();
 }
 
@@ -1159,6 +1233,44 @@ void CallPanel::focusDialInput()
         m_dialInput->setFocus();
         m_dialInput->selectAll();
     }
+}
+
+void CallPanel::updateVideoMuteState()
+{
+    if (!m_btnVideoMute) return;
+
+    const bool streamActive = m_videoConnected || m_localVideoActive;
+    m_btnVideoMute->setEnabled(streamActive);
+    if (!streamActive) {
+        QSignalBlocker b(m_btnVideoMute);
+        m_btnVideoMute->setChecked(false);
+        m_btnVideoMute->setText(tr("Mute Video"));
+        m_btnVideoMute->setToolTip(tr("No active video stream"));
+    } else {
+        m_btnVideoMute->setToolTip(
+            m_btnVideoMute->isChecked()
+                ? tr("Video transmission stopped — click to resume")
+                : tr("Stop video transmission"));
+    }
+}
+
+void CallPanel::onVideoMutedChanged(bool muted)
+{
+    if (!m_btnVideoMute) return;
+    QSignalBlocker b(m_btnVideoMute);
+    m_btnVideoMute->setChecked(muted);
+    m_btnVideoMute->setText(muted ? tr("Unmute Video") : tr("Mute Video"));
+    m_btnVideoMute->setToolTip(muted
+        ? tr("Video transmission stopped — click to resume")
+        : tr("Stop video transmission"));
+}
+
+void CallPanel::onCameraEnabledChanged(bool enabled)
+{
+    if (!m_btnCameraToggle) return;
+    QSignalBlocker b(m_btnCameraToggle);
+    m_btnCameraToggle->setChecked(enabled);
+    m_btnCameraToggle->setText(enabled ? tr("Camera On") : tr("Camera Off"));
 }
 
 // ---------------------------------------------------------------------------

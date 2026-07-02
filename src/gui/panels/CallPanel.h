@@ -14,6 +14,7 @@ class QLineEdit;
 class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
+class QSlider;
 class StatusCard;
 class EmergencyCallController;
 class StaticLocationProvider;
@@ -59,6 +60,8 @@ private slots:
     void onRttMediaDisconnected();
     void onVideoStatsUpdated(float fps, int dropsThisSec);
     void onDurationTick();
+    void onVideoMutedChanged(bool muted);
+    void onCameraEnabledChanged(bool enabled);
 
     // Emergency call slots
     void onEmergencyButtonClicked();
@@ -74,6 +77,7 @@ private:
     void updateStatusCards();
     void refreshVideoRequestButton();
     void resetStatusCards();
+    void updateVideoMuteState();
     QString formatDuration(int seconds) const;
 
     // Dial row
@@ -89,6 +93,14 @@ private:
     // Level meters
     QProgressBar *m_inputMeter{nullptr};
     QProgressBar *m_outputMeter{nullptr};
+
+    // Volume sliders (disabled — no volume API in current backend)
+    QSlider     *m_micVolumeSlider{nullptr};
+    QSlider     *m_spkVolumeSlider{nullptr};
+
+    // Video controls (moved from VideoPanel overlay)
+    QPushButton *m_btnCameraToggle{nullptr};
+    QPushButton *m_btnVideoMute{nullptr};
 
     // Call control buttons
     QPushButton *m_btnMute{nullptr};
