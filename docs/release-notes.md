@@ -4,6 +4,71 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.3.0 — Settings Media Configuration (Microphone / Speaker)
+
+**Status:** pre-release validation
+**Branch:** `release/v1.3.0`
+**Version bump type:** MINOR
+**Reason:** New Settings UI surface and a new (additive) volume-control API layered on existing PJSIP audio device plumbing; no SDP wire-level or registration logic change.
+
+### Relevant commits (chronological)
+
+| Commit | Description |
+|--------|-------------|
+| `4350f03` | Add settings media configuration for audio devices |
+
+### Changes
+
+**Settings → Media tab**
+- New tab in Settings (next to Video), implemented in `MediaSettingsPanel`.
+- Grouped Microphone / Speaker sections: device dropdown, live level meter, volume slider, and (for the speaker) a Test Speaker button.
+
+**Microphone / speaker device selection**
+- Dropdowns populated from real enumerated devices (`MediaDeviceManager::listMicrophones()/listSpeakers()`), with a "Default (system)" entry.
+- Selecting a device calls `AudioMediaManager::setMicrophone()/setSpeaker()` — the same API already used by CallPanel — so both surfaces stay consistent.
+- Refresh Devices button triggers `MediaDeviceManager::refreshDevices()` (async Qt Multimedia re-enumeration) and preserves the current selection if the device is still present.
+- Missing/disappeared device: falls back to the default via the existing `MediaDeviceSelectionModel` resolution logic, with a warning logged and surfaced in the UI (disabled combo + tooltip when no devices exist at all).
+
+**Real volume control via PJSIP**
+- New `AudioMediaManager::setMicrophoneVolume()/setSpeakerVolume()` and `SipCall::setMicVolume()/setSpeakerVolume()`, previously entirely absent from the codebase.
+- Microphone gain: `pj::AudDevManager::getCaptureDevMedia().adjustTxLevel(percent / 100.0f)`.
+- Speaker gain: `pj::AudDevManager::getPlaybackDevMedia().adjustRxLevel(percent / 100.0f)`.
+- Applied immediately to the active call's PJSIP audio media when connected; otherwise stored and applied as soon as audio media connects on the next/current call.
+
+**Persistence in QSettings**
+- New keys `media/volume/microphone` and `media/volume/speaker` (default 100 = unity gain) alongside the existing `media/device/microphone`/`media/device/speaker` keys, loaded at startup via `AppSettings`.
+
+**CallPanel sync**
+- CallPanel's microphone/speaker volume sliders — previously always disabled with a "not available in current backend" tooltip — are now enabled and wired to the same `AudioMediaManager` API.
+- Changing volume or device in Settings updates CallPanel live (and vice versa) via `AudioMediaManager::microphoneVolumeChanged`/`speakerVolumeChanged` signals.
+
+**Test Speaker**
+- Real playback (not simulated): generates a short 440 Hz sine tone and plays it via `QAudioSink` on the currently selected output device.
+
+**Mute restores user volume**
+- Fixed `SipCall::setMuted()`, which previously hardcoded the unmute level to `1.0f` (ignoring any user-configured microphone volume). Unmuting now restores the persisted `micVolume` gain instead of resetting it to full.
+
+### Manual validation checklist
+
+- [ ] Settings → Media tab shows Microphone and Speaker sections with device dropdown, live meter, and volume slider.
+- [ ] Changing microphone/speaker in Settings updates the active call's audio device without crashing.
+- [ ] Changing volume in Settings updates CallPanel's sliders live, and vice versa.
+- [ ] Test Speaker plays an audible tone through the selected output device.
+- [ ] Unplugging/removing the selected device falls back to default with a warning shown in the UI and logged.
+- [ ] No microphone/speaker present: dropdown disabled with a clear tooltip; Test Speaker disabled when no speaker is present.
+- [ ] Mute then unmute during an active call restores the previously set microphone volume (not full volume).
+- [ ] Build: full CMake build exits 0 (`ENABLE_PJSIP=ON`).
+- [ ] Tests: all 27 ctest tests pass.
+
+### Constraints respected
+
+- Registration logic unchanged.
+- SIP server configuration unchanged.
+- No fake/simulated meter values — levels come from `AudioMediaManager::inputLevelChanged`/`outputLevelChanged`.
+- No push performed until build + full ctest pass.
+
+---
+
 ## v0.4.0 — Dashboard UI, Media Consent Popups, RTT Flow, Camera Control
 
 **Status:** pre-rollout / pending validation  
