@@ -2,10 +2,12 @@
 
 #include <cmath>
 
+#include "core/AppSettings.h"
 #include "core/Logger.h"
 #include "media/AudioMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
+#include "sip/PjsipAudioMapper.h"
 
 #include <QAudioDevice>
 #include <QAudioFormat>
@@ -21,6 +23,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -71,6 +74,10 @@ MediaSettingsPanel::MediaSettingsPanel(QWidget *parent)
 {
     buildUi();
 
+    m_micTestTimer = new QTimer(this);
+    m_micTestTimer->setSingleShot(true);
+    connect(m_micTestTimer, &QTimer::timeout, this, &MediaSettingsPanel::stopMicTest);
+
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
             this, &MediaSettingsPanel::onDevicesChanged);
     connect(&MediaDeviceManager::instance(), &MediaDeviceManager::refreshFinished,
@@ -87,6 +94,16 @@ MediaSettingsPanel::MediaSettingsPanel(QWidget *parent)
             this, &MediaSettingsPanel::onMicrophoneVolumeChanged);
     connect(&AudioMediaManager::instance(), &AudioMediaManager::speakerVolumeChanged,
             this, &MediaSettingsPanel::onSpeakerVolumeChanged);
+    // Keep this panel's combos/status labels in sync when device selection
+    // changes elsewhere (e.g. CallPanel's own device combos).
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::audioDeviceSelectionChanged,
+            this, &MediaSettingsPanel::onDeviceSelectionChanged);
+    // The "actual active device" status line can only be queried from PJSIP
+    // once a call's audio media is up, so refresh it on connect/disconnect.
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::mediaConnected,
+            this, &MediaSettingsPanel::onMediaConnectionChanged);
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::mediaDisconnected,
+            this, &MediaSettingsPanel::onMediaConnectionChanged);
 
     populateDevices();
 
@@ -113,6 +130,19 @@ void MediaSettingsPanel::buildUi()
     root->setContentsMargins(16, 12, 16, 12);
     root->setSpacing(4);
 
+    // ── Header: title + Reset to Default ──────────────────────────────────
+    {
+        auto *headerRow = new QHBoxLayout();
+        auto *title = new QLabel(tr("Microphone and speaker device, volume, and levels."), this);
+        title->setStyleSheet("color: #b7c4d6;");
+        m_resetBtn = new QPushButton(tr("Reset to Default"), this);
+        m_resetBtn->setToolTip(tr("Reset microphone and speaker to the system default device "
+                                   "and 100% volume. Applied immediately."));
+        headerRow->addWidget(title, 1);
+        headerRow->addWidget(m_resetBtn);
+        root->addLayout(headerRow);
+    }
+
     // ── Microphone ──────────────────────────────────────────────────────────
     root->addWidget(sectionLabel(tr("MICROPHONE"), this));
     {
@@ -120,10 +150,16 @@ void MediaSettingsPanel::buildUi()
         row->setSpacing(8);
         m_micCombo = new QComboBox(this);
         m_refreshBtn = new QPushButton(tr("Refresh Devices"), this);
+        m_refreshBtn->setToolTip(tr("Re-scan the system for microphones and speakers. "
+                                     "Keeps your current selection if the device is still present."));
         row->addWidget(m_micCombo, 1);
         row->addWidget(m_refreshBtn);
         root->addLayout(row);
     }
+    m_micStatusLabel = new QLabel(this);
+    m_micStatusLabel->setStyleSheet("color: #8aa0b8; font-size: 10px;");
+    m_micStatusLabel->setWordWrap(true);
+    root->addWidget(m_micStatusLabel);
     m_micWarningLabel = new QLabel(this);
     m_micWarningLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
     m_micWarningLabel->setWordWrap(true);
@@ -141,12 +177,28 @@ void MediaSettingsPanel::buildUi()
         m_micMeter->setStyleSheet(
             "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
             "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
-        form->addRow(tr("Level:"), m_micMeter);
+        m_micMeter->setToolTip(tr("Live microphone input level. Only moves while a call is active."));
+
+        m_testMicBtn = new QPushButton(tr("Test Microphone"), this);
+        m_testMicBtn->setToolTip(tr("Highlights the input level meter above for 10 seconds so you can "
+                                     "confirm the microphone is picking up sound. Does not send anything "
+                                     "over SIP; the meter only moves for real during an active call."));
+        auto *meterRow = new QHBoxLayout();
+        meterRow->addWidget(m_micMeter, 1);
+        meterRow->addWidget(m_testMicBtn);
+        form->addRow(tr("Level:"), meterRow);
+
+        m_micTestStatusLabel = new QLabel(this);
+        m_micTestStatusLabel->setStyleSheet("color: #50c878; font-size: 10px; font-weight: 600;");
+        m_micTestStatusLabel->setVisible(false);
+        form->addRow(QString(), m_micTestStatusLabel);
 
         auto *volRow = new QHBoxLayout();
         m_micVolumeSlider = new QSlider(Qt::Horizontal, this);
         m_micVolumeSlider->setRange(0, 100);
         m_micVolumeSlider->setValue(100);
+        m_micVolumeSlider->setToolTip(tr("Microphone gain (0-100%, 100% = default). Applied immediately "
+                                          "to the active call; otherwise used as the default for the next call."));
         m_micVolumeLabel = new QLabel(QStringLiteral("100%"), this);
         m_micVolumeLabel->setFixedWidth(40);
         volRow->addWidget(m_micVolumeSlider, 1);
@@ -167,6 +219,10 @@ void MediaSettingsPanel::buildUi()
         row->addWidget(m_testSpeakerBtn);
         root->addLayout(row);
     }
+    m_spkStatusLabel = new QLabel(this);
+    m_spkStatusLabel->setStyleSheet("color: #8aa0b8; font-size: 10px;");
+    m_spkStatusLabel->setWordWrap(true);
+    root->addWidget(m_spkStatusLabel);
     m_spkWarningLabel = new QLabel(this);
     m_spkWarningLabel->setStyleSheet("color: #e0b850; font-size: 10px;");
     m_spkWarningLabel->setWordWrap(true);
@@ -184,12 +240,15 @@ void MediaSettingsPanel::buildUi()
         m_spkMeter->setStyleSheet(
             "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
             "QProgressBar::chunk { background: #5090e0; border-radius: 2px; }");
+        m_spkMeter->setToolTip(tr("Live speaker output level. Only moves while a call is active."));
         form->addRow(tr("Level:"), m_spkMeter);
 
         auto *volRow = new QHBoxLayout();
         m_spkVolumeSlider = new QSlider(Qt::Horizontal, this);
         m_spkVolumeSlider->setRange(0, 100);
         m_spkVolumeSlider->setValue(100);
+        m_spkVolumeSlider->setToolTip(tr("Speaker gain (0-100%, 100% = default). Applied immediately "
+                                          "to the active call; otherwise used as the default for the next call."));
         m_spkVolumeLabel = new QLabel(QStringLiteral("100%"), this);
         m_spkVolumeLabel->setFixedWidth(40);
         volRow->addWidget(m_spkVolumeSlider, 1);
@@ -220,8 +279,12 @@ void MediaSettingsPanel::buildUi()
             this, &MediaSettingsPanel::onSpeakerVolumeSliderChanged);
     connect(m_refreshBtn, &QPushButton::clicked,
             this, &MediaSettingsPanel::onRefreshClicked);
+    connect(m_resetBtn, &QPushButton::clicked,
+            this, &MediaSettingsPanel::onResetToDefaultClicked);
     connect(m_testSpeakerBtn, &QPushButton::clicked,
             this, &MediaSettingsPanel::onTestSpeakerClicked);
+    connect(m_testMicBtn, &QPushButton::clicked,
+            this, &MediaSettingsPanel::onTestMicrophoneClicked);
 }
 
 void MediaSettingsPanel::populateDevices()
@@ -236,6 +299,17 @@ void MediaSettingsPanel::populateDevices()
     const QList<MediaDevice> mics = MediaDeviceManager::instance().listMicrophones();
     const QList<MediaDevice> spks = MediaDeviceManager::instance().listSpeakers();
 
+    // A non-empty persisted id that no longer resolves to an enumerated
+    // device means the user's previous pick disappeared (unplugged, driver
+    // removed, ...) and MediaDeviceSelectionModel already fell back to the
+    // default — surface that explicitly instead of silently switching.
+    const QString persistedMicId = AppSettings::loadSelectedMicrophone();
+    const bool micDeviceMissing = !persistedMicId.isEmpty()
+        && MediaDeviceManager::instance().findDevice(MediaDeviceType::Microphone, persistedMicId).isNull();
+    const QString persistedSpkId = AppSettings::loadSelectedSpeaker();
+    const bool spkDeviceMissing = !persistedSpkId.isEmpty()
+        && MediaDeviceManager::instance().findDevice(MediaDeviceType::Speaker, persistedSpkId).isNull();
+
     {
         const QSignalBlocker b(m_micCombo);
         m_micCombo->clear();
@@ -245,12 +319,19 @@ void MediaSettingsPanel::populateDevices()
 
         m_micCombo->setEnabled(!mics.isEmpty());
         if (mics.isEmpty()) {
-            m_micCombo->setToolTip(tr("No microphone detected"));
+            m_micCombo->setToolTip(tr("No microphone detected — connect a device and click Refresh Devices"));
             m_micWarningLabel->setText(tr("⚠ No microphone detected. Connect a device and click Refresh Devices."));
             m_micWarningLabel->setVisible(true);
         } else {
-            m_micCombo->setToolTip(QString());
-            m_micWarningLabel->setVisible(false);
+            m_micCombo->setToolTip(tr("Microphone device — applied to the active call immediately when "
+                                       "possible, otherwise on the next call"));
+            if (micDeviceMissing) {
+                m_micWarningLabel->setText(tr("⚠ Previously selected microphone is no longer connected. "
+                                               "Reverted to Default (system)."));
+                m_micWarningLabel->setVisible(true);
+            } else {
+                m_micWarningLabel->setVisible(false);
+            }
 
             bool found = false;
             for (int i = 0; i < m_micCombo->count(); ++i) {
@@ -274,14 +355,21 @@ void MediaSettingsPanel::populateDevices()
         m_spkCombo->setEnabled(!spks.isEmpty());
         m_testSpeakerBtn->setEnabled(!spks.isEmpty());
         if (spks.isEmpty()) {
-            m_spkCombo->setToolTip(tr("No speaker detected"));
+            m_spkCombo->setToolTip(tr("No speaker detected — connect a device and click Refresh Devices"));
             m_testSpeakerBtn->setToolTip(tr("No speaker detected"));
             m_spkWarningLabel->setText(tr("⚠ No speaker detected. Connect a device and click Refresh Devices."));
             m_spkWarningLabel->setVisible(true);
         } else {
-            m_spkCombo->setToolTip(QString());
+            m_spkCombo->setToolTip(tr("Speaker device — applied to the active call immediately when "
+                                       "possible, otherwise on the next call"));
             m_testSpeakerBtn->setToolTip(tr("Play a short test tone through the selected speaker"));
-            m_spkWarningLabel->setVisible(false);
+            if (spkDeviceMissing) {
+                m_spkWarningLabel->setText(tr("⚠ Previously selected speaker is no longer connected. "
+                                               "Reverted to Default (system)."));
+                m_spkWarningLabel->setVisible(true);
+            } else {
+                m_spkWarningLabel->setVisible(false);
+            }
 
             bool found = false;
             for (int i = 0; i < m_spkCombo->count(); ++i) {
@@ -294,6 +382,32 @@ void MediaSettingsPanel::populateDevices()
             }
         }
     }
+
+    updateDeviceStatusLabels();
+}
+
+void MediaSettingsPanel::updateDeviceStatusLabels()
+{
+    MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
+    const MediaDevice mic = sel.selectedMicrophone();
+    const MediaDevice spk = sel.selectedSpeaker();
+
+    const QString micName = mic.isNull() ? tr("none")
+        : (mic.isDefault ? tr("Default (system) — %1").arg(mic.displayName) : mic.displayName);
+    const QString spkName = spk.isNull() ? tr("none")
+        : (spk.isDefault ? tr("Default (system) — %1").arg(spk.displayName) : spk.displayName);
+
+    QString micText = tr("Selected: %1").arg(micName);
+    const QString micActive = PjsipAudioMapper::activeCaptureDeviceName();
+    if (!micActive.isEmpty())
+        micText += tr("   |   Active now: %1").arg(micActive);
+    m_micStatusLabel->setText(micText);
+
+    QString spkText = tr("Selected: %1").arg(spkName);
+    const QString spkActive = PjsipAudioMapper::activePlaybackDeviceName();
+    if (!spkActive.isEmpty())
+        spkText += tr("   |   Active now: %1").arg(spkActive);
+    m_spkStatusLabel->setText(spkText);
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +473,16 @@ void MediaSettingsPanel::onDevicesChanged()
     populateDevices();
 }
 
+void MediaSettingsPanel::onDeviceSelectionChanged()
+{
+    populateDevices();
+}
+
+void MediaSettingsPanel::onMediaConnectionChanged()
+{
+    updateDeviceStatusLabels();
+}
+
 void MediaSettingsPanel::onRefreshClicked()
 {
     m_refreshBtn->setEnabled(false);
@@ -366,6 +490,23 @@ void MediaSettingsPanel::onRefreshClicked()
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("MediaSettingsPanel: manual device refresh requested"));
     MediaDeviceManager::instance().refreshDevices();
+}
+
+void MediaSettingsPanel::onResetToDefaultClicked()
+{
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("MediaSettingsPanel: reset to default requested"));
+
+    AudioMediaManager &mgr = AudioMediaManager::instance();
+    mgr.setMicrophone(QString());
+    mgr.setSpeaker(QString());
+    mgr.setMicrophoneVolume(100);
+    mgr.setSpeakerVolume(100);
+
+    // The *Changed signals above already update the volume sliders; refresh
+    // the device combos/status labels immediately rather than waiting for
+    // the audioDeviceSelectionChanged round-trip.
+    populateDevices();
 }
 
 void MediaSettingsPanel::onTestSpeakerClicked()
@@ -426,4 +567,57 @@ void MediaSettingsPanel::onTestToneStateChanged(QAudio::State state)
         m_testBuffer->deleteLater();
         m_testBuffer = nullptr;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Microphone test mode
+//
+// There is no standalone local-capture pipeline outside of an active call —
+// AudioMediaManager's input level only comes from the SipCall audio stream.
+// So "Test Microphone" does not fabricate a level or start any SIP/PJSIP
+// action; it just highlights the existing live meter and shows guidance
+// text for a bounded window, matching whatever the meter actually reports
+// (0 with no active call, real movement during one).
+// ---------------------------------------------------------------------------
+
+void MediaSettingsPanel::onTestMicrophoneClicked()
+{
+    if (m_micTestActive) {
+        stopMicTest();
+        return;
+    }
+
+    m_micTestActive = true;
+    m_testMicBtn->setText(tr("Stop Test"));
+    m_micMeter->setStyleSheet(
+        "QProgressBar { border: 2px solid #50c878; border-radius: 3px; background: #222; }"
+        "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
+
+    const bool callActive = AudioMediaManager::instance().isMediaActive();
+    m_micTestStatusLabel->setText(callActive
+        ? tr("Speak now — input meter should move")
+        : tr("Speak now — input meter should move (meter stays at 0 with no active call)"));
+    m_micTestStatusLabel->setVisible(true);
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("MediaSettingsPanel: microphone test started (10s, mediaActive=%1)")
+            .arg(callActive));
+
+    m_micTestTimer->start(10000);
+}
+
+void MediaSettingsPanel::stopMicTest()
+{
+    if (!m_micTestActive)
+        return;
+    m_micTestActive = false;
+    m_micTestTimer->stop();
+    m_testMicBtn->setText(tr("Test Microphone"));
+    m_micTestStatusLabel->setVisible(false);
+    m_micMeter->setStyleSheet(
+        "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
+        "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
+
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("MediaSettingsPanel: microphone test stopped"));
 }

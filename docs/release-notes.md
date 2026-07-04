@@ -16,6 +16,7 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 | Commit | Description |
 |--------|-------------|
 | `4350f03` | Add settings media configuration for audio devices |
+| `<pending>` | Polish media configuration controls |
 
 ### Changes
 
@@ -26,8 +27,20 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 **Microphone / speaker device selection**
 - Dropdowns populated from real enumerated devices (`MediaDeviceManager::listMicrophones()/listSpeakers()`), with a "Default (system)" entry.
 - Selecting a device calls `AudioMediaManager::setMicrophone()/setSpeaker()` — the same API already used by CallPanel — so both surfaces stay consistent.
+- Fixed `AudioMediaManager::setMicrophone()/setSpeaker()` to treat an empty device id as "use the system default" instead of rejecting it as an unknown device — this was silently failing before (picking "Default (system)" in either combo, or Reset to Default, did nothing).
 - Refresh Devices button triggers `MediaDeviceManager::refreshDevices()` (async Qt Multimedia re-enumeration) and preserves the current selection if the device is still present.
 - Missing/disappeared device: falls back to the default via the existing `MediaDeviceSelectionModel` resolution logic, with a warning logged and surfaced in the UI (disabled combo + tooltip when no devices exist at all).
+
+**Reset to Default**
+- New "Reset to Default" button in Settings → Media. Sets microphone and speaker device to "Default (system)" and both volumes to 100%, applied immediately via `AudioMediaManager` and persisted to QSettings, same as any other device/volume change.
+
+**Device status labels and fallback warnings**
+- Each section now shows a status line: the currently selected device ("Default (system)" or the specific device name), plus the PJSIP-reported "Active now" device when a call's audio media is up (`PjsipAudioMapper::activeCaptureDeviceName()/activePlaybackDeviceName()`, new).
+- A distinct warning banner appears when the *previously selected* device has disappeared (vs. no devices at all): "Previously selected microphone/speaker is no longer connected. Reverted to Default (system)."
+- Device hot-refresh keeps the current selection if still present, reverts to default with a visible warning if not, and never touches PJSIP call state directly, so it cannot crash an active call.
+
+**Test Microphone**
+- New "Test Microphone" button. Highlights the existing live input meter for 10 seconds (or until Stop Test) and shows "Speak now — input meter should move". Sends nothing over SIP and does not fabricate any level — the meter still only reflects real values from `AudioMediaManager::inputLevelChanged`, which requires an active call's audio media to move.
 
 **Real volume control via PJSIP**
 - New `AudioMediaManager::setMicrophoneVolume()/setSpeakerVolume()` and `SipCall::setMicVolume()/setSpeakerVolume()`, previously entirely absent from the codebase.
@@ -36,11 +49,12 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 - Applied immediately to the active call's PJSIP audio media when connected; otherwise stored and applied as soon as audio media connects on the next/current call.
 
 **Persistence in QSettings**
-- New keys `media/volume/microphone` and `media/volume/speaker` (default 100 = unity gain) alongside the existing `media/device/microphone`/`media/device/speaker` keys, loaded at startup via `AppSettings`.
+- Keys `media/volume/microphone` and `media/volume/speaker` (default 100 = unity gain) alongside the existing `media/device/microphone`/`media/device/speaker` keys, loaded at startup via `AppSettings`.
 
 **CallPanel sync**
 - CallPanel's microphone/speaker volume sliders — previously always disabled with a "not available in current backend" tooltip — are now enabled and wired to the same `AudioMediaManager` API.
-- Changing volume or device in Settings updates CallPanel live (and vice versa) via `AudioMediaManager::microphoneVolumeChanged`/`speakerVolumeChanged` signals.
+- CallPanel's device combos now also refresh on `AudioMediaManager::audioDeviceSelectionChanged`, so a device change (or Reset to Default) made in Settings shows up in CallPanel immediately, not just on the next manual interaction.
+- Changing volume or device in either Settings or CallPanel updates the other live (bidirectional), via `AudioMediaManager`'s `microphoneVolumeChanged`/`speakerVolumeChanged`/`audioDeviceSelectionChanged` signals.
 
 **Test Speaker**
 - Real playback (not simulated): generates a short 440 Hz sine tone and plays it via `QAudioSink` on the currently selected output device.
@@ -48,13 +62,19 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 **Mute restores user volume**
 - Fixed `SipCall::setMuted()`, which previously hardcoded the unmute level to `1.0f` (ignoring any user-configured microphone volume). Unmuting now restores the persisted `micVolume` gain instead of resetting it to full.
 
+**Tooltips**
+- Every Media tab control (device combos, volume sliders, Refresh Devices, Reset to Default, Test Speaker, Test Microphone, level meters) now has a tooltip stating what it does, whether it applies immediately or on the next call, and why it's disabled when applicable.
+
 ### Manual validation checklist
 
-- [ ] Settings → Media tab shows Microphone and Speaker sections with device dropdown, live meter, and volume slider.
+- [ ] Settings → Media tab shows Microphone and Speaker sections with device dropdown, status line, live meter, and volume slider.
+- [ ] Selecting "Default (system)" in either combo actually persists and applies the system default (previously a no-op).
+- [ ] Reset to Default sets both devices to Default (system) and both volumes to 100%, applied immediately and persisted.
 - [ ] Changing microphone/speaker in Settings updates the active call's audio device without crashing.
-- [ ] Changing volume in Settings updates CallPanel's sliders live, and vice versa.
+- [ ] Changing volume or device in Settings updates CallPanel live, and vice versa.
 - [ ] Test Speaker plays an audible tone through the selected output device.
-- [ ] Unplugging/removing the selected device falls back to default with a warning shown in the UI and logged.
+- [ ] Test Microphone highlights the input meter and shows guidance text for 10s or until Stop Test, without sending anything over SIP.
+- [ ] Unplugging/removing the selected device falls back to default with a distinct "no longer connected" warning shown in the UI and logged; refresh does not crash during an active call.
 - [ ] No microphone/speaker present: dropdown disabled with a clear tooltip; Test Speaker disabled when no speaker is present.
 - [ ] Mute then unmute during an active call restores the previously set microphone volume (not full volume).
 - [ ] Build: full CMake build exits 0 (`ENABLE_PJSIP=ON`).

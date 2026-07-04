@@ -7,6 +7,7 @@ class QLabel;
 class QProgressBar;
 class QPushButton;
 class QSlider;
+class QTimer;
 class QAudioSink;
 class QIODevice;
 class QBuffer;
@@ -35,13 +36,19 @@ private slots:
     void onInputLevelChanged(int level);
     void onOutputLevelChanged(int level);
     void onDevicesChanged();
+    void onDeviceSelectionChanged();
+    void onMediaConnectionChanged();
     void onRefreshClicked();
+    void onResetToDefaultClicked();
     void onTestSpeakerClicked();
     void onTestToneStateChanged(QAudio::State state);
+    void onTestMicrophoneClicked();
 
 private:
     void buildUi();
     void populateDevices();
+    void updateDeviceStatusLabels();
+    void stopMicTest();
 
     QComboBox   *m_micCombo{nullptr};
     QComboBox   *m_spkCombo{nullptr};
@@ -52,12 +59,23 @@ private:
     QProgressBar *m_micMeter{nullptr};
     QProgressBar *m_spkMeter{nullptr};
     QPushButton *m_refreshBtn{nullptr};
+    QPushButton *m_resetBtn{nullptr};
     QPushButton *m_testSpeakerBtn{nullptr};
+    QPushButton *m_testMicBtn{nullptr};
     QLabel      *m_micWarningLabel{nullptr};
     QLabel      *m_spkWarningLabel{nullptr};
+    QLabel      *m_micStatusLabel{nullptr};
+    QLabel      *m_spkStatusLabel{nullptr};
+    QLabel      *m_micTestStatusLabel{nullptr};
 
     // Test-tone playback (real QAudioSink output on the selected speaker).
     QAudioSink  *m_testSink{nullptr};
     QBuffer     *m_testBuffer{nullptr};
     QByteArray   m_testToneData;
+
+    // Microphone test mode — does not fabricate any level; it just
+    // highlights the existing live input meter for a bounded window so the
+    // user knows to speak. Real values still come from AudioMediaManager.
+    QTimer *m_micTestTimer{nullptr};
+    bool    m_micTestActive{false};
 };

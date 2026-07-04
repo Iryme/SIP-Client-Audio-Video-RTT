@@ -136,6 +136,40 @@ bool PjsipAudioMapper::applyDevices(int captureIdx, int playbackIdx)
 #endif
 }
 
+QString PjsipAudioMapper::activeCaptureDeviceName()
+{
+#ifdef HAVE_PJSIP
+    try {
+        pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
+        const int idx = adm.getCaptureDev();
+        if (idx < 0)
+            return {};
+        return QString::fromStdString(adm.getDevInfo(idx).name);
+    } catch (...) {
+        return {};
+    }
+#else
+    return {};
+#endif
+}
+
+QString PjsipAudioMapper::activePlaybackDeviceName()
+{
+#ifdef HAVE_PJSIP
+    try {
+        pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
+        const int idx = adm.getPlaybackDev();
+        if (idx < 0)
+            return {};
+        return QString::fromStdString(adm.getDevInfo(idx).name);
+    } catch (...) {
+        return {};
+    }
+#else
+    return {};
+#endif
+}
+
 bool PjsipAudioMapper::applyDevicesByName(const QString &captureName,
                                           const QString &playbackName)
 {

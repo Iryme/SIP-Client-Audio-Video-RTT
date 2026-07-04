@@ -130,7 +130,7 @@ CallPanel::CallPanel(QWidget *parent)
         m_micVolumeSlider->setValue(AudioMediaManager::instance().microphoneVolume());
         m_micVolumeSlider->setFixedWidth(80);
         m_micVolumeSlider->setFixedHeight(16);
-        m_micVolumeSlider->setToolTip(tr("Microphone volume"));
+        m_micVolumeSlider->setToolTip(tr("Microphone volume — applied immediately to the active call"));
 
         micRow->addWidget(micLabel);
         micRow->addWidget(m_inputMeter, 1);
@@ -144,6 +144,8 @@ CallPanel::CallPanel(QWidget *parent)
         micDevLabel->setFixedWidth(68);
         m_micSelector = new QComboBox(this);
         m_micSelector->setFixedHeight(22);
+        m_micSelector->setToolTip(tr("Microphone device — same selection as Settings → Media; "
+                                      "applied to the active call immediately when possible"));
         micDevRow->addWidget(micDevLabel);
         micDevRow->addWidget(m_micSelector, 1);
         layout->addLayout(micDevRow);
@@ -172,7 +174,7 @@ CallPanel::CallPanel(QWidget *parent)
         m_spkVolumeSlider->setValue(AudioMediaManager::instance().speakerVolume());
         m_spkVolumeSlider->setFixedWidth(80);
         m_spkVolumeSlider->setFixedHeight(16);
-        m_spkVolumeSlider->setToolTip(tr("Speaker volume"));
+        m_spkVolumeSlider->setToolTip(tr("Speaker volume — applied immediately to the active call"));
 
         spkRow->addWidget(spkLabel);
         spkRow->addWidget(m_outputMeter, 1);
@@ -186,6 +188,8 @@ CallPanel::CallPanel(QWidget *parent)
         spkDevLabel->setFixedWidth(68);
         m_spkSelector = new QComboBox(this);
         m_spkSelector->setFixedHeight(22);
+        m_spkSelector->setToolTip(tr("Speaker device — same selection as Settings → Media; "
+                                      "applied to the active call immediately when possible"));
         spkDevRow->addWidget(spkDevLabel);
         spkDevRow->addWidget(m_spkSelector, 1);
         layout->addLayout(spkDevRow);
@@ -578,6 +582,10 @@ CallPanel::CallPanel(QWidget *parent)
     connect(m_spkSelector, &QComboBox::currentIndexChanged, this, [this](int idx) {
         AudioMediaManager::instance().setSpeaker(m_spkSelector->itemData(idx).toString());
     });
+    // Keep device combos in sync when the device selection changes elsewhere
+    // (e.g. Settings → Media tab, or a "Reset to Default" there).
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::audioDeviceSelectionChanged,
+            this, &CallPanel::populateDeviceCombos);
 
     // SipManager call signals
     connect(&SipManager::instance(), &SipManager::callStateChanged,

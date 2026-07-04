@@ -28,4 +28,11 @@ public:
     // Empty name → -1 (PJSIP default) for that direction.
     static bool applyDevicesByName(const QString &captureName,
                                    const QString &playbackName);
+
+    // Name of the PJSIP capture/playback device actually in use right now,
+    // as reported by AudDevManager::getCaptureDev()/getPlaybackDev() +
+    // getDevInfo(). Returns an empty string when PJSIP is unavailable or no
+    // sound device is currently open (e.g. no call has started audio yet).
+    static QString activeCaptureDeviceName();
+    static QString activePlaybackDeviceName();
 };

@@ -110,16 +110,25 @@ int  AudioMediaManager::outputLevel()  const { return m_outputLevel; }
 
 void AudioMediaManager::setMicrophone(const QString &deviceId)
 {
-    const MediaDevice dev = MediaDeviceManager::instance().findDevice(
-        MediaDeviceType::Microphone, deviceId);
-    if (dev.isNull()) {
-        Logger::instance().warn(LogCategory::Media,
-            QStringLiteral("setMicrophone: device id '%1' not found").arg(deviceId));
-        return;
+    // An empty id means "use the system default" — that is a valid selection
+    // (it's what the "Default (system)" combo entry sends), not a lookup
+    // failure, so it must not be rejected the way an unknown id is.
+    MediaDevice dev;
+    if (deviceId.isEmpty()) {
+        dev = MediaDeviceManager::instance().defaultMicrophone();
+    } else {
+        dev = MediaDeviceManager::instance().findDevice(MediaDeviceType::Microphone, deviceId);
+        if (dev.isNull()) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("setMicrophone: device id '%1' not found").arg(deviceId));
+            return;
+        }
     }
 
     Logger::instance().info(LogCategory::Media,
-        QStringLiteral("Microphone selected: %1").arg(dev.displayName));
+        QStringLiteral("Microphone selected: %1").arg(
+            deviceId.isEmpty() ? QStringLiteral("Default (system) — %1").arg(dev.displayName)
+                               : dev.displayName));
 
     // Persist via a local selection model instance (same QSettings keys as MediaPanel).
     MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
@@ -136,16 +145,22 @@ void AudioMediaManager::setMicrophone(const QString &deviceId)
 
 void AudioMediaManager::setSpeaker(const QString &deviceId)
 {
-    const MediaDevice dev = MediaDeviceManager::instance().findDevice(
-        MediaDeviceType::Speaker, deviceId);
-    if (dev.isNull()) {
-        Logger::instance().warn(LogCategory::Media,
-            QStringLiteral("setSpeaker: device id '%1' not found").arg(deviceId));
-        return;
+    MediaDevice dev;
+    if (deviceId.isEmpty()) {
+        dev = MediaDeviceManager::instance().defaultSpeaker();
+    } else {
+        dev = MediaDeviceManager::instance().findDevice(MediaDeviceType::Speaker, deviceId);
+        if (dev.isNull()) {
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("setSpeaker: device id '%1' not found").arg(deviceId));
+            return;
+        }
     }
 
     Logger::instance().info(LogCategory::Media,
-        QStringLiteral("Speaker selected: %1").arg(dev.displayName));
+        QStringLiteral("Speaker selected: %1").arg(
+            deviceId.isEmpty() ? QStringLiteral("Default (system) — %1").arg(dev.displayName)
+                               : dev.displayName));
 
     MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
     sel.selectSpeaker(deviceId);
