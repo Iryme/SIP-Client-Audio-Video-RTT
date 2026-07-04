@@ -4,6 +4,58 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.4.0 — Call History Foundation
+
+**Status:** in development
+**Branch:** `release/v1.4.0`
+**Version bump type:** MINOR
+**Scope (initial):** Call History foundation — model, persistence, call-lifecycle recording, a Call History page, and a Dashboard summary widget. No LMPE/MSRP/SIP MESSAGE work in this scope.
+
+### Changes
+
+**Model — `CallHistoryEntry` (`src/core/CallHistoryEntry.h/.cpp`)**
+- Fields: `id`, `direction` (incoming/outgoing), `remoteUri`, `displayName`, `profileId`/`profileName`, `startTime`, `answerTime`, `endTime`, `durationSec`, `result` (pending/completed/missed/rejected/failed/cancelled), `hadAudio`/`hadVideo`/`hadRtt`, `lastSipCode`, `reason`, `notes`.
+- No passwords or auth headers are ever stored on an entry.
+
+**Persistence — `CallHistoryStore` (`src/core/CallHistoryStore.h/.cpp`)**
+- JSON array persisted to `call_history.json` in `QStandardPaths::AppDataLocation`, capped at the 500 most recent entries (oldest dropped past that limit).
+- Writes are coalesced onto a short timer so bursts of updates (answer immediately followed by end) don't hit disk repeatedly.
+- `exportToJson()` writes the full history to an arbitrary path for the Export JSON action.
+- Testable via a second constructor that takes an explicit file path, so unit tests never touch the real user's AppData.
+
+**Call lifecycle integration — `CallHistoryRecorder` (`src/core/CallHistoryRecorder.h/.cpp`)**
+- Separate from `SipManager`/`MainWindow`; listens to `SipManager`'s existing signals (`incomingCall`, `callStateChanged`, `callDisconnected`, `callFailed`, `audioMediaConnected`, `videoMediaConnected`, `rttMediaConnected`) and drives `CallHistoryStore`.
+- Outgoing call created → entry (Outgoing, Pending); incoming call received → entry (Incoming, Pending); state reaches Active → `answerTime` set; call ends → `endTime`/`durationSec`/`result` set.
+- Result classification: answered → Completed; unanswered incoming with SIP 486 (local reject, see `SipCall::reject()`) → Rejected; unanswered incoming otherwise → Missed; unanswered outgoing → Cancelled; any `callFailed` → Failed.
+
+**UI — Call History page (`src/gui/panels/CallHistoryPanel.h/.cpp`)**
+- New "History" tab in the main navigation rail, alongside Dashboard/Clients/SIP Ladder/Logs/Settings.
+- List shows direction, name/URI, date/time, duration, result, and audio/video/RTT badges.
+- Clear History (with confirmation dialog) and Export JSON actions; double-click/activate an entry opens a details dialog.
+
+**Dashboard summary**
+- New "CALL HISTORY" section in the existing Dashboard statistics panel: Calls Today, Missed Today, Last Call — updates live from `CallHistoryStore::historyChanged`.
+
+### Tests added
+
+`tests/test_call_history.cpp` (`test_call_history`):
+- `CallHistoryEntry` JSON round-trip.
+- Outgoing / incoming entry creation.
+- Completed call duration calculation.
+- Missed call (unanswered incoming, non-486 termination).
+- Rejected call (unanswered incoming, SIP 486).
+- 500-entry cap (oldest entries dropped, newest retained).
+- Persist/load round-trip via `exportToJson()` and a second store instance reading the same file.
+
+### Constraints respected
+
+- No LMPE/MSRP/SIP MESSAGE work introduced.
+- No credentials, passwords, or auth headers stored in call history.
+- Registration logic and existing call flow unchanged.
+- Non-blocking persistence (coalesced, small JSON writes on the main thread — no new heavy dependency).
+
+---
+
 ## v1.3.0 — Settings Media Configuration (Microphone / Speaker)
 
 **Status:** pre-release validation

@@ -4,6 +4,7 @@
 #include "DashboardStatistics.h"
 #include "DashboardRecentEvents.h"
 
+#include "core/CallHistoryStore.h"
 #include "core/Logger.h"
 #include "core/PerfScope.h"
 #include "media/MediaDeviceManager.h"
@@ -122,6 +123,10 @@ DashboardPage::DashboardPage(QWidget *parent)
             this, &DashboardPage::onLogEntryAdded,
             Qt::UniqueConnection);
 
+    connect(&CallHistoryStore::instance(), &CallHistoryStore::historyChanged,
+            this, &DashboardPage::refreshCallHistorySummary,
+            Qt::UniqueConnection);
+
     auto &pm = SipProfileManager::instance();
     connect(&pm, &SipProfileManager::profileAdded,         this, [this](const QString &) { refreshQuickSipPanel(); });
     connect(&pm, &SipProfileManager::profileUpdated,        this, [this](const QString &) { refreshQuickSipPanel(); });
@@ -142,6 +147,7 @@ DashboardPage::DashboardPage(QWidget *parent)
     refreshDeviceStats();
     tickUptimeAndMemory();
     refreshQuickSipPanel();
+    refreshCallHistorySummary();
 }
 
 void DashboardPage::buildShortcutCards(QLayout *layout)
@@ -271,6 +277,25 @@ void DashboardPage::buildQuickSipActions(QLayout *layout)
     });
 }
 
+void DashboardPage::refreshCallHistorySummary()
+{
+    if (!m_stats)
+        return;
+
+    const auto &store = CallHistoryStore::instance();
+    m_stats->setValue(QStringLiteral("callsToday"),  QString::number(store.callsToday()));
+    m_stats->setValue(QStringLiteral("missedToday"), QString::number(store.missedToday()));
+
+    const CallHistoryEntry last = store.lastCall();
+    if (last.isNull()) {
+        m_stats->setValue(QStringLiteral("lastCall"), tr("—"));
+    } else {
+        const QString who = last.displayName.isEmpty() ? last.remoteUri : last.displayName;
+        m_stats->setValue(QStringLiteral("lastCall"),
+            QStringLiteral("%1 (%2)").arg(who, callResultName(last.result)));
+    }
+}
+
 void DashboardPage::refreshQuickSipPanel()
 {
     if (!m_profileCombo || !m_registerBtn || !m_quickSipStatus)
@@ -397,6 +422,11 @@ void DashboardPage::populateStats()
     m_stats->addStat(QStringLiteral("callDuration"), tr("Call Duration"));
     m_stats->addStat(QStringLiteral("memoryUsage"),  tr("Memory Usage"));
     m_stats->addStat(QStringLiteral("cpuUsage"),     tr("CPU Usage"));
+
+    m_stats->addSection(tr("CALL HISTORY"));
+    m_stats->addStat(QStringLiteral("callsToday"),  tr("Calls Today"));
+    m_stats->addStat(QStringLiteral("missedToday"), tr("Missed Today"));
+    m_stats->addStat(QStringLiteral("lastCall"),    tr("Last Call"));
 
     // Known-unavailable entries
     m_stats->setValue(QStringLiteral("registeredAccounts"), QStringLiteral("0"));

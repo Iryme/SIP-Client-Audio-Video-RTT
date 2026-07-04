@@ -311,6 +311,25 @@ endif()
 
 add_test(NAME test_profile_switch COMMAND test_profile_switch)
 
+# ---- test_call_history --------------------------------------------------
+qt_add_executable(test_call_history
+    test_call_history.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CallHistoryEntry.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CallHistoryStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_call_history PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_call_history PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_call_history COMMAND test_call_history)
+
 # ---- test_sip_uri_normalizer -------------------------------------------
 qt_add_executable(test_sip_uri_normalizer
     test_sip_uri_normalizer.cpp

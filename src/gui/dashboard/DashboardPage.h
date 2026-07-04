@@ -32,6 +32,7 @@ private slots:
     void onLogEntryAdded(const LogEntry &entry);
     void tickUptimeAndMemory();
     void refreshQuickSipPanel();
+    void refreshCallHistorySummary();
 
 private:
     void buildShortcutCards(QLayout *layout);

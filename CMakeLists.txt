@@ -61,6 +61,7 @@ set(SOURCES
     src/gui/panels/SidebarPanel.cpp
     src/gui/panels/ContactsPanel.cpp
     src/gui/panels/CallPanel.cpp
+    src/gui/panels/CallHistoryPanel.cpp
     src/gui/panels/VideoPanel.cpp
     src/gui/CameraController.cpp
     src/gui/panels/RttPanel.cpp
@@ -80,6 +81,9 @@ set(SOURCES
     src/gui/dialogs/MediaRequestDialog.cpp
     src/core/Logger.cpp
     src/core/ContactStore.cpp
+    src/core/CallHistoryEntry.cpp
+    src/core/CallHistoryStore.cpp
+    src/core/CallHistoryRecorder.cpp
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
@@ -131,6 +135,7 @@ set(HEADERS
     src/gui/panels/SidebarPanel.h
     src/gui/panels/ContactsPanel.h
     src/gui/panels/CallPanel.h
+    src/gui/panels/CallHistoryPanel.h
     src/gui/panels/VideoPanel.h
     src/gui/CameraController.h
     src/gui/panels/RttPanel.h
@@ -152,6 +157,9 @@ set(HEADERS
     src/core/Logger.h
     src/core/AppSettings.h
     src/core/ContactStore.h
+    src/core/CallHistoryEntry.h
+    src/core/CallHistoryStore.h
+    src/core/CallHistoryRecorder.h
     src/sip/SipManager.h
     src/sip/SipAccount.h
     src/sip/SipCall.h

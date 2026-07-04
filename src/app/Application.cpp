@@ -3,6 +3,7 @@
 #include "gui/theme/ThemeManager.h"
 #include "media/MediaDeviceManager.h"
 #include "sip/SipManager.h"
+#include "core/CallHistoryRecorder.h"
 #include "core/Logger.h"
 #include "core/PerfScope.h"
 
@@ -27,6 +28,11 @@ Application::Application(int &argc, char **argv)
     }
 
     Logger::instance().info(LogCategory::App, "Application starting v0.1.0");
+
+    // Start recording call history as soon as SipManager's signals are
+    // available. Touching instance() wires the connections; no PJSIP
+    // initialization is required for this.
+    CallHistoryRecorder::instance();
 
     {
         PerfScope s("MainWindow constructor");

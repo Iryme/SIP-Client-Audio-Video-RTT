@@ -41,6 +41,15 @@ static const QByteArray kIconSipLadder = R"(
   <polyline points="9,13 5,16 9,19"/>
 </svg>)";
 
+static const QByteArray kIconHistory = R"(
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="13" r="8"/>
+  <polyline points="12,9 12,13 15,15"/>
+  <path d="M5 3 2 6"/>
+  <path d="M19 3l3 3"/>
+</svg>)";
+
 static const QByteArray kIconLogs = R"(
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -147,6 +156,7 @@ NavRail::NavRail(QWidget *parent)
     addNavButton(layout, QString{}, "Dashboard", "dashboard");
     addNavButton(layout, QString{}, "Clients",   "clients");
     addNavButton(layout, QString{}, "SIP Ladder","sipladder");
+    addNavButton(layout, QString{}, "History",   "callhistory");
     addNavButton(layout, QString{}, "Logs",      "logs");
     addNavButton(layout, QString{}, "Settings",  "settings");
 
@@ -198,6 +208,7 @@ QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
     if (page == QLatin1String("dashboard"))  svgData = kIconDashboard;
     else if (page == QLatin1String("clients")) svgData = kIconClients;
     else if (page == QLatin1String("sipladder")) svgData = kIconSipLadder;
+    else if (page == QLatin1String("callhistory")) svgData = kIconHistory;
     else if (page == QLatin1String("logs"))   svgData = kIconLogs;
     else if (page == QLatin1String("settings")) svgData = kIconSettings;
 

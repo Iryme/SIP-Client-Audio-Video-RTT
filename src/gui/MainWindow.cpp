@@ -4,6 +4,7 @@
 #include "core/Logger.h"
 #include "core/PerfScope.h"
 #include "gui/dashboard/DashboardPage.h"
+#include "gui/panels/CallHistoryPanel.h"
 #include "gui/panels/ContactsPanel.h"
 #include "gui/panels/DiagnosticsPanel.h"
 #include "gui/panels/NavRail.h"
@@ -1489,6 +1490,12 @@ QWidget *MainWindow::buildLogsPage()
     return m_diagnostics;
 }
 
+QWidget *MainWindow::buildCallHistoryPage()
+{
+    m_callHistoryPanel = new CallHistoryPanel(this);
+    return m_callHistoryPanel;
+}
+
 void MainWindow::exportConfiguration()
 {
     const QString path = QFileDialog::getSaveFileName(
@@ -1635,7 +1642,7 @@ void MainWindow::buildCentralWidget()
     // on first navigation via ensurePage(). This keeps the constructor fast so
     // MainWindow::show() is called before any heavy page construction.
     static const char *const kPageNames[] = {
-        "Dashboard", "Clients", "SIP Ladder", "Logs", "Settings"
+        "Dashboard", "Clients", "SIP Ladder", "Call History", "Logs", "Settings"
     };
     for (int i = 0; i < kPageCount; ++i) {
         m_pageStack->addWidget(makePlaceholder(tr(kPageNames[i]), m_pageStack));
@@ -1676,8 +1683,9 @@ void MainWindow::ensurePage(int index)
         m_ladderPage = new SipLadderPage(m_pageStack);
         real = m_ladderPage;
         break;
-    case 3: real = buildLogsPage();                              break;
-    case 4:
+    case 3: real = buildCallHistoryPage();                       break;
+    case 4: real = buildLogsPage();                              break;
+    case 5:
         m_settingsPanel = new SettingsPanel(m_pageStack);
         real = m_settingsPanel;
         break;
@@ -1717,12 +1725,14 @@ void MainWindow::onNavPageRequested(const QString &page)
         activePage = QStringLiteral("clients");
     } else if (page == QLatin1String("sipladder")) {
         pageIndex = 2;
-    } else if (page == QLatin1String("logs")) {
+    } else if (page == QLatin1String("callhistory")) {
         pageIndex = 3;
+    } else if (page == QLatin1String("logs")) {
+        pageIndex = 4;
     } else if (page == QLatin1String("settings")) {
-        pageIndex = 4;
+        pageIndex = 5;
     } else if (page == QLatin1String("settings-video")) {
-        pageIndex = 4;
+        pageIndex = 5;
         activePage = QStringLiteral("settings");
     }
 
