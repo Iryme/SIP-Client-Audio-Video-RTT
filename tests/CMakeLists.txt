@@ -369,6 +369,56 @@ target_link_libraries(test_diagnostics_timeline PRIVATE
 
 add_test(NAME test_diagnostics_timeline COMMAND test_diagnostics_timeline)
 
+# ---- test_diagnostics_bundle --------------------------------------------
+# DiagnosticsBundleExporter touches DiagnosticsTimelineService, which wires up
+# to SipManager/AudioMediaManager/VideoMediaManager/CameraController — the
+# same dependency chain test_sip_manager already needs.
+qt_add_executable(test_diagnostics_bundle
+    test_diagnostics_bundle.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsBundleExporter.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsSnapshot.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineEntry.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineExporter.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineService.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CallHistoryEntry.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CallHistoryStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/CameraController.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipAccount.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationStateMachine.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
+    ${CALL_SOURCES}
+    ${AUDIO_MEDIA_SOURCES}
+    ${SIP_TRACE_SOURCES}
+    ${PJSIP_AUDIO_MAPPER_SOURCES}
+    ${CODEC_MANAGER_SOURCES}
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
+)
+
+target_include_directories(test_diagnostics_bundle PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_diagnostics_bundle PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Multimedia
+)
+if(WIN32)
+    target_link_libraries(test_diagnostics_bundle PRIVATE Advapi32)
+endif()
+if(HAVE_QT_ZIP_WRITER)
+    target_link_libraries(test_diagnostics_bundle PRIVATE Qt6::CorePrivate)
+    target_compile_definitions(test_diagnostics_bundle PRIVATE HAVE_QT_ZIP_WRITER)
+endif()
+
+add_test(NAME test_diagnostics_bundle COMMAND test_diagnostics_bundle)
+
 # ---- test_sip_uri_normalizer -------------------------------------------
 qt_add_executable(test_sip_uri_normalizer
     test_sip_uri_normalizer.cpp
@@ -517,6 +567,7 @@ if(CALL_SOURCES_EXTRA_LIBS)
         test_audio_media
         test_video_media
         test_rtt_session
+        test_diagnostics_bundle
     )
         if(TARGET ${_call_test})
             target_link_libraries(${_call_test} PRIVATE ${CALL_SOURCES_EXTRA_LIBS})
@@ -537,6 +588,7 @@ if(ENABLE_PJSIP AND PJSIP_FOUND)
         test_video_media
         test_codec_manager
         test_rtt_session
+        test_diagnostics_bundle
     )
         if(TARGET ${_pjsip_test_target})
             target_link_libraries(${_pjsip_test_target} PRIVATE PJSIP::pjsua2)

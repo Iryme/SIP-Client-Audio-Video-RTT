@@ -34,6 +34,19 @@ find_package(Qt6 REQUIRED COMPONENTS
     Svg
 )
 
+# --- Optional: Qt private QZipWriter (Diagnostics Bundle real ZIP export) ---
+# QZipWriter/QZipReader live in Qt6::CorePrivate (private, unstable API but
+# widely relied on for exactly this — basic in-process ZIP writing without a
+# new third-party dependency). If this component isn't available in a given
+# Qt build, DiagnosticsBundleExporter falls back to a plain folder export.
+find_package(Qt6CorePrivate QUIET)
+if(TARGET Qt6::CorePrivate)
+    set(HAVE_QT_ZIP_WRITER TRUE)
+    message(STATUS "Qt6::CorePrivate found — Diagnostics Bundle export will produce real ZIP files")
+else()
+    message(STATUS "Qt6::CorePrivate NOT found — Diagnostics Bundle export will fall back to a folder")
+endif()
+
 # --- Optional: PJSIP/pjsua2 SIP stack ---
 # Pass -DENABLE_PJSIP=ON and optionally -DPJSIP_DIR=<path> to enable.
 # When disabled (default), a stub SIP backend is compiled in its place.
@@ -263,6 +276,11 @@ target_link_libraries(SIPClient PRIVATE
     Qt6::MultimediaWidgets
     Qt6::Svg
 )
+
+if(HAVE_QT_ZIP_WRITER)
+    target_link_libraries(SIPClient PRIVATE Qt6::CorePrivate)
+    target_compile_definitions(SIPClient PRIVATE HAVE_QT_ZIP_WRITER)
+endif()
 
 if(WIN32)
     target_link_libraries(SIPClient PRIVATE Advapi32 Psapi)

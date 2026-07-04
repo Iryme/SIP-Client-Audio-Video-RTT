@@ -36,6 +36,17 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 **Dashboard summary**
 - New "CALL HISTORY" section in the existing Dashboard statistics panel: Calls Today, Missed Today, Last Call — updates live from `CallHistoryStore::historyChanged`.
 
+**Diagnostics Center — Timeline (`src/core/DiagnosticsTimeline*`)**
+- New "Timeline" tab: a unified, filterable, searchable log of registration/call/SIP/media/audio/video/RTT/RTP/camera events plus warning/error entries surfaced from the Logger, capped at the 5000 most recent entries.
+- Persisted to `timeline.json` in `QStandardPaths::AppDataLocation` (coalesced writes); Overview tab gets a "Recent Activity" summary of the last 5 entries.
+- Export to JSON/TXT from the Timeline tab toolbar.
+
+**Diagnostics Center — Bundle ZIP export (`src/core/DiagnosticsBundleExporter.h/.cpp`)**
+- "Generate Diagnostics Bundle" now prompts for a save location (`QFileDialog`, default `diagnostics-YYYYMMDD-HHMMSS.zip` under Documents) and produces a real ZIP archive via Qt's private `QZipWriter` (`Qt6::CorePrivate`, guarded behind `HAVE_QT_ZIP_WRITER`); falls back to a plain folder if that module isn't available in a given Qt build.
+- Bundle contents: `diagnostics.json`, `timeline.json`/`timeline.txt` (last 5000 events), `call_history.json`/`call_history.csv`, `logs.txt`, `sip_trace.txt`/`sip_trace.json` (text-only fallback when no real SIP trace exists — never a fabricated ladder), `settings_redacted.json` (AppSettings + SIP profiles, both redacted), `media_devices.json`, `system_info.json`, `version.txt`.
+- Redaction: any settings/profile key containing `password`, `secret`, `token`, `authorization`, `auth`, or `credential` (case-insensitive) is replaced with `[REDACTED]`; SIP profile export always marks `password`/`authHeaders` as redacted even though neither is ever stored on `SipProfile` in the first place.
+- Diagnostics Center UI: Success/Failure status label next to the button and an "Open Folder" action that jumps to the produced ZIP's (or fallback folder's) location.
+
 ### Tests added
 
 `tests/test_call_history.cpp` (`test_call_history`):
@@ -46,6 +57,18 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 - Rejected call (unanswered incoming, SIP 486).
 - 500-entry cap (oldest entries dropped, newest retained).
 - Persist/load round-trip via `exportToJson()` and a second store instance reading the same file.
+
+`tests/test_diagnostics_timeline.cpp` (`test_diagnostics_timeline`):
+- Append ordering and 5000-entry cap (oldest dropped).
+- Search and category filters.
+- JSON round-trip and JSON/TXT export string + file output.
+
+`tests/test_diagnostics_bundle.cpp` (`test_diagnostics_bundle`):
+- Redaction key matching (`isSensitiveKey`).
+- Bundle manifest contains every expected file.
+- Timeline and call history content are present and well-formed in the bundle.
+- Settings redaction: a sensitive key's value never appears in `settings_redacted.json`.
+- Fallback text when no real SIP trace exists (`sip_trace.txt` says so; `sip_trace.json` is omitted rather than invented).
 
 ### Constraints respected
 

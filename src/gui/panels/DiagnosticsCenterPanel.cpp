@@ -7,7 +7,10 @@
 #include <QClipboard>
 #include <QColor>
 #include <QComboBox>
+#include <QDesktopServices>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -23,6 +26,7 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTabWidget>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include "core/DiagnosticsBundleExporter.h"
@@ -64,6 +68,13 @@ DiagnosticsCenterPanel::DiagnosticsCenterPanel(QWidget *parent)
     auto *topRow = new QHBoxLayout();
     topRow->addWidget(new QLabel(tr("<b>Diagnostics Center</b>"), this));
     topRow->addStretch(1);
+    m_bundleStatus = new QLabel(this);
+    m_bundleStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    topRow->addWidget(m_bundleStatus);
+    m_bundleOpenFolderBtn = new QPushButton(tr("Open Folder"), this);
+    m_bundleOpenFolderBtn->setEnabled(false);
+    connect(m_bundleOpenFolderBtn, &QPushButton::clicked, this, &DiagnosticsCenterPanel::onOpenBundleFolder);
+    topRow->addWidget(m_bundleOpenFolderBtn);
     m_bundleBtn = new QPushButton(tr("Generate Diagnostics Bundle"), this);
     connect(m_bundleBtn, &QPushButton::clicked, this, &DiagnosticsCenterPanel::onGenerateBundle);
     topRow->addWidget(m_bundleBtn);
@@ -427,16 +438,46 @@ void DiagnosticsCenterPanel::applySnapshot(const DiagnosticsSnapshot &s)
 
 void DiagnosticsCenterPanel::onGenerateBundle()
 {
-    QString error;
-    const QString path = DiagnosticsBundleExporter::generateBundle(DiagnosticsCollector::instance().snapshot(), &error);
-    if (path.isEmpty()) {
+    const QString suggested = QDir(DiagnosticsBundleExporter::defaultDirectory())
+                                   .filePath(DiagnosticsBundleExporter::defaultFileName());
+    const QString destination = QFileDialog::getSaveFileName(
+        this, tr("Generate Diagnostics Bundle"), suggested, tr("ZIP Archive (*.zip)"));
+    if (destination.isEmpty())
+        return;
+
+    const DiagnosticsBundleExporter::Result result =
+        DiagnosticsBundleExporter::generateBundle(DiagnosticsCollector::instance().snapshot(), destination);
+
+    if (!result.success) {
+        m_bundleStatus->setText(tr("<span style='color:#c0392b'>Failed</span>"));
+        m_bundleOpenFolderBtn->setEnabled(false);
         QMessageBox::warning(this, tr("Diagnostics Bundle"),
-                              tr("Failed to generate diagnostics bundle.\n%1").arg(error));
+                              tr("Failed to generate diagnostics bundle.\n%1").arg(result.error));
         return;
     }
-    QMessageBox::information(this, tr("Diagnostics Bundle"),
-                              tr("Diagnostics bundle written to:\n%1\n\n"
-                                 "(Folder only for now — zipping is a follow-up task.)").arg(path));
+
+    m_lastBundlePath = result.path;
+    m_bundleOpenFolderBtn->setEnabled(true);
+    m_bundleStatus->setText(tr("<span style='color:#27ae60'>Success</span>: %1").arg(result.path));
+
+    if (result.isZip) {
+        QMessageBox::information(this, tr("Diagnostics Bundle"),
+                                  tr("Diagnostics bundle written to:\n%1").arg(result.path));
+    } else {
+        QMessageBox::information(this, tr("Diagnostics Bundle"),
+                                  tr("Real ZIP export is unavailable in this build, so the bundle was "
+                                     "written as a folder instead:\n%1\n\n%2")
+                                      .arg(result.path, result.error));
+    }
+}
+
+void DiagnosticsCenterPanel::onOpenBundleFolder()
+{
+    if (m_lastBundlePath.isEmpty())
+        return;
+    const QFileInfo info(m_lastBundlePath);
+    const QString folder = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
 }
 
 bool DiagnosticsCenterPanel::timelineEntryMatchesFilters(const DiagnosticsTimelineEntry &e) const

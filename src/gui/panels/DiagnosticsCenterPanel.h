@@ -35,6 +35,7 @@ signals:
 private slots:
     void applySnapshot(const DiagnosticsSnapshot &snapshot);
     void onGenerateBundle();
+    void onOpenBundleFolder();
 
     void onTimelineEntryAppended(const DiagnosticsTimelineEntry &entry);
     void onTimelineFilterChanged();
@@ -65,6 +66,9 @@ private:
 
     QTabWidget  *m_tabs{nullptr};
     QPushButton *m_bundleBtn{nullptr};
+    QLabel      *m_bundleStatus{nullptr};
+    QPushButton *m_bundleOpenFolderBtn{nullptr};
+    QString      m_lastBundlePath;
     QMap<QString, QLabel *> m_values;
 
     // Timeline tab
