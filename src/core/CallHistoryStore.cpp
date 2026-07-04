@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QUuid>
 
 static constexpr int kSaveDelayMs = 250;
@@ -99,6 +100,63 @@ bool CallHistoryStore::exportToJson(const QString &filePath) const
         return false;
     }
     f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+    f.close();
+    return true;
+}
+
+QString CallHistoryStore::csvEscapeField(const QString &field)
+{
+    if (field.contains(QLatin1Char(',')) || field.contains(QLatin1Char('"'))
+        || field.contains(QLatin1Char('\n')) || field.contains(QLatin1Char('\r'))) {
+        QString escaped = field;
+        escaped.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+        return QStringLiteral("\"%1\"").arg(escaped);
+    }
+    return field;
+}
+
+bool CallHistoryStore::exportToCsv(const QString &filePath) const
+{
+    QFile f(filePath);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        Logger::instance().warn(LogCategory::App,
+            QStringLiteral("CallHistoryStore: failed to open CSV export file %1").arg(filePath));
+        return false;
+    }
+
+    static const QStringList kHeader{
+        QStringLiteral("id"), QStringLiteral("direction"), QStringLiteral("remoteUri"),
+        QStringLiteral("displayName"), QStringLiteral("profileName"), QStringLiteral("startTime"),
+        QStringLiteral("answerTime"), QStringLiteral("endTime"), QStringLiteral("durationSec"),
+        QStringLiteral("result"), QStringLiteral("hadAudio"), QStringLiteral("hadVideo"),
+        QStringLiteral("hadRtt"), QStringLiteral("lastSipCode"), QStringLiteral("reason")
+    };
+
+    QStringList lines;
+    lines << kHeader.join(QLatin1Char(','));
+
+    for (const CallHistoryEntry &e : m_entries) {
+        const QStringList row{
+            csvEscapeField(e.id),
+            csvEscapeField(callDirectionName(e.direction)),
+            csvEscapeField(e.remoteUri),
+            csvEscapeField(e.displayName),
+            csvEscapeField(e.profileName),
+            csvEscapeField(e.startTime.isNull() ? QString() : e.startTime.toString(Qt::ISODateWithMs)),
+            csvEscapeField(e.answerTime.isNull() ? QString() : e.answerTime.toString(Qt::ISODateWithMs)),
+            csvEscapeField(e.endTime.isNull() ? QString() : e.endTime.toString(Qt::ISODateWithMs)),
+            QString::number(e.durationSec),
+            csvEscapeField(callResultName(e.result)),
+            e.hadAudio ? QStringLiteral("true") : QStringLiteral("false"),
+            e.hadVideo ? QStringLiteral("true") : QStringLiteral("false"),
+            e.hadRtt   ? QStringLiteral("true") : QStringLiteral("false"),
+            QString::number(e.lastSipCode),
+            csvEscapeField(e.reason)
+        };
+        lines << row.join(QLatin1Char(','));
+    }
+
+    f.write(lines.join(QStringLiteral("\r\n")).toUtf8());
     f.close();
     return true;
 }

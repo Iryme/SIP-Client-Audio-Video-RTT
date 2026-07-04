@@ -2,6 +2,7 @@
 #include <QString>
 #include <QDateTime>
 #include <QJsonObject>
+#include <QMetaType>
 
 enum class CallDirection { Incoming, Outgoing };
 
@@ -37,3 +38,9 @@ struct CallHistoryEntry
     QJsonObject toJson() const;
     static CallHistoryEntry fromJson(const QJsonObject &obj);
 };
+
+Q_DECLARE_METATYPE(CallHistoryEntry)
+
+// Shared display helpers used by both the list model and the details dialog.
+QString formatCallDuration(int secs);
+QString callHistoryBadges(const CallHistoryEntry &e);

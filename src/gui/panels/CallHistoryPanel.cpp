@@ -1,43 +1,26 @@
 #include "CallHistoryPanel.h"
 
+#include "core/CallHistoryFilterProxyModel.h"
+#include "core/CallHistoryListModel.h"
 #include "core/CallHistoryStore.h"
 
+#include <QApplication>
+#include <QClipboard>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFormLayout>
 #include <QHBoxLayout>
+#include <QItemSelectionModel>
 #include <QLabel>
-#include <QListWidget>
-#include <QListWidgetItem>
+#include <QLineEdit>
+#include <QListView>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QVBoxLayout>
-
-static constexpr int kEntryIdRole = Qt::UserRole + 1;
-
-static QString formatDuration(int secs)
-{
-    const int h = secs / 3600;
-    const int m = (secs % 3600) / 60;
-    const int s = secs % 60;
-    if (h > 0)
-        return QStringLiteral("%1:%2:%3").arg(h, 2, 10, QLatin1Char('0'))
-                                          .arg(m, 2, 10, QLatin1Char('0'))
-                                          .arg(s, 2, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2").arg(m, 2, 10, QLatin1Char('0'))
-                                   .arg(s, 2, 10, QLatin1Char('0'));
-}
-
-static QString badges(const CallHistoryEntry &e)
-{
-    QStringList b;
-    if (e.hadAudio) b << QStringLiteral("Audio");
-    if (e.hadVideo) b << QStringLiteral("Video");
-    if (e.hadRtt)   b << QStringLiteral("RTT");
-    return b.isEmpty() ? QStringLiteral("—") : b.join(QStringLiteral(" · "));
-}
 
 CallHistoryPanel::CallHistoryPanel(QWidget *parent)
     : QWidget(parent)
@@ -52,32 +35,91 @@ CallHistoryPanel::CallHistoryPanel(QWidget *parent)
     title->setStyleSheet("font-weight: bold; font-size: 13px;");
     layout->addWidget(title);
 
-    m_emptyState = new QLabel(tr("No calls recorded yet."), this);
+    auto *filterRow = new QHBoxLayout();
+    filterRow->setSpacing(6);
+
+    m_searchEdit = new QLineEdit(this);
+    m_searchEdit->setObjectName("CallHistorySearch");
+    m_searchEdit->setPlaceholderText(tr("Search name, URI, profile, result, reason, SIP code..."));
+    filterRow->addWidget(m_searchEdit, 1);
+
+    m_kindFilterCombo = new QComboBox(this);
+    m_kindFilterCombo->setObjectName("CallHistoryKindFilter");
+    m_kindFilterCombo->addItem(tr("All"),        int(CallHistoryFilterProxyModel::KindFilter::All));
+    m_kindFilterCombo->addItem(tr("Incoming"),   int(CallHistoryFilterProxyModel::KindFilter::Incoming));
+    m_kindFilterCombo->addItem(tr("Outgoing"),   int(CallHistoryFilterProxyModel::KindFilter::Outgoing));
+    m_kindFilterCombo->addItem(tr("Missed"),     int(CallHistoryFilterProxyModel::KindFilter::Missed));
+    m_kindFilterCombo->addItem(tr("Failed"),     int(CallHistoryFilterProxyModel::KindFilter::Failed));
+    m_kindFilterCombo->addItem(tr("With Video"), int(CallHistoryFilterProxyModel::KindFilter::WithVideo));
+    m_kindFilterCombo->addItem(tr("With RTT"),   int(CallHistoryFilterProxyModel::KindFilter::WithRtt));
+    filterRow->addWidget(m_kindFilterCombo);
+
+    m_dateFilterCombo = new QComboBox(this);
+    m_dateFilterCombo->setObjectName("CallHistoryDateFilter");
+    m_dateFilterCombo->addItem(tr("All time"),     int(CallHistoryFilterProxyModel::DateFilter::AllTime));
+    m_dateFilterCombo->addItem(tr("Today"),        int(CallHistoryFilterProxyModel::DateFilter::Today));
+    m_dateFilterCombo->addItem(tr("Last 7 days"),  int(CallHistoryFilterProxyModel::DateFilter::Last7Days));
+    m_dateFilterCombo->addItem(tr("Last 30 days"), int(CallHistoryFilterProxyModel::DateFilter::Last30Days));
+    filterRow->addWidget(m_dateFilterCombo);
+
+    layout->addLayout(filterRow);
+
+    m_resultsLabel = new QLabel(this);
+    m_resultsLabel->setObjectName("CallHistoryResultsLabel");
+    m_resultsLabel->setStyleSheet("color: #8899aa; font-size: 10px;");
+    layout->addWidget(m_resultsLabel);
+
+    m_emptyState = new QLabel(tr("No call history yet"), this);
     m_emptyState->setObjectName("CallHistoryEmptyState");
     m_emptyState->setAlignment(Qt::AlignCenter);
     m_emptyState->setWordWrap(true);
     m_emptyState->setStyleSheet("color: #8899aa; padding: 12px; border: 1px dashed #3b4d63;");
     layout->addWidget(m_emptyState);
 
-    m_list = new QListWidget(this);
+    m_model = new CallHistoryListModel(this);
+    m_proxy = new CallHistoryFilterProxyModel(this);
+    m_proxy->setSourceModel(m_model);
+
+    m_list = new QListView(this);
     m_list->setObjectName("CallHistoryList");
     m_list->setAlternatingRowColors(true);
+    m_list->setModel(m_proxy);
+    m_list->setSelectionMode(QAbstractItemView::SingleSelection);
     layout->addWidget(m_list, 1);
 
     auto *btnRow = new QHBoxLayout();
     btnRow->setSpacing(6);
+    m_redialBtn = new QPushButton(tr("Call Back"), this);
+    m_redialBtn->setObjectName("RedialCallHistoryBtn");
+    m_redialBtn->setEnabled(false);
     m_clearBtn = new QPushButton(tr("Clear History"), this);
     m_clearBtn->setObjectName("ClearCallHistoryBtn");
-    m_exportBtn = new QPushButton(tr("Export JSON"), this);
-    m_exportBtn->setObjectName("ExportCallHistoryBtn");
+    m_exportJsonBtn = new QPushButton(tr("Export JSON"), this);
+    m_exportJsonBtn->setObjectName("ExportCallHistoryJsonBtn");
+    m_exportCsvBtn = new QPushButton(tr("Export CSV"), this);
+    m_exportCsvBtn->setObjectName("ExportCallHistoryCsvBtn");
+    btnRow->addWidget(m_redialBtn);
     btnRow->addWidget(m_clearBtn);
-    btnRow->addWidget(m_exportBtn);
+    btnRow->addWidget(m_exportJsonBtn);
+    btnRow->addWidget(m_exportCsvBtn);
     btnRow->addStretch();
     layout->addLayout(btnRow);
 
     connect(m_clearBtn, &QPushButton::clicked, this, &CallHistoryPanel::onClearHistory);
-    connect(m_exportBtn, &QPushButton::clicked, this, &CallHistoryPanel::onExportJson);
-    connect(m_list, &QListWidget::itemActivated, this, &CallHistoryPanel::onItemActivated);
+    connect(m_exportJsonBtn, &QPushButton::clicked, this, &CallHistoryPanel::onExportJson);
+    connect(m_exportCsvBtn, &QPushButton::clicked, this, &CallHistoryPanel::onExportCsv);
+    connect(m_redialBtn, &QPushButton::clicked, this, &CallHistoryPanel::onRedialSelected);
+    connect(m_list, &QListView::activated, this, &CallHistoryPanel::onItemActivated);
+    connect(m_list->selectionModel(), &QItemSelectionModel::currentChanged,
+            this, [this](const QModelIndex &) {
+        m_redialBtn->setEnabled(!currentSelection().remoteUri.isEmpty());
+    });
+
+    connect(m_searchEdit, &QLineEdit::textChanged, this, &CallHistoryPanel::onSearchTextChanged);
+    connect(m_kindFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &CallHistoryPanel::onKindFilterChanged);
+    connect(m_dateFilterCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &CallHistoryPanel::onDateFilterChanged);
 
     connect(&CallHistoryStore::instance(), &CallHistoryStore::historyChanged,
             this, &CallHistoryPanel::refresh);
@@ -87,31 +129,57 @@ CallHistoryPanel::CallHistoryPanel(QWidget *parent)
 
 void CallHistoryPanel::refresh()
 {
-    const auto history = CallHistoryStore::instance().entries();
+    m_model->setEntries(CallHistoryStore::instance().entries());
+    updateResultsLabel();
+}
 
-    m_list->clear();
-    for (const CallHistoryEntry &e : history) {
-        const QString who = e.displayName.isEmpty() ? e.remoteUri
-                                                     : QStringLiteral("%1  <%2>").arg(e.displayName, e.remoteUri);
-        const QString when = e.startTime.isNull() ? QString()
-                                                    : e.startTime.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-        const QString label = QStringLiteral("[%1] %2 — %3 — %4 — %5 — %6")
-                                   .arg(callDirectionName(e.direction),
-                                        who,
-                                        when,
-                                        formatDuration(e.durationSec),
-                                        callResultName(e.result),
-                                        badges(e));
+void CallHistoryPanel::updateResultsLabel()
+{
+    const int total = m_model->rowCount();
+    const int shown = m_proxy->rowCount();
 
-        auto *item = new QListWidgetItem(label, m_list);
-        item->setData(kEntryIdRole, e.id);
-    }
+    m_resultsLabel->setText(tr("Showing %1 of %2 calls").arg(shown).arg(total));
 
-    const bool hasEntries = !history.isEmpty();
-    m_emptyState->setVisible(!hasEntries);
-    m_list->setVisible(hasEntries);
-    m_clearBtn->setEnabled(hasEntries);
-    m_exportBtn->setEnabled(hasEntries);
+    const bool hasVisibleEntries = shown > 0;
+    m_emptyState->setVisible(!hasVisibleEntries);
+    m_list->setVisible(hasVisibleEntries);
+    m_emptyState->setText(total == 0 ? tr("No call history yet")
+                                     : tr("No calls match the current filters"));
+
+    m_clearBtn->setEnabled(total > 0);
+    m_exportJsonBtn->setEnabled(total > 0);
+    m_exportCsvBtn->setEnabled(total > 0);
+    m_redialBtn->setEnabled(!currentSelection().remoteUri.isEmpty());
+}
+
+CallHistoryEntry CallHistoryPanel::currentSelection() const
+{
+    const QModelIndex proxyIdx = m_list->currentIndex();
+    if (!proxyIdx.isValid())
+        return {};
+    return m_model->entryAt(m_proxy->mapToSource(proxyIdx).row());
+}
+
+void CallHistoryPanel::onSearchTextChanged(const QString &text)
+{
+    m_proxy->setSearchText(text);
+    updateResultsLabel();
+}
+
+void CallHistoryPanel::onKindFilterChanged(int index)
+{
+    const auto filter = static_cast<CallHistoryFilterProxyModel::KindFilter>(
+        m_kindFilterCombo->itemData(index).toInt());
+    m_proxy->setKindFilter(filter);
+    updateResultsLabel();
+}
+
+void CallHistoryPanel::onDateFilterChanged(int index)
+{
+    const auto filter = static_cast<CallHistoryFilterProxyModel::DateFilter>(
+        m_dateFilterCombo->itemData(index).toInt());
+    m_proxy->setDateFilter(filter);
+    updateResultsLabel();
 }
 
 void CallHistoryPanel::onClearHistory()
@@ -139,24 +207,47 @@ void CallHistoryPanel::onExportJson()
     }
 }
 
-void CallHistoryPanel::onItemActivated(QListWidgetItem *item)
+void CallHistoryPanel::onExportCsv()
 {
-    if (!item)
+    const QString defaultDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export Call History"),
+        defaultDir + QStringLiteral("/call_history_export.csv"),
+        tr("CSV Files (*.csv)"));
+    if (path.isEmpty())
         return;
-    showDetails(item->data(kEntryIdRole).toString());
+
+    if (!CallHistoryStore::instance().exportToCsv(path)) {
+        QMessageBox::warning(this, tr("Export Call History"),
+            tr("Failed to write %1").arg(path));
+    }
 }
 
-void CallHistoryPanel::showDetails(const QString &entryId)
+void CallHistoryPanel::onItemActivated(const QModelIndex &index)
 {
-    const CallHistoryEntry e = CallHistoryStore::instance().entry(entryId);
-    if (e.isNull())
+    if (!index.isValid())
         return;
+    const CallHistoryEntry e = m_model->entryAt(m_proxy->mapToSource(index).row());
+    if (!e.isNull())
+        showDetails(e);
+}
 
+void CallHistoryPanel::onRedialSelected()
+{
+    const CallHistoryEntry e = currentSelection();
+    if (e.remoteUri.isEmpty())
+        return;
+    emit redialRequested(e.remoteUri);
+}
+
+void CallHistoryPanel::showDetails(const CallHistoryEntry &e)
+{
     QDialog dlg(this);
     dlg.setWindowTitle(tr("Call Details"));
-    dlg.setMinimumWidth(360);
+    dlg.setMinimumWidth(380);
 
-    auto *form = new QFormLayout(&dlg);
+    auto *outer = new QVBoxLayout(&dlg);
+
+    auto *form = new QFormLayout();
     form->addRow(tr("Direction:"), new QLabel(callDirectionName(e.direction), &dlg));
     form->addRow(tr("Remote:"), new QLabel(e.displayName.isEmpty() ? e.remoteUri
                                             : QStringLiteral("%1 <%2>").arg(e.displayName, e.remoteUri), &dlg));
@@ -167,16 +258,56 @@ void CallHistoryPanel::showDetails(const QString &entryId)
                                               : e.answerTime.toLocalTime().toString(Qt::TextDate), &dlg));
     form->addRow(tr("Ended:"), new QLabel(e.endTime.isNull() ? tr("—")
                                            : e.endTime.toLocalTime().toString(Qt::TextDate), &dlg));
-    form->addRow(tr("Duration:"), new QLabel(formatDuration(e.durationSec), &dlg));
+    form->addRow(tr("Duration:"), new QLabel(formatCallDuration(e.durationSec), &dlg));
     form->addRow(tr("Result:"), new QLabel(callResultName(e.result), &dlg));
-    form->addRow(tr("Media:"), new QLabel(badges(e), &dlg));
+    form->addRow(tr("Media:"), new QLabel(callHistoryBadges(e), &dlg));
     form->addRow(tr("Last SIP code:"), new QLabel(e.lastSipCode > 0 ? QString::number(e.lastSipCode) : tr("—"), &dlg));
     form->addRow(tr("Reason:"), new QLabel(e.reason.isEmpty() ? tr("—") : e.reason, &dlg));
+    outer->addLayout(form);
+
+    auto *actionRow = new QHBoxLayout();
+    auto *redialBtn = new QPushButton(tr("Call Back"), &dlg);
+    redialBtn->setEnabled(!e.remoteUri.isEmpty());
+    auto *copyUriBtn = new QPushButton(tr("Copy URI"), &dlg);
+    copyUriBtn->setEnabled(!e.remoteUri.isEmpty());
+    auto *copySummaryBtn = new QPushButton(tr("Copy Summary"), &dlg);
+    actionRow->addWidget(redialBtn);
+    actionRow->addWidget(copyUriBtn);
+    actionRow->addWidget(copySummaryBtn);
+    actionRow->addStretch();
+    outer->addLayout(actionRow);
+
+    connect(redialBtn, &QPushButton::clicked, this, [this, &dlg, e]() {
+        emit redialRequested(e.remoteUri);
+        dlg.accept();
+    });
+    connect(copyUriBtn, &QPushButton::clicked, this, [e]() {
+        QApplication::clipboard()->setText(e.remoteUri);
+    });
+    connect(copySummaryBtn, &QPushButton::clicked, this, [e]() {
+        QStringList lines;
+        lines << QStringLiteral("Direction: %1").arg(callDirectionName(e.direction));
+        lines << QStringLiteral("Remote: %1").arg(e.displayName.isEmpty() ? e.remoteUri
+            : QStringLiteral("%1 <%2>").arg(e.displayName, e.remoteUri));
+        lines << QStringLiteral("Profile: %1").arg(e.profileName);
+        lines << QStringLiteral("Start: %1").arg(e.startTime.isNull()
+            ? QStringLiteral("—") : e.startTime.toLocalTime().toString(Qt::TextDate));
+        lines << QStringLiteral("End: %1").arg(e.endTime.isNull()
+            ? QStringLiteral("—") : e.endTime.toLocalTime().toString(Qt::TextDate));
+        lines << QStringLiteral("Duration: %1").arg(formatCallDuration(e.durationSec));
+        lines << QStringLiteral("Result: %1").arg(callResultName(e.result));
+        lines << QStringLiteral("Media: %1").arg(callHistoryBadges(e));
+        if (e.lastSipCode > 0)
+            lines << QStringLiteral("SIP code: %1").arg(e.lastSipCode);
+        if (!e.reason.isEmpty())
+            lines << QStringLiteral("Reason: %1").arg(e.reason);
+        QApplication::clipboard()->setText(lines.join(QStringLiteral("\n")));
+    });
 
     auto *btns = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
     connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    form->addRow(btns);
+    outer->addWidget(btns);
 
     dlg.exec();
 }

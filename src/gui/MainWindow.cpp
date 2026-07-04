@@ -1493,6 +1493,16 @@ QWidget *MainWindow::buildLogsPage()
 QWidget *MainWindow::buildCallHistoryPage()
 {
     m_callHistoryPanel = new CallHistoryPanel(this);
+    connect(m_callHistoryPanel, &CallHistoryPanel::redialRequested,
+            this, [this](const QString &uri) {
+        if (m_clientsTargetInput)
+            m_clientsTargetInput->setText(uri);
+        onNavPageRequested(QStringLiteral("clients"));
+        if (!SipManager::instance().makeCall(uri)) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Call Back failed for %1 (call already active or invalid URI)").arg(uri));
+        }
+    });
     return m_callHistoryPanel;
 }
 

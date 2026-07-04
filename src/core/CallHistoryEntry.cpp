@@ -1,5 +1,7 @@
 #include "CallHistoryEntry.h"
 
+#include <QStringList>
+
 QString callDirectionName(CallDirection dir)
 {
     switch (dir) {
@@ -103,4 +105,26 @@ CallHistoryEntry CallHistoryEntry::fromJson(const QJsonObject &obj)
     e.reason = obj.value("reason").toString();
     e.notes = obj.value("notes").toString();
     return e;
+}
+
+QString formatCallDuration(int secs)
+{
+    const int h = secs / 3600;
+    const int m = (secs % 3600) / 60;
+    const int s = secs % 60;
+    if (h > 0)
+        return QStringLiteral("%1:%2:%3").arg(h, 2, 10, QLatin1Char('0'))
+                                          .arg(m, 2, 10, QLatin1Char('0'))
+                                          .arg(s, 2, 10, QLatin1Char('0'));
+    return QStringLiteral("%1:%2").arg(m, 2, 10, QLatin1Char('0'))
+                                   .arg(s, 2, 10, QLatin1Char('0'));
+}
+
+QString callHistoryBadges(const CallHistoryEntry &e)
+{
+    QStringList b;
+    if (e.hadAudio) b << QStringLiteral("Audio");
+    if (e.hadVideo) b << QStringLiteral("Video");
+    if (e.hadRtt)   b << QStringLiteral("RTT");
+    return b.isEmpty() ? QStringLiteral("—") : b.join(QStringLiteral(" · "));
 }

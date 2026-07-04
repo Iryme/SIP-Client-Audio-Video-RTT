@@ -44,6 +44,14 @@ public:
     // I/O failure.
     bool exportToJson(const QString &filePath) const;
 
+    // Writes the full history as CSV (see column list in CallHistoryStore.cpp).
+    // Returns false on I/O failure.
+    bool exportToCsv(const QString &filePath) const;
+
+    // Escapes a single CSV field per RFC 4180 (quotes fields containing a
+    // comma, quote, or newline, doubling embedded quotes).
+    static QString csvEscapeField(const QString &field);
+
     // Dashboard summary helpers.
     int              callsToday()  const;
     int              missedToday() const;

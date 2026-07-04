@@ -84,6 +84,8 @@ set(SOURCES
     src/core/CallHistoryEntry.cpp
     src/core/CallHistoryStore.cpp
     src/core/CallHistoryRecorder.cpp
+    src/core/CallHistoryListModel.cpp
+    src/core/CallHistoryFilterProxyModel.cpp
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
@@ -160,6 +162,8 @@ set(HEADERS
     src/core/CallHistoryEntry.h
     src/core/CallHistoryStore.h
     src/core/CallHistoryRecorder.h
+    src/core/CallHistoryListModel.h
+    src/core/CallHistoryFilterProxyModel.h
     src/sip/SipManager.h
     src/sip/SipAccount.h
     src/sip/SipCall.h

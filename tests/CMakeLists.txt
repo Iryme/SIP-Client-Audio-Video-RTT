@@ -316,6 +316,8 @@ qt_add_executable(test_call_history
     test_call_history.cpp
     ${CMAKE_SOURCE_DIR}/src/core/CallHistoryEntry.cpp
     ${CMAKE_SOURCE_DIR}/src/core/CallHistoryStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CallHistoryListModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/CallHistoryFilterProxyModel.cpp
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
 )
 
