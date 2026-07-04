@@ -47,6 +47,30 @@ else()
     message(STATUS "ENABLE_PJSIP=OFF — building with stub SIP backend")
 endif()
 
+# --- Version header (Diagnostics Center: System tab) ---
+# Best-effort short git commit hash; "unknown" outside a git checkout or
+# when git is unavailable. Configured once at cmake-configure time.
+find_package(Git QUIET)
+set(APP_GIT_COMMIT_HASH "unknown")
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE _git_hash
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _git_result
+    )
+    if(_git_result EQUAL 0 AND _git_hash)
+        set(APP_GIT_COMMIT_HASH "${_git_hash}")
+    endif()
+endif()
+configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/AppVersion.h.in"
+    "${CMAKE_BINARY_DIR}/generated/AppVersion.h"
+    @ONLY
+)
+
 # --- Sources ---
 set(SOURCES
     src/main.cpp
@@ -86,6 +110,10 @@ set(SOURCES
     src/core/CallHistoryRecorder.cpp
     src/core/CallHistoryListModel.cpp
     src/core/CallHistoryFilterProxyModel.cpp
+    src/core/DiagnosticsSnapshot.cpp
+    src/core/DiagnosticsCollector.cpp
+    src/core/DiagnosticsBundleExporter.cpp
+    src/gui/panels/DiagnosticsCenterPanel.cpp
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
@@ -164,6 +192,10 @@ set(HEADERS
     src/core/CallHistoryRecorder.h
     src/core/CallHistoryListModel.h
     src/core/CallHistoryFilterProxyModel.h
+    src/core/DiagnosticsSnapshot.h
+    src/core/DiagnosticsCollector.h
+    src/core/DiagnosticsBundleExporter.h
+    src/gui/panels/DiagnosticsCenterPanel.h
     src/sip/SipManager.h
     src/sip/SipAccount.h
     src/sip/SipCall.h
@@ -253,7 +285,7 @@ if(ENABLE_PJSIP AND PJSIP_FOUND)
     endif()
 endif()
 
-target_include_directories(SIPClient PRIVATE src)
+target_include_directories(SIPClient PRIVATE src "${CMAKE_BINARY_DIR}/generated")
 
 # --- Optional: tests ---
 option(BUILD_TESTS "Build unit tests" OFF)

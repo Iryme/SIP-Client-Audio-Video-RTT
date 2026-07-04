@@ -13,6 +13,7 @@ class DiagnosticsPanel;
 class SettingsPanel;
 class SipLadderPage;
 class CallHistoryPanel;
+class DiagnosticsCenterPanel;
 class AppStatusBar;
 class QDialog;
 class QSplitter;
@@ -53,12 +54,13 @@ private:
     QWidget *buildClientsPage();
     QWidget *buildLogsPage();
     QWidget *buildCallHistoryPage();
+    QWidget *buildDiagnosticsCenterPage();
 
     // Build page[index] on first request and replace its placeholder.
     void ensurePage(int index);
 
     // Tracks which pages have been built (false = still a placeholder).
-    static constexpr int kPageCount = 6;
+    static constexpr int kPageCount = 7;
     bool m_pageBuilt[kPageCount]{};
 
     // Dashboard page (kept for signal wiring in buildDashboardPage)
@@ -75,6 +77,7 @@ private:
     SettingsPanel    *m_settingsPanel{nullptr};
     SipLadderPage    *m_ladderPage{nullptr};
     CallHistoryPanel *m_callHistoryPanel{nullptr};
+    DiagnosticsCenterPanel *m_diagnosticsCenterPanel{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
     QDialog              *m_settingsDialog{nullptr};
     IncomingCallDialog   *m_incomingCallDialog{nullptr};

@@ -3,6 +3,7 @@
 #include <QString>
 #include <QDateTime>
 #include <QHash>
+#include <QList>
 
 enum class LogLevel {
     Info,
@@ -50,6 +51,12 @@ public:
     void setLevelEnabled(LogLevel level, bool enabled);
     bool isLevelEnabled(LogLevel level) const;
 
+    // In-memory ring buffer of the most recent entries (capped at
+    // maxRecentEntries), regardless of level filtering — used by the
+    // Diagnostics Center bundle export. Not persisted to disk.
+    QList<LogEntry> recentEntries() const;
+    static int maxRecentEntries();
+
     static QString levelName(LogLevel l);
     static QString categoryName(LogCategory c);
 
@@ -59,4 +66,5 @@ signals:
 private:
     Logger();
     QHash<LogLevel, bool> m_enabled;
+    QList<LogEntry> m_recent;
 };

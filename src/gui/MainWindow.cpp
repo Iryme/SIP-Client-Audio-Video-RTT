@@ -7,6 +7,7 @@
 #include "gui/panels/CallHistoryPanel.h"
 #include "gui/panels/ContactsPanel.h"
 #include "gui/panels/DiagnosticsPanel.h"
+#include "gui/panels/DiagnosticsCenterPanel.h"
 #include "gui/panels/NavRail.h"
 #include "gui/panels/SettingsPanel.h"
 #include "gui/panels/SipLadderPage.h"
@@ -1506,6 +1507,16 @@ QWidget *MainWindow::buildCallHistoryPage()
     return m_callHistoryPanel;
 }
 
+QWidget *MainWindow::buildDiagnosticsCenterPage()
+{
+    m_diagnosticsCenterPanel = new DiagnosticsCenterPanel(this);
+    connect(m_diagnosticsCenterPanel, &DiagnosticsCenterPanel::openSipLadderRequested,
+            this, [this]() { onNavPageRequested(QStringLiteral("sipladder")); });
+    connect(m_diagnosticsCenterPanel, &DiagnosticsCenterPanel::openLogsRequested,
+            this, [this]() { onNavPageRequested(QStringLiteral("logs")); });
+    return m_diagnosticsCenterPanel;
+}
+
 void MainWindow::exportConfiguration()
 {
     const QString path = QFileDialog::getSaveFileName(
@@ -1652,7 +1663,7 @@ void MainWindow::buildCentralWidget()
     // on first navigation via ensurePage(). This keeps the constructor fast so
     // MainWindow::show() is called before any heavy page construction.
     static const char *const kPageNames[] = {
-        "Dashboard", "Clients", "SIP Ladder", "Call History", "Logs", "Settings"
+        "Dashboard", "Clients", "SIP Ladder", "Call History", "Logs", "Settings", "Diagnostics"
     };
     for (int i = 0; i < kPageCount; ++i) {
         m_pageStack->addWidget(makePlaceholder(tr(kPageNames[i]), m_pageStack));
@@ -1699,6 +1710,7 @@ void MainWindow::ensurePage(int index)
         m_settingsPanel = new SettingsPanel(m_pageStack);
         real = m_settingsPanel;
         break;
+    case 6: real = buildDiagnosticsCenterPage();                 break;
     default:
         return;
     }
@@ -1744,6 +1756,8 @@ void MainWindow::onNavPageRequested(const QString &page)
     } else if (page == QLatin1String("settings-video")) {
         pageIndex = 5;
         activePage = QStringLiteral("settings");
+    } else if (page == QLatin1String("diagnostics")) {
+        pageIndex = 6;
     }
 
     if (pageIndex >= 0) {

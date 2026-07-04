@@ -59,6 +59,12 @@ static const QByteArray kIconLogs = R"(
   <line x1="8" y1="16" x2="12" y2="16"/>
 </svg>)";
 
+static const QByteArray kIconDiagnostics = R"(
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 12h4l2 7 4-14 2 7h6"/>
+</svg>)";
+
 static const QByteArray kIconSettings = R"(
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -158,6 +164,7 @@ NavRail::NavRail(QWidget *parent)
     addNavButton(layout, QString{}, "SIP Ladder","sipladder");
     addNavButton(layout, QString{}, "History",   "callhistory");
     addNavButton(layout, QString{}, "Logs",      "logs");
+    addNavButton(layout, QString{}, "Diagnostics", "diagnostics");
     addNavButton(layout, QString{}, "Settings",  "settings");
 
     // Push bottom actions to the bottom
@@ -210,6 +217,7 @@ QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
     else if (page == QLatin1String("sipladder")) svgData = kIconSipLadder;
     else if (page == QLatin1String("callhistory")) svgData = kIconHistory;
     else if (page == QLatin1String("logs"))   svgData = kIconLogs;
+    else if (page == QLatin1String("diagnostics")) svgData = kIconDiagnostics;
     else if (page == QLatin1String("settings")) svgData = kIconSettings;
 
     auto *btn = new QToolButton(this);

@@ -38,7 +38,21 @@ void Logger::log(LogLevel level, LogCategory category,
         .arg(message);
     qDebug().noquote() << line;
 
+    m_recent.append(entry);
+    if (m_recent.size() > maxRecentEntries())
+        m_recent.removeFirst();
+
     emit entryAdded(entry);
+}
+
+QList<LogEntry> Logger::recentEntries() const
+{
+    return m_recent;
+}
+
+int Logger::maxRecentEntries()
+{
+    return 1000;
 }
 
 void Logger::setLevelEnabled(LogLevel level, bool enabled)
