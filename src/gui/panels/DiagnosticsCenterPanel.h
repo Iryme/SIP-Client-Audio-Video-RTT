@@ -3,10 +3,16 @@
 #include <QWidget>
 
 #include "core/DiagnosticsSnapshot.h"
+#include "core/DiagnosticsTimelineEntry.h"
 
+class QCheckBox;
+class QComboBox;
 class QFormLayout;
 class QLabel;
+class QLineEdit;
+class QListWidget;
 class QPushButton;
+class QTableWidget;
 class QTabWidget;
 
 // Diagnostics Center: a unified dashboard that reuses (does not replace)
@@ -30,6 +36,12 @@ private slots:
     void applySnapshot(const DiagnosticsSnapshot &snapshot);
     void onGenerateBundle();
 
+    void onTimelineEntryAppended(const DiagnosticsTimelineEntry &entry);
+    void onTimelineFilterChanged();
+    void onTimelineContextMenu(const QPoint &pos);
+    void onExportTimelineJson();
+    void onExportTimelineTxt();
+
 private:
     QWidget *buildOverviewTab();
     QWidget *buildSipTab();
@@ -39,13 +51,28 @@ private:
     QWidget *buildVideoTab();
     QWidget *buildNetworkTab();
     QWidget *buildSystemTab();
+    QWidget *buildTimelineTab();
 
     // Adds a "label: value" row to a form and remembers the value QLabel
     // under 'key' so applySnapshot() can update it later.
     QLabel *addRow(QFormLayout *form, const QString &key, const QString &labelText);
     void setValue(const QString &key, const QString &text);
 
+    bool timelineEntryMatchesFilters(const DiagnosticsTimelineEntry &e) const;
+    void appendTimelineRow(const DiagnosticsTimelineEntry &e);
+    void refreshTimelineTable();
+    void refreshRecentActivity(const DiagnosticsTimelineEntry &e);
+
     QTabWidget  *m_tabs{nullptr};
     QPushButton *m_bundleBtn{nullptr};
     QMap<QString, QLabel *> m_values;
+
+    // Timeline tab
+    QLineEdit    *m_timelineSearch{nullptr};
+    QComboBox    *m_timelineFilter{nullptr};
+    QCheckBox    *m_timelineAutoScroll{nullptr};
+    QTableWidget *m_timelineTable{nullptr};
+
+    // Overview "Recent Activity" widget (task M) — last 5 timeline entries.
+    QListWidget *m_recentActivity{nullptr};
 };

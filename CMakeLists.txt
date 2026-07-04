@@ -113,6 +113,11 @@ set(SOURCES
     src/core/DiagnosticsSnapshot.cpp
     src/core/DiagnosticsCollector.cpp
     src/core/DiagnosticsBundleExporter.cpp
+    src/core/DiagnosticsTimelineEntry.cpp
+    src/core/DiagnosticsTimelineModel.cpp
+    src/core/DiagnosticsTimelineFilterProxyModel.cpp
+    src/core/DiagnosticsTimelineExporter.cpp
+    src/core/DiagnosticsTimelineService.cpp
     src/gui/panels/DiagnosticsCenterPanel.cpp
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
@@ -195,6 +200,11 @@ set(HEADERS
     src/core/DiagnosticsSnapshot.h
     src/core/DiagnosticsCollector.h
     src/core/DiagnosticsBundleExporter.h
+    src/core/DiagnosticsTimelineEntry.h
+    src/core/DiagnosticsTimelineModel.h
+    src/core/DiagnosticsTimelineFilterProxyModel.h
+    src/core/DiagnosticsTimelineExporter.h
+    src/core/DiagnosticsTimelineService.h
     src/gui/panels/DiagnosticsCenterPanel.h
     src/sip/SipManager.h
     src/sip/SipAccount.h

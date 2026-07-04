@@ -349,6 +349,26 @@ target_link_libraries(test_diagnostics_snapshot PRIVATE
 
 add_test(NAME test_diagnostics_snapshot COMMAND test_diagnostics_snapshot)
 
+# ---- test_diagnostics_timeline ------------------------------------------
+qt_add_executable(test_diagnostics_timeline
+    test_diagnostics_timeline.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineEntry.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineFilterProxyModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/DiagnosticsTimelineExporter.cpp
+)
+
+target_include_directories(test_diagnostics_timeline PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_diagnostics_timeline PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_diagnostics_timeline COMMAND test_diagnostics_timeline)
+
 # ---- test_sip_uri_normalizer -------------------------------------------
 qt_add_executable(test_sip_uri_normalizer
     test_sip_uri_normalizer.cpp

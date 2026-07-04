@@ -1,20 +1,59 @@
 #include "DiagnosticsCenterPanel.h"
 
+#include <QAbstractItemView>
+#include <QAction>
+#include <QApplication>
+#include <QCheckBox>
+#include <QClipboard>
+#include <QColor>
+#include <QComboBox>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QHeaderView>
+#include <QJsonDocument>
 #include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollBar>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTabWidget>
 #include <QVBoxLayout>
 
 #include "core/DiagnosticsBundleExporter.h"
 #include "core/DiagnosticsCollector.h"
+#include "core/DiagnosticsTimelineExporter.h"
+#include "core/DiagnosticsTimelineFilterProxyModel.h"
+#include "core/DiagnosticsTimelineService.h"
 
 namespace {
 QString yesNo(bool b) { return b ? QObject::tr("Yes") : QObject::tr("No"); }
 QString connectedText(bool b) { return b ? QObject::tr("Connected") : QObject::tr("Not connected"); }
+
+using CategoryFilter = DiagnosticsTimelineFilterProxyModel::CategoryFilter;
+
+CategoryFilter categoryFilterForIndex(int index)
+{
+    switch (index) {
+    case 1:  return CategoryFilter::Registration;
+    case 2:  return CategoryFilter::Call;
+    case 3:  return CategoryFilter::Sip;
+    case 4:  return CategoryFilter::Media;
+    case 5:  return CategoryFilter::Rtp;
+    case 6:  return CategoryFilter::Camera;
+    case 7:  return CategoryFilter::Audio;
+    case 8:  return CategoryFilter::Video;
+    case 9:  return CategoryFilter::Rtt;
+    case 10: return CategoryFilter::Warnings;
+    case 11: return CategoryFilter::Errors;
+    default: return CategoryFilter::All;
+    }
+}
 } // namespace
 
 DiagnosticsCenterPanel::DiagnosticsCenterPanel(QWidget *parent)
@@ -39,11 +78,18 @@ DiagnosticsCenterPanel::DiagnosticsCenterPanel(QWidget *parent)
     m_tabs->addTab(buildVideoTab(),    tr("Video"));
     m_tabs->addTab(buildNetworkTab(),  tr("Network"));
     m_tabs->addTab(buildSystemTab(),   tr("System"));
+    m_tabs->addTab(buildTimelineTab(), tr("Timeline"));
     root->addWidget(m_tabs, 1);
 
     connect(&DiagnosticsCollector::instance(), &DiagnosticsCollector::snapshotUpdated,
             this, &DiagnosticsCenterPanel::applySnapshot);
     applySnapshot(DiagnosticsCollector::instance().snapshot());
+
+    connect(DiagnosticsTimelineService::instance().model(), &DiagnosticsTimelineModel::entryAppended,
+            this, &DiagnosticsCenterPanel::onTimelineEntryAppended);
+    refreshTimelineTable();
+    for (const auto &e : DiagnosticsTimelineService::instance().model()->entries())
+        refreshRecentActivity(e);
 }
 
 QLabel *DiagnosticsCenterPanel::addRow(QFormLayout *form, const QString &key, const QString &labelText)
@@ -64,7 +110,11 @@ void DiagnosticsCenterPanel::setValue(const QString &key, const QString &text)
 QWidget *DiagnosticsCenterPanel::buildOverviewTab()
 {
     auto *page = new QWidget(this);
-    auto *form = new QFormLayout(page);
+    auto *outer = new QVBoxLayout(page);
+
+    auto *formHost = new QWidget(page);
+    auto *form = new QFormLayout(formHost);
+    outer->addWidget(formHost);
     addRow(form, QStringLiteral("ov.registration"), tr("Registration:"));
     addRow(form, QStringLiteral("ov.call"),         tr("Current Call:"));
     addRow(form, QStringLiteral("ov.profile"),      tr("Current SIP Profile:"));
@@ -83,6 +133,17 @@ QWidget *DiagnosticsCenterPanel::buildOverviewTab()
     addRow(form, QStringLiteral("ov.lastError"),    tr("Last SIP error:"));
     addRow(form, QStringLiteral("ov.version"),      tr("Version:"));
     addRow(form, QStringLiteral("ov.gitCommit"),    tr("Git commit:"));
+
+    // Recent Activity — last 5 Diagnostics Timeline entries (task M). Reads
+    // only DiagnosticsTimelineService's model, incrementally updated via
+    // entryAppended, never rebuilt from scratch except at construction.
+    outer->addWidget(new QLabel(tr("<b>Recent Activity</b>"), page));
+    m_recentActivity = new QListWidget(page);
+    m_recentActivity->setMaximumHeight(140);
+    m_recentActivity->setSelectionMode(QAbstractItemView::NoSelection);
+    m_recentActivity->setFocusPolicy(Qt::NoFocus);
+    outer->addWidget(m_recentActivity);
+
     return page;
 }
 
@@ -212,6 +273,63 @@ QWidget *DiagnosticsCenterPanel::buildSystemTab()
     return page;
 }
 
+QWidget *DiagnosticsCenterPanel::buildTimelineTab()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+
+    auto *toolbar = new QHBoxLayout();
+    m_timelineSearch = new QLineEdit(page);
+    m_timelineSearch->setPlaceholderText(tr("Search title, details, URI, SIP code, category..."));
+    m_timelineSearch->setMinimumWidth(220);
+    toolbar->addWidget(m_timelineSearch, 1);
+
+    m_timelineFilter = new QComboBox(page);
+    m_timelineFilter->addItem(tr("All"));
+    m_timelineFilter->addItem(tr("Registration"));
+    m_timelineFilter->addItem(tr("Call"));
+    m_timelineFilter->addItem(tr("SIP"));
+    m_timelineFilter->addItem(tr("Media"));
+    m_timelineFilter->addItem(tr("RTP"));
+    m_timelineFilter->addItem(tr("Camera"));
+    m_timelineFilter->addItem(tr("Audio"));
+    m_timelineFilter->addItem(tr("Video"));
+    m_timelineFilter->addItem(tr("RTT"));
+    m_timelineFilter->addItem(tr("Warnings"));
+    m_timelineFilter->addItem(tr("Errors"));
+    toolbar->addWidget(m_timelineFilter);
+
+    m_timelineAutoScroll = new QCheckBox(tr("Auto Scroll"), page);
+    m_timelineAutoScroll->setChecked(true);
+    toolbar->addWidget(m_timelineAutoScroll);
+
+    auto *exportJsonBtn = new QPushButton(tr("Export Timeline JSON"), page);
+    auto *exportTxtBtn  = new QPushButton(tr("Export Timeline TXT"), page);
+    toolbar->addWidget(exportJsonBtn);
+    toolbar->addWidget(exportTxtBtn);
+    layout->addLayout(toolbar);
+
+    m_timelineTable = new QTableWidget(0, 4, page);
+    m_timelineTable->setHorizontalHeaderLabels({tr("Time"), tr("Category"), tr("Severity"), tr("Title / Details")});
+    m_timelineTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    m_timelineTable->verticalHeader()->setVisible(false);
+    m_timelineTable->setSelectionBehavior(QTableWidget::SelectRows);
+    m_timelineTable->setEditTriggers(QTableWidget::NoEditTriggers);
+    m_timelineTable->setAlternatingRowColors(true);
+    m_timelineTable->setContextMenuPolicy(Qt::CustomContextMenu);
+    layout->addWidget(m_timelineTable, 1);
+
+    connect(m_timelineSearch, &QLineEdit::textChanged, this, &DiagnosticsCenterPanel::onTimelineFilterChanged);
+    connect(m_timelineFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &DiagnosticsCenterPanel::onTimelineFilterChanged);
+    connect(m_timelineTable, &QTableWidget::customContextMenuRequested,
+            this, &DiagnosticsCenterPanel::onTimelineContextMenu);
+    connect(exportJsonBtn, &QPushButton::clicked, this, &DiagnosticsCenterPanel::onExportTimelineJson);
+    connect(exportTxtBtn,  &QPushButton::clicked, this, &DiagnosticsCenterPanel::onExportTimelineTxt);
+
+    return page;
+}
+
 void DiagnosticsCenterPanel::applySnapshot(const DiagnosticsSnapshot &s)
 {
     const QString registration = QStringLiteral("%1 (%2)").arg(s.registrationState, s.registrationStatusText);
@@ -319,4 +437,156 @@ void DiagnosticsCenterPanel::onGenerateBundle()
     QMessageBox::information(this, tr("Diagnostics Bundle"),
                               tr("Diagnostics bundle written to:\n%1\n\n"
                                  "(Folder only for now — zipping is a follow-up task.)").arg(path));
+}
+
+bool DiagnosticsCenterPanel::timelineEntryMatchesFilters(const DiagnosticsTimelineEntry &e) const
+{
+    const CategoryFilter filter = categoryFilterForIndex(m_timelineFilter->currentIndex());
+    switch (filter) {
+    case CategoryFilter::All:                                                              break;
+    case CategoryFilter::Registration: if (e.category != TimelineCategory::Registration) return false; break;
+    case CategoryFilter::Call:         if (e.category != TimelineCategory::Call)         return false; break;
+    case CategoryFilter::Sip:          if (e.category != TimelineCategory::Sip)          return false; break;
+    case CategoryFilter::Media:        if (e.category != TimelineCategory::Media)        return false; break;
+    case CategoryFilter::Rtp:          if (e.category != TimelineCategory::Rtp)          return false; break;
+    case CategoryFilter::Camera:       if (e.category != TimelineCategory::Camera)       return false; break;
+    case CategoryFilter::Audio:        if (e.category != TimelineCategory::Audio)        return false; break;
+    case CategoryFilter::Video:        if (e.category != TimelineCategory::Video)        return false; break;
+    case CategoryFilter::Rtt:          if (e.category != TimelineCategory::Rtt)          return false; break;
+    case CategoryFilter::Warnings:     if (e.severity != TimelineSeverity::Warning)      return false; break;
+    case CategoryFilter::Errors:       if (e.severity != TimelineSeverity::Error)        return false; break;
+    }
+
+    const QString search = m_timelineSearch->text().trimmed();
+    if (!search.isEmpty()) {
+        const QString haystack = QStringLiteral("%1 %2 %3 %4 %5")
+            .arg(e.title, e.details, e.remoteUri,
+                 e.sipCode > 0 ? QString::number(e.sipCode) : QString(),
+                 timelineCategoryName(e.category));
+        if (!haystack.contains(search, Qt::CaseInsensitive))
+            return false;
+    }
+
+    return true;
+}
+
+void DiagnosticsCenterPanel::appendTimelineRow(const DiagnosticsTimelineEntry &e)
+{
+    const int row = m_timelineTable->rowCount();
+    m_timelineTable->insertRow(row);
+
+    auto *tTime  = new QTableWidgetItem(e.timestamp.toString(QStringLiteral("hh:mm:ss")));
+    auto *tCat   = new QTableWidgetItem(QStringLiteral("%1 %2").arg(e.iconHint, timelineCategoryName(e.category)));
+    auto *tSev   = new QTableWidgetItem(timelineSeverityName(e.severity));
+    const QString titleDetails = e.details.isEmpty() ? e.title : QStringLiteral("%1 — %2").arg(e.title, e.details);
+    auto *tTitle = new QTableWidgetItem(titleDetails);
+
+    const QColor color(e.colorHint);
+    tSev->setForeground(color);
+    tTitle->setForeground(color);
+
+    // Full entry kept on the row for the context menu (Copy line / details / JSON).
+    tTime->setData(Qt::UserRole, QVariant::fromValue(e));
+
+    m_timelineTable->setItem(row, 0, tTime);
+    m_timelineTable->setItem(row, 1, tCat);
+    m_timelineTable->setItem(row, 2, tSev);
+    m_timelineTable->setItem(row, 3, tTitle);
+}
+
+void DiagnosticsCenterPanel::refreshTimelineTable()
+{
+    const int previousScroll = m_timelineTable->verticalScrollBar()->value();
+    const int previousMax    = m_timelineTable->verticalScrollBar()->maximum();
+
+    m_timelineTable->setRowCount(0);
+    for (const auto &e : DiagnosticsTimelineService::instance().model()->entries()) {
+        if (timelineEntryMatchesFilters(e))
+            appendTimelineRow(e);
+    }
+
+    if (m_timelineAutoScroll->isChecked() && previousScroll >= previousMax - 2)
+        m_timelineTable->scrollToBottom();
+    else
+        m_timelineTable->verticalScrollBar()->setValue(previousScroll);
+}
+
+void DiagnosticsCenterPanel::refreshRecentActivity(const DiagnosticsTimelineEntry &e)
+{
+    if (!m_recentActivity)
+        return;
+
+    constexpr int kMaxRecent = 5;
+    auto *item = new QListWidgetItem(
+        QStringLiteral("[%1] %2 — %3").arg(e.timestamp.toString(QStringLiteral("hh:mm:ss")), timelineCategoryName(e.category), e.title));
+    item->setForeground(QColor(e.colorHint));
+    m_recentActivity->insertItem(0, item);
+
+    while (m_recentActivity->count() > kMaxRecent)
+        delete m_recentActivity->takeItem(m_recentActivity->count() - 1);
+}
+
+void DiagnosticsCenterPanel::onTimelineEntryAppended(const DiagnosticsTimelineEntry &entry)
+{
+    refreshRecentActivity(entry);
+
+    if (!timelineEntryMatchesFilters(entry))
+        return;
+
+    appendTimelineRow(entry);
+    if (m_timelineAutoScroll->isChecked())
+        m_timelineTable->scrollToBottom();
+}
+
+void DiagnosticsCenterPanel::onTimelineFilterChanged()
+{
+    refreshTimelineTable();
+}
+
+void DiagnosticsCenterPanel::onTimelineContextMenu(const QPoint &pos)
+{
+    const QTableWidgetItem *timeItem = m_timelineTable->item(m_timelineTable->currentRow(), 0);
+    if (!timeItem)
+        return;
+    const DiagnosticsTimelineEntry e = timeItem->data(Qt::UserRole).value<DiagnosticsTimelineEntry>();
+
+    QMenu menu(this);
+    QAction *copyLine    = menu.addAction(tr("Copy line"));
+    QAction *copyDetails = menu.addAction(tr("Copy details"));
+    QAction *copyJson    = menu.addAction(tr("Copy JSON"));
+
+    QAction *chosen = menu.exec(m_timelineTable->viewport()->mapToGlobal(pos));
+    if (chosen == copyLine) {
+        QApplication::clipboard()->setText(
+            QStringLiteral("[%1] [%2] [%3] %4").arg(e.timestamp.toString(Qt::ISODateWithMs),
+                timelineCategoryName(e.category), timelineSeverityName(e.severity), e.title));
+    } else if (chosen == copyDetails) {
+        QApplication::clipboard()->setText(e.details);
+    } else if (chosen == copyJson) {
+        QApplication::clipboard()->setText(QString::fromUtf8(QJsonDocument(e.toJson()).toJson(QJsonDocument::Indented)));
+    }
+}
+
+void DiagnosticsCenterPanel::onExportTimelineJson()
+{
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export Timeline JSON"),
+                                                        QStringLiteral("timeline.json"), tr("JSON files (*.json)"));
+    if (path.isEmpty())
+        return;
+
+    QString error;
+    if (!DiagnosticsTimelineExporter::exportJsonToFile(DiagnosticsTimelineService::instance().model()->entries(), path, &error))
+        QMessageBox::warning(this, tr("Export Timeline"), tr("Failed to export timeline.\n%1").arg(error));
+}
+
+void DiagnosticsCenterPanel::onExportTimelineTxt()
+{
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export Timeline TXT"),
+                                                        QStringLiteral("timeline.txt"), tr("Text files (*.txt)"));
+    if (path.isEmpty())
+        return;
+
+    QString error;
+    if (!DiagnosticsTimelineExporter::exportTxtToFile(DiagnosticsTimelineService::instance().model()->entries(), path, &error))
+        QMessageBox::warning(this, tr("Export Timeline"), tr("Failed to export timeline.\n%1").arg(error));
 }
