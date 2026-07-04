@@ -46,6 +46,8 @@ private slots:
     void onCallFailed(const QString &remoteUri, const QString &reason, int statusCode);
     void onInputLevelChanged(int level);
     void onOutputLevelChanged(int level);
+    void onMicrophoneVolumeChanged(int percent);
+    void onSpeakerVolumeChanged(int percent);
     void onMuteChanged(bool muted);
     void onAudioMediaConnected();
     void onAudioMediaDisconnected();
@@ -94,7 +96,7 @@ private:
     QProgressBar *m_inputMeter{nullptr};
     QProgressBar *m_outputMeter{nullptr};
 
-    // Volume sliders (disabled — no volume API in current backend)
+    // Volume sliders — backed by AudioMediaManager::setMicrophoneVolume/setSpeakerVolume.
     QSlider     *m_micVolumeSlider{nullptr};
     QSlider     *m_spkVolumeSlider{nullptr};
 

@@ -49,8 +49,16 @@ public:
     void setMicrophone(const QString &deviceId);
     void setSpeaker   (const QString &deviceId);
 
+    // Persisted microphone/speaker gain, 0-100 (100 = default/unity gain).
+    // Applied immediately to the active call's PJSIP audio media when one is
+    // attached; otherwise used as the default the next time media connects.
+    int microphoneVolume() const;
+    int speakerVolume()    const;
+
 public slots:
     void setMuted(bool muted);
+    void setMicrophoneVolume(int percent);
+    void setSpeakerVolume(int percent);
 
 signals:
     void mutedChanged(bool muted);
@@ -61,6 +69,8 @@ signals:
     // Emitted when the user selects a new microphone or speaker.
     // SipManager connects to this and re-applies PJSIP device selection.
     void audioDeviceSelectionChanged();
+    void microphoneVolumeChanged(int percent);
+    void speakerVolumeChanged(int percent);
 
 private:
     AudioMediaManager();
@@ -79,4 +89,6 @@ private:
     bool m_mediaActive{false};
     int  m_inputLevel{0};
     int  m_outputLevel{0};
+    int  m_micVolume{100};
+    int  m_speakerVolume{100};
 };

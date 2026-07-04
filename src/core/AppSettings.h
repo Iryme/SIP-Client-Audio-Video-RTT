@@ -37,6 +37,14 @@ public:
     static void    saveSelectedCamera    (const QString &id) { settings().setValue("media/device/camera", id); }
     static QString loadSelectedCamera    ()                  { return settings().value("media/device/camera").toString(); }
 
+    // Media volume — 0-100, 100 = default/unity gain. Applied to the active
+    // call's capture/playback device media (PJSIP AudDevManager) and used as
+    // the default for future calls.
+    static void saveMicrophoneVolume(int percent) { settings().setValue("media/volume/microphone", percent); }
+    static int  loadMicrophoneVolume()             { return settings().value("media/volume/microphone", 100).toInt(); }
+    static void saveSpeakerVolume   (int percent) { settings().setValue("media/volume/speaker", percent); }
+    static int  loadSpeakerVolume   ()             { return settings().value("media/volume/speaker", 100).toInt(); }
+
     // Theme (persisted as int matching AppTheme enum; 0 = Auto)
     static int  savedThemeIndex()        { return settings().value(QStringLiteral("ui/theme"), 0).toInt(); }
     static void saveThemeIndex(int idx)  { settings().setValue(QStringLiteral("ui/theme"), idx); settings().sync(); }

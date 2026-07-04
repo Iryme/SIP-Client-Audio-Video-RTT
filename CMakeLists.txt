@@ -104,6 +104,7 @@ set(SOURCES
     src/media/VideoStatistics.cpp
     src/media/VideoPipelineMonitor.cpp
     src/gui/panels/VideoSettingsPanel.cpp
+    src/gui/panels/MediaSettingsPanel.cpp
     src/rtt/RttSession.cpp
     # Emergency module — no PJSIP dependency; wired to GUI in Task 42
     src/emergency/EmergencyCallAdapter.cpp
@@ -180,6 +181,7 @@ set(HEADERS
     src/media/VideoStatistics.h
     src/media/VideoPipelineMonitor.h
     src/gui/panels/VideoSettingsPanel.h
+    src/gui/panels/MediaSettingsPanel.h
     src/rtt/RttSession.h
 )
 

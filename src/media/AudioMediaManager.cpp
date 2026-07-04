@@ -1,5 +1,8 @@
 #include "AudioMediaManager.h"
 
+#include <algorithm>
+
+#include "core/AppSettings.h"
 #include "core/Logger.h"
 #include "media/MediaDeviceManager.h"
 #include "media/MediaDeviceSelectionModel.h"
@@ -15,7 +18,12 @@ AudioMediaManager &AudioMediaManager::instance()
     return s;
 }
 
-AudioMediaManager::AudioMediaManager() : QObject(nullptr) {}
+AudioMediaManager::AudioMediaManager()
+    : QObject(nullptr)
+    , m_micVolume(std::clamp(AppSettings::loadMicrophoneVolume(), 0, 100))
+    , m_speakerVolume(std::clamp(AppSettings::loadSpeakerVolume(), 0, 100))
+{
+}
 
 // ---------------------------------------------------------------------------
 // Call attachment
@@ -152,6 +160,41 @@ void AudioMediaManager::setSpeaker(const QString &deviceId)
 }
 
 // ---------------------------------------------------------------------------
+// Volume
+// ---------------------------------------------------------------------------
+
+int AudioMediaManager::microphoneVolume() const { return m_micVolume; }
+int AudioMediaManager::speakerVolume()    const { return m_speakerVolume; }
+
+void AudioMediaManager::setMicrophoneVolume(int percent)
+{
+    percent = std::clamp(percent, 0, 100);
+    if (m_micVolume == percent)
+        return;
+    m_micVolume = percent;
+    AppSettings::saveMicrophoneVolume(percent);
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Microphone volume set to %1%%").arg(percent));
+    if (m_call)
+        m_call->setMicVolume(percent);
+    emit microphoneVolumeChanged(percent);
+}
+
+void AudioMediaManager::setSpeakerVolume(int percent)
+{
+    percent = std::clamp(percent, 0, 100);
+    if (m_speakerVolume == percent)
+        return;
+    m_speakerVolume = percent;
+    AppSettings::saveSpeakerVolume(percent);
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Speaker volume set to %1%%").arg(percent));
+    if (m_call)
+        m_call->setSpeakerVolume(percent);
+    emit speakerVolumeChanged(percent);
+}
+
+// ---------------------------------------------------------------------------
 // Private slots — forward from SipCall signals
 // ---------------------------------------------------------------------------
 
@@ -160,6 +203,10 @@ void AudioMediaManager::onCallAudioMediaConnected()
     if (m_mediaActive)
         return;
     m_mediaActive = true;
+    if (m_call) {
+        m_call->setMicVolume(m_micVolume);
+        m_call->setSpeakerVolume(m_speakerVolume);
+    }
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("Audio media connected"));
     emit mediaConnected();

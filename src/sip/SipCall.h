@@ -56,6 +56,15 @@ public:
     bool setMuted(bool muted);
     bool isMuted() const;
 
+    // Set microphone / speaker gain, 0-100 (100 = default/unity gain).
+    // In PJSIP mode applies immediately via AudDevManager capture/playback
+    // device media when the call's audio stream is active; otherwise the
+    // value is stored and applied when audio media connects.
+    bool setMicVolume(int percent);
+    int  micVolume() const;
+    bool setSpeakerVolume(int percent);
+    int  speakerVolume() const;
+
     // Stop / resume sending video. Does not affect incoming video.
     // In PJSIP mode mutes the video capture stream immediately.
     bool setVideoMuted(bool muted);
@@ -174,6 +183,8 @@ private:
     QString          m_remoteUri;
     QString          m_callId;
     bool             m_muted{false};
+    int              m_micVolume{100};
+    int              m_speakerVolume{100};
     bool             m_videoMuted{false};
     bool             m_localVideoAvailable{false};
     bool             m_remoteVideoAvailable{false};

@@ -1277,7 +1277,7 @@ bool SipCall::setMuted(bool muted)
     if (m_impl->pjCall && m_impl->callAudioMedia) {
         try {
             pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
-            adm.getCaptureDevMedia().adjustTxLevel(muted ? 0.0f : 1.0f);
+            adm.getCaptureDevMedia().adjustTxLevel(muted ? 0.0f : (m_micVolume / 100.0f));
         } catch (...) {}
     }
 #endif
@@ -1289,6 +1289,48 @@ bool SipCall::setMuted(bool muted)
 bool SipCall::isMuted() const
 {
     return m_muted;
+}
+
+bool SipCall::setMicVolume(int percent)
+{
+    percent = qBound(0, percent, 100);
+    m_micVolume = percent;
+
+#ifdef HAVE_PJSIP
+    if (m_impl->pjCall && m_impl->callAudioMedia && !m_muted) {
+        try {
+            pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
+            adm.getCaptureDevMedia().adjustTxLevel(percent / 100.0f);
+        } catch (...) {}
+    }
+#endif
+    return true;
+}
+
+int SipCall::micVolume() const
+{
+    return m_micVolume;
+}
+
+bool SipCall::setSpeakerVolume(int percent)
+{
+    percent = qBound(0, percent, 100);
+    m_speakerVolume = percent;
+
+#ifdef HAVE_PJSIP
+    if (m_impl->pjCall && m_impl->callAudioMedia) {
+        try {
+            pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
+            adm.getPlaybackDevMedia().adjustRxLevel(percent / 100.0f);
+        } catch (...) {}
+    }
+#endif
+    return true;
+}
+
+int SipCall::speakerVolume() const
+{
+    return m_speakerVolume;
 }
 
 bool SipCall::setVideoMuted(bool muted)

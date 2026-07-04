@@ -5,6 +5,7 @@
 
 class SidebarPanel;
 class VideoSettingsPanel;
+class MediaSettingsPanel;
 class QTabWidget;
 class QCheckBox;
 class QComboBox;
@@ -20,6 +21,7 @@ public:
     explicit SettingsPanel(QWidget *parent = nullptr);
     void reload();
     void focusVideoTab();
+    void focusMediaTab();
 
 private slots:
     void onLoadDefaults();
@@ -34,6 +36,7 @@ private:
 
     SidebarPanel      *m_accountsPanel{nullptr};
     VideoSettingsPanel *m_videoSettings{nullptr};
+    MediaSettingsPanel *m_mediaSettings{nullptr};
     QTabWidget        *m_tabs{nullptr};
 
     // Connection tab

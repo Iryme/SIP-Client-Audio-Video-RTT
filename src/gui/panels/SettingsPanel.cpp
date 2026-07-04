@@ -2,6 +2,7 @@
 
 #include "core/AppSettings.h"
 #include "core/Logger.h"
+#include "gui/panels/MediaSettingsPanel.h"
 #include "gui/panels/SidebarPanel.h"
 #include "gui/panels/VideoSettingsPanel.h"
 #include "gui/theme/ThemeManager.h"
@@ -96,6 +97,10 @@ SettingsPanel::SettingsPanel(QWidget *parent)
     // ── Video tab ──────────────────────────────────────────────────────────
     m_videoSettings = new VideoSettingsPanel(m_tabs);
     m_tabs->addTab(m_videoSettings, tr("Video"));
+
+    // ── Media (audio) tab ──────────────────────────────────────────────────
+    m_mediaSettings = new MediaSettingsPanel(m_tabs);
+    m_tabs->addTab(m_mediaSettings, tr("Media"));
 
     // ── Appearance tab ─────────────────────────────────────────────────────
     {
@@ -332,6 +337,13 @@ void SettingsPanel::focusVideoTab()
     if (!m_tabs)
         return;
     m_tabs->setCurrentWidget(m_videoSettings);
+}
+
+void SettingsPanel::focusMediaTab()
+{
+    if (!m_tabs)
+        return;
+    m_tabs->setCurrentWidget(m_mediaSettings);
 }
 
 void SettingsPanel::onThemeChanged(int comboIndex)

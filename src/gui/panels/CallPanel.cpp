@@ -127,11 +127,10 @@ CallPanel::CallPanel(QWidget *parent)
 
         m_micVolumeSlider = new QSlider(Qt::Horizontal, this);
         m_micVolumeSlider->setRange(0, 100);
-        m_micVolumeSlider->setValue(100);
+        m_micVolumeSlider->setValue(AudioMediaManager::instance().microphoneVolume());
         m_micVolumeSlider->setFixedWidth(80);
         m_micVolumeSlider->setFixedHeight(16);
-        m_micVolumeSlider->setEnabled(false);
-        m_micVolumeSlider->setToolTip(tr("Microphone volume — not available in current backend"));
+        m_micVolumeSlider->setToolTip(tr("Microphone volume"));
 
         micRow->addWidget(micLabel);
         micRow->addWidget(m_inputMeter, 1);
@@ -170,11 +169,10 @@ CallPanel::CallPanel(QWidget *parent)
 
         m_spkVolumeSlider = new QSlider(Qt::Horizontal, this);
         m_spkVolumeSlider->setRange(0, 100);
-        m_spkVolumeSlider->setValue(100);
+        m_spkVolumeSlider->setValue(AudioMediaManager::instance().speakerVolume());
         m_spkVolumeSlider->setFixedWidth(80);
         m_spkVolumeSlider->setFixedHeight(16);
-        m_spkVolumeSlider->setEnabled(false);
-        m_spkVolumeSlider->setToolTip(tr("Speaker volume — not available in current backend"));
+        m_spkVolumeSlider->setToolTip(tr("Speaker volume"));
 
         spkRow->addWidget(spkLabel);
         spkRow->addWidget(m_outputMeter, 1);
@@ -464,6 +462,16 @@ CallPanel::CallPanel(QWidget *parent)
             this, &CallPanel::onInputLevelChanged);
     connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
             this, &CallPanel::onOutputLevelChanged);
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::microphoneVolumeChanged,
+            this, &CallPanel::onMicrophoneVolumeChanged);
+    connect(&AudioMediaManager::instance(), &AudioMediaManager::speakerVolumeChanged,
+            this, &CallPanel::onSpeakerVolumeChanged);
+    connect(m_micVolumeSlider, &QSlider::valueChanged, this, [](int value) {
+        AudioMediaManager::instance().setMicrophoneVolume(value);
+    });
+    connect(m_spkVolumeSlider, &QSlider::valueChanged, this, [](int value) {
+        AudioMediaManager::instance().setSpeakerVolume(value);
+    });
 
     // Camera On/Off → CameraController (preserves LED-off fix)
     connect(m_btnCameraToggle, &QPushButton::toggled, this, [](bool on) {
@@ -1113,6 +1121,22 @@ void CallPanel::onCallFailed(const QString &, const QString &reason, int)
 
 void CallPanel::onInputLevelChanged(int level)  { m_inputMeter->setValue(level); }
 void CallPanel::onOutputLevelChanged(int level) { m_outputMeter->setValue(level); }
+
+void CallPanel::onMicrophoneVolumeChanged(int percent)
+{
+    if (m_micVolumeSlider->value() == percent)
+        return;
+    QSignalBlocker b(m_micVolumeSlider);
+    m_micVolumeSlider->setValue(percent);
+}
+
+void CallPanel::onSpeakerVolumeChanged(int percent)
+{
+    if (m_spkVolumeSlider->value() == percent)
+        return;
+    QSignalBlocker b(m_spkVolumeSlider);
+    m_spkVolumeSlider->setValue(percent);
+}
 
 void CallPanel::onMuteChanged(bool muted)
 {
