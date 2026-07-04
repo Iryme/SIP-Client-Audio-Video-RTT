@@ -16,7 +16,7 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 | Commit | Description |
 |--------|-------------|
 | `4350f03` | Add settings media configuration for audio devices |
-| `<pending>` | Polish media configuration controls |
+| `f6c8d24` | Polish media configuration controls |
 
 ### Changes
 
