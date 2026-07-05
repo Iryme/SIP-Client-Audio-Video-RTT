@@ -28,6 +28,9 @@ private slots:
 
     // Model lifecycle
     void clearAndExport();
+
+    // Raw SIP export
+    void rawSipRedactedInJsonExport();
 };
 
 // ---------------------------------------------------------------------------
@@ -203,6 +206,25 @@ void TestSipTrace::clearAndExport()
     SipTraceLogger::instance().clear();
     QCOMPARE(clearSpy.count(), 1);
     QCOMPARE(SipTraceLogger::instance().messages().size(), 0);
+}
+
+void TestSipTrace::rawSipRedactedInJsonExport()
+{
+    SipMessageTrace t;
+    t.direction    = SipMessageTrace::Direction::Outbound;
+    t.method       = QStringLiteral("REGISTER");
+    t.contentType  = QStringLiteral("application/sdp");
+    t.rawSip       = QStringLiteral("REGISTER sip:registrar.example.com SIP/2.0\r\n"
+                                    "Authorization: Digest response=\"deadbeefcafe\"\r\n\r\n");
+    SipTraceLogger::instance().logMessage(t);
+
+    const QString json = SipTraceLogger::instance().exportToJson();
+    QVERIFY(json.contains(QStringLiteral("\"rawSip\"")));
+    QVERIFY(json.contains(QStringLiteral("REGISTER sip:registrar.example.com")));
+    QVERIFY(!json.contains(QStringLiteral("deadbeefcafe")));
+    QVERIFY(json.contains(QStringLiteral("[REDACTED]")));
+    QVERIFY(json.contains(QStringLiteral("\"contentType\"")));
+    QVERIFY(json.contains(QStringLiteral("application/sdp")));
 }
 
 QTEST_GUILESS_MAIN(TestSipTrace)

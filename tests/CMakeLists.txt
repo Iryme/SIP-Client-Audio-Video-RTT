@@ -48,6 +48,16 @@ endif()
 # SIP trace sources — required by any test that compiles SipManager.cpp
 set(SIP_TRACE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipRawMessageParser.cpp
+)
+
+# PjsipTraceModule.cpp includes <pjsua-lib/pjsua.h> when HAVE_PJSIP is defined
+# (a global compile definition), so it can only be compiled by test targets
+# that also get the real PJSIP include dirs/libs (the CALL_SOURCES /
+# "foreach _pjsip_test_target" targets below) — never bundled into
+# SIP_TRACE_SOURCES, which is also used by plain-Qt tests like test_sip_trace.
+set(PJSIP_TRACE_MODULE_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/PjsipTraceModule.cpp
 )
 
 # Audio + video media sources — required by any test that uses AudioMediaManager or VideoMediaManager
@@ -188,6 +198,7 @@ qt_add_executable(test_sip_manager
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_TRACE_MODULE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
@@ -222,6 +233,7 @@ qt_add_executable(test_registration_retry
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_TRACE_MODULE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
@@ -256,6 +268,7 @@ qt_add_executable(test_registration_expiry
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_TRACE_MODULE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
@@ -290,6 +303,7 @@ qt_add_executable(test_profile_switch
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_TRACE_MODULE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
@@ -411,6 +425,7 @@ qt_add_executable(test_diagnostics_bundle
     ${CALL_SOURCES}
     ${AUDIO_MEDIA_SOURCES}
     ${SIP_TRACE_SOURCES}
+    ${PJSIP_TRACE_MODULE_SOURCES}
     ${PJSIP_AUDIO_MAPPER_SOURCES}
     ${CODEC_MANAGER_SOURCES}
     ${SECURITY_SOURCES}
@@ -572,6 +587,23 @@ target_link_libraries(test_sip_trace PRIVATE
 )
 
 add_test(NAME test_sip_trace COMMAND test_sip_trace)
+
+# ---- test_sip_raw_message_parser ----------------------------------------
+qt_add_executable(test_sip_raw_message_parser
+    test_sip_raw_message_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipRawMessageParser.cpp
+)
+
+target_include_directories(test_sip_raw_message_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sip_raw_message_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sip_raw_message_parser COMMAND test_sip_raw_message_parser)
 
 # PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
 if(CALL_SOURCES_EXTRA_LIBS)

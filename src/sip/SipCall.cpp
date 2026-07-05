@@ -493,8 +493,14 @@ struct SipCall::Impl
                             .arg(mi.index)
                             .arg(static_cast<int>(mi.status)));
                 } else if (mi.type == PJMEDIA_TYPE_TEXT) {
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("RTT media stream status: index=%1 status=%2 direction=%3")
+                            .arg(mi.index)
+                            .arg(static_cast<int>(mi.status))
+                            .arg(static_cast<int>(mi.dir)));
                     if (mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
                         textMediaActive = true;
+                        m_impl->rttRequestPendingLocal = false;
                         Logger::instance().info(LogCategory::Sip,
                             QStringLiteral("PJSIP RTT text stream active: pjsipCallId=%1 "
                                            "mediaIndex=%2 (RFC 4103 / T.140)")
@@ -552,12 +558,12 @@ struct SipCall::Impl
                     emit self->audioMediaDisconnected();
                 if (textMediaActive && !prevRttActive) {
                     Logger::instance().info(LogCategory::Sip,
-                        QStringLiteral("Text protocol active: protocol=RTT"));
+                        QStringLiteral("RTT negotiated active: protocol=RTT"));
                     self->m_impl->rttRequestNotified = false; // RTT accepted — reset pending flag
                     emit self->rttMediaConnected();
                 } else if (!textMediaActive && prevRttActive) {
                     Logger::instance().info(LogCategory::Sip,
-                        QStringLiteral("RTT text media gone — rttMediaDisconnected"));
+                        QStringLiteral("RTT inactive/rejected/withdrawn: rttMediaDisconnected"));
                     emit self->rttMediaDisconnected();
                 }
                 if (videoActive) {
@@ -856,6 +862,7 @@ struct SipCall::Impl
     bool                videoRequestPendingLocal{false}; // local user requested video and is awaiting completion
     bool                videoRequestNotified{false}; // first video negotiation notification emitted
     bool                rttRequestNotified{false};    // incoming RTT request notified to UI; reset on RTT active
+    bool                rttRequestPendingLocal{false}; // local user requested RTT and is awaiting completion
     bool                rttMediaActive{false};         // true while T.140 text stream is active
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
     bool                videoActiveBeforeHold{false};  // video was negotiated when local hold was sent
@@ -944,6 +951,12 @@ bool SipCall::makeCallWithOptions(const QString &remoteUri, const SipCallOptions
 
     m_stateMachine.tryTransition(CallState::OutgoingInit,
                                  QStringLiteral("Dialing %1").arg(m_remoteUri));
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Initial call media offer: audio=%1 video=%2 rtt=%3")
+            .arg(opts.requireAudio ? QStringLiteral("yes") : QStringLiteral("no"),
+                 opts.allowVideo   ? QStringLiteral("yes") : QStringLiteral("no"),
+                 opts.requireRtt   ? QStringLiteral("yes") : QStringLiteral("no")));
 
 #ifdef HAVE_PJSIP
     if (m_impl->pjAccountHandle) {
@@ -1581,17 +1594,42 @@ bool SipCall::requestVideo(bool enabled)
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         try {
+            // Preserve RTT across this video re-INVITE unless the user has
+            // explicitly disabled it or the peer withdrew/rejected it. RTT
+            // counts as "preserve" when: negotiated active or held (a held
+            // text stream reports LOCAL_HOLD/REMOTE_HOLD, not ACTIVE), an
+            // incoming RTT request is pending user accept, a local RTT
+            // request is still negotiating, or RTT was active before hold.
             bool textActive = false;
-            try {
-                const pj::CallInfo ci = m_impl->pjCall->getInfo();
-                for (const auto &mi : ci.media) {
-                    if (mi.type == PJMEDIA_TYPE_TEXT
-                        && mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
-                        textActive = true;
-                        break;
+            QString preserveReason = QStringLiteral("no active/pending/held RTT state");
+            if (m_impl->rttRequestNotified) {
+                textActive = true;
+                preserveReason = QStringLiteral("incoming RTT request pending local accept");
+            } else if (m_impl->rttRequestPendingLocal) {
+                textActive = true;
+                preserveReason = QStringLiteral("local RTT request still negotiating");
+            } else if (m_impl->rttActiveBeforeHold) {
+                textActive = true;
+                preserveReason = QStringLiteral("RTT was active before hold");
+            }
+            if (!textActive) {
+                try {
+                    const pj::CallInfo ci = m_impl->pjCall->getInfo();
+                    for (const auto &mi : ci.media) {
+                        if (mi.type == PJMEDIA_TYPE_TEXT
+                            && (mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                                || mi.status == PJSUA_CALL_MEDIA_LOCAL_HOLD
+                                || mi.status == PJSUA_CALL_MEDIA_REMOTE_HOLD)) {
+                            textActive = true;
+                            preserveReason = QStringLiteral("RTT negotiated active/held");
+                            break;
+                        }
                     }
-                }
-            } catch (...) {}
+                } catch (...) {}
+            }
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Preserve RTT during re-INVITE: %1 reason=%2")
+                    .arg(textActive ? QStringLiteral("yes") : QStringLiteral("no"), preserveReason));
 
             pj::CallOpParam prm(true);
             prm.opt.videoCount = enabled ? 1 : 0;
@@ -1725,27 +1763,48 @@ bool SipCall::requestRtt(bool enabled)
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         try {
-            bool videoActive = false;
-            try {
-                const pj::CallInfo ci = m_impl->pjCall->getInfo();
-                for (const auto &mi : ci.media) {
-                    if (mi.type == PJMEDIA_TYPE_VIDEO
-                        && mi.status == PJSUA_CALL_MEDIA_ACTIVE) {
-                        videoActive = true;
-                        break;
+            // Preserve video across this RTT re-INVITE using the same
+            // active/held/pending rules as requestVideo() uses for RTT.
+            bool videoActive = m_impl->videoRequestPendingLocal || m_impl->videoRequestNotified
+                || m_impl->videoActiveBeforeHold;
+            if (!videoActive) {
+                try {
+                    const pj::CallInfo ci = m_impl->pjCall->getInfo();
+                    for (const auto &mi : ci.media) {
+                        if (mi.type == PJMEDIA_TYPE_VIDEO
+                            && (mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                                || mi.status == PJSUA_CALL_MEDIA_LOCAL_HOLD
+                                || mi.status == PJSUA_CALL_MEDIA_REMOTE_HOLD)) {
+                            videoActive = true;
+                            break;
+                        }
                     }
-                }
-            } catch (...) {}
+                } catch (...) {}
+            }
 
             pj::CallOpParam prm(true);
             prm.opt.videoCount = videoActive ? 1 : 0;
             prm.opt.textCount = enabled ? 1 : 0;
             if (videoActive)
                 applyVideoMediaDirectionIfNeeded(prm.opt);
+
+            if (enabled) {
+                m_impl->rttRequestPendingLocal = true;
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("%1: textCount=%2")
+                        .arg(m_impl->rttRequestNotified
+                                 ? QStringLiteral("Accept RTT")
+                                 : QStringLiteral("Request RTT ON"))
+                        .arg(prm.opt.textCount));
+                if (m_impl->rttRequestNotified)
+                    m_impl->rttRequestNotified = false;
+            }
+
             m_impl->pjCall->reinvite(prm);
             logMediaSummary(QStringLiteral("After Request RTT"));
             return true;
         } catch (const pj::Error &e) {
+            m_impl->rttRequestPendingLocal = false;
             if (isSessionTerminatedError(e)) {
                 Logger::instance().info(LogCategory::Sip,
                     QStringLiteral("requestRtt() ignored: call already terminated during teardown"));

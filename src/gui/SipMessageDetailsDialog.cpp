@@ -83,6 +83,10 @@ SipMessageDetailsDialog::SipMessageDetailsDialog(QWidget *parent)
     m_cseq = makeValue(QStringLiteral("—"));
     meta->addWidget(m_cseq, 5, 1, 1, 3);
 
+    meta->addWidget(new QLabel(tr("Content-Type:"), this), 6, 0);
+    m_contentType = makeValue(QStringLiteral("—"));
+    meta->addWidget(m_contentType, 6, 1, 1, 3);
+
     root->addLayout(meta);
 
     auto sectionHeader = [](const QString &title) {
@@ -142,15 +146,17 @@ void SipMessageDetailsDialog::setTrace(const SipMessageTrace &trace)
     m_to->setText(trace.toUri.isEmpty() ? tr("Not available") : trace.toUri);
     m_callId->setText(trace.callId.isEmpty() ? tr("Not available") : trace.callId);
     m_cseq->setText(trace.cSeq.isEmpty() ? tr("Not available") : trace.cSeq);
+    m_contentType->setText(trace.contentType.isEmpty() ? tr("Not available") : trace.contentType);
     m_headers->setPlainText(formatHeaders(trace));
 
     const QString body = extractBody(trace.rawSip);
+    const bool isSdp = trace.contentType.contains(QStringLiteral("sdp"), Qt::CaseInsensitive);
     if (body.isEmpty()) {
         m_body->setPlainText(trace.rawSip.isEmpty()
             ? tr("Raw SIP not available")
             : tr("No body present"));
     } else {
-        m_body->setPlainText(body);
+        m_body->setPlainText(isSdp ? tr("SDP:\n%1").arg(body) : body);
     }
 
     if (trace.rawSip.isEmpty()) {
@@ -193,6 +199,7 @@ QString SipMessageDetailsDialog::formatHeaders(const SipMessageTrace &trace)
     ts << "To: " << (trace.toUri.isEmpty() ? QStringLiteral("Not available") : trace.toUri) << '\n';
     ts << "Call-ID: " << (trace.callId.isEmpty() ? QStringLiteral("Not available") : trace.callId) << '\n';
     ts << "CSeq: " << (trace.cSeq.isEmpty() ? QStringLiteral("Not available") : trace.cSeq) << '\n';
+    ts << "Content-Type: " << (trace.contentType.isEmpty() ? QStringLiteral("Not available") : trace.contentType) << '\n';
     return out;
 }
 

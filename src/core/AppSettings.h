@@ -45,6 +45,11 @@ public:
     static void saveSpeakerVolume   (int percent) { settings().setValue("media/volume/speaker", percent); }
     static int  loadSpeakerVolume   ()             { return settings().value("media/volume/speaker", 100).toInt(); }
 
+    // Call type selector — persisted as int matching CallType enum
+    // (0 = AudioOnly, the default when unset).
+    static int  loadLastCallType()        { return settings().value(QStringLiteral("call/lastType"), 0).toInt(); }
+    static void saveLastCallType(int type) { settings().setValue(QStringLiteral("call/lastType"), type); }
+
     // Theme (persisted as int matching AppTheme enum; 0 = Auto)
     static int  savedThemeIndex()        { return settings().value(QStringLiteral("ui/theme"), 0).toInt(); }
     static void saveThemeIndex(int idx)  { settings().setValue(QStringLiteral("ui/theme"), idx); settings().sync(); }

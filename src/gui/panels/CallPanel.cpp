@@ -84,6 +84,11 @@ CallPanel::CallPanel(QWidget *parent)
         m_callTypeCombo->addItem(callTypeName(CallType::AudioRtt),      static_cast<int>(CallType::AudioRtt));
         m_callTypeCombo->addItem(callTypeName(CallType::AudioVideoRtt), static_cast<int>(CallType::AudioVideoRtt));
         m_callTypeCombo->addItem(callTypeName(CallType::RttOnly),       static_cast<int>(CallType::RttOnly));
+        {
+            const int savedType = AppSettings::loadLastCallType();
+            const int savedIdx = m_callTypeCombo->findData(savedType);
+            m_callTypeCombo->setCurrentIndex(savedIdx >= 0 ? savedIdx : 0);
+        }
 
         m_btnCall = new QPushButton(tr("Call"), dialOuter);
         m_btnCall->setObjectName("CallBtn");
@@ -275,6 +280,7 @@ CallPanel::CallPanel(QWidget *parent)
         m_cardResolution  = makeCard(tr("Resolution"),    tr("Configured video resolution"));
         m_cardFps         = makeCard(tr("FPS"),           tr("Local video frames per second"));
         m_cardRemoteUri   = makeCard(tr("Remote URI"),    tr("SIP URI of the remote party"));
+        m_cardInitialOffer = makeCard(tr("Initial Offer"), tr("Media offered in the outbound INVITE"));
         m_cardLocalAccount= makeCard(tr("Local Account"), tr("Active SIP account URI"));
         m_cardPacketLoss  = makeCard(tr("Packet Loss"),   tr("Video frame drops this second"));
         m_cardJitter      = makeCard(tr("Jitter"),        tr("RTP jitter (not available in stub)"));
@@ -295,7 +301,7 @@ CallPanel::CallPanel(QWidget *parent)
             m_cardState, m_cardDuration, m_cardAudio, m_cardLocalVideo,
             m_cardRemoteVideo, m_cardRtt, m_cardLmpe, m_cardVideoCodec,
             m_cardAudioCodec, m_cardBitrate, m_cardResolution, m_cardFps,
-            m_cardRemoteUri, m_cardLocalAccount, m_cardPacketLoss,
+            m_cardRemoteUri, m_cardInitialOffer, m_cardLocalAccount, m_cardPacketLoss,
             m_cardJitter, m_cardLatency
         };
         for (StatusCard *c : cards)
@@ -651,6 +657,7 @@ CallPanel::CallPanel(QWidget *parent)
         const int typeIdx = m_callTypeCombo->currentIndex();
         const CallType ct = static_cast<CallType>(m_callTypeCombo->itemData(typeIdx).toInt());
         m_activeCallType = ct;
+        AppSettings::saveLastCallType(static_cast<int>(ct));
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Placing call: uri=%1 type=%2")
                 .arg(result.uri, callTypeName(ct)));
@@ -783,6 +790,7 @@ void CallPanel::placeCall(const QString &uri)
         ? static_cast<CallType>(m_callTypeCombo->itemData(typeIdx).toInt())
         : CallType::AudioOnly;
     m_activeCallType = ct;
+    AppSettings::saveLastCallType(static_cast<int>(ct));
     SipManager::instance().makeCall(result.uri, CallMediaOptions::fromType(ct));
 }
 
@@ -906,6 +914,17 @@ void CallPanel::updateStatusCards()
     // Remote URI
     m_cardRemoteUri->setValue(m_remoteUri.isEmpty() ? QStringLiteral("—") : m_remoteUri);
     m_cardRemoteUri->setStatus(m_remoteUri.isEmpty() ? QString{} : QStringLiteral("ok"));
+
+    // Initial offer — what the outbound INVITE actually offered, set once
+    // dialing starts; cleared by resetStatusCards() on hangup/reject.
+    if (m_remoteUri.isEmpty()) {
+        m_cardInitialOffer->setValue(QStringLiteral("—"));
+        m_cardInitialOffer->setStatus({});
+    } else {
+        m_cardInitialOffer->setValue(
+            QStringLiteral("Initial offer: %1").arg(callTypeName(m_activeCallType)));
+        m_cardInitialOffer->setStatus(QStringLiteral("ok"));
+    }
 
     // Local account
     const SipProfile prof = SipProfileManager::instance().activeProfile();
@@ -1104,7 +1123,7 @@ void CallPanel::resetStatusCards()
     StatusCard *allCards[] = {
         m_cardAudio, m_cardLocalVideo, m_cardRemoteVideo, m_cardRtt, m_cardLmpe,
         m_cardVideoCodec, m_cardAudioCodec, m_cardBitrate, m_cardResolution, m_cardFps,
-        m_cardRemoteUri, m_cardLocalAccount, m_cardPacketLoss, m_cardJitter, m_cardLatency
+        m_cardRemoteUri, m_cardInitialOffer, m_cardLocalAccount, m_cardPacketLoss, m_cardJitter, m_cardLatency
     };
     for (StatusCard *c : allCards) {
         c->setValue(QStringLiteral("—"));

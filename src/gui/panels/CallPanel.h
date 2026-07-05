@@ -129,6 +129,7 @@ private:
     StatusCard *m_cardResolution{nullptr};
     StatusCard *m_cardFps{nullptr};
     StatusCard *m_cardRemoteUri{nullptr};
+    StatusCard *m_cardInitialOffer{nullptr};
     StatusCard *m_cardLocalAccount{nullptr};
     StatusCard *m_cardPacketLoss{nullptr};
     StatusCard *m_cardJitter{nullptr};

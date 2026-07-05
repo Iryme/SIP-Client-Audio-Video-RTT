@@ -20,6 +20,7 @@
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
 #include <QHash>
+#include "sip/PjsipTraceModule.h"
 #endif
 
 #if defined(HAVE_PJSIP) && defined(_WIN32)
@@ -44,6 +45,11 @@ static bool initPjsip(SipManager::PjEndpoint *&out, QString &errOut)
         cfg.logConfig.consoleLevel = 3;
         out->ep.libInit(cfg);
         out->ep.libStart();
+
+        // Capture full raw SIP messages (request/status line + headers + SDP)
+        // for the SIP Ladder detail view — without this, only synthetic
+        // per-action summaries are ever logged (see SipManager::makeCall etc.).
+        PjsipTraceModule::install();
 
 #if defined(_WIN32)
         {
@@ -73,6 +79,7 @@ static void shutdownPjsip(SipManager::PjEndpoint *&ep)
     if (!ep)
         return;
     try {
+        PjsipTraceModule::uninstall();
         ep->ep.libDestroy();
     } catch (...) {
     }

@@ -16,8 +16,10 @@ struct SipMessageTrace
     QString    toUri;
     QString    callId;
     QString    cSeq;
-    QString    rawSip;        // Stored only when Raw log level is enabled;
-                              // Authorization headers are replaced with [REDACTED].
+    QString    contentType;   // e.g. "application/sdp"; empty if no body or unknown
+    QString    rawSip;        // Full request-line/status-line + headers + body;
+                              // Authorization/Proxy-Authorization values are
+                              // replaced with [REDACTED] before storage.
 
     QString summary() const
     {

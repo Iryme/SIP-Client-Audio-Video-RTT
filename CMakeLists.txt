@@ -113,6 +113,8 @@ set(SOURCES
     src/gui/widgets/StatusCard.cpp
     src/gui/widgets/AudioLevelMeter.cpp
     src/sip/SipTraceLogger.cpp
+    src/sip/SipRawMessageParser.cpp
+    src/sip/PjsipTraceModule.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -196,6 +198,8 @@ set(HEADERS
     src/gui/SipMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h
+    src/sip/SipRawMessageParser.h
+    src/sip/PjsipTraceModule.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h

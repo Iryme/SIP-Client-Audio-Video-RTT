@@ -85,12 +85,31 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 **Pause/Resume preserves RTT across hold (`src/sip/SipCall.cpp`)**
 - `rttActiveBeforeHold` is now recorded when local hold is sent, mirroring the existing `videoActiveBeforeHold` handling — the hold renegotiation deactivates the text stream, so the live `rttMediaActive` flag alone would drop RTT from the unhold re-INVITE. The resume path also treats a text stream in `LOCAL_HOLD`/`REMOTE_HOLD` status as negotiated.
 
+### Additional stabilization fixes (round 3)
+
+**RTT dropped when starting/accepting video mid-call (`src/sip/SipCall.cpp`)**
+- `requestVideo(true)` only preserved RTT if the text stream was already `PJSUA_CALL_MEDIA_ACTIVE` at the moment the re-INVITE was built. A held text stream (`LOCAL_HOLD`/`REMOTE_HOLD`), an incoming RTT request still awaiting local accept, or a local RTT request still negotiating were all missed, so adding video silently sent `m=text 0` and tore down RTT. The check now also covers held status and both pending states (new `rttRequestPendingLocal` flag, mirroring the existing `videoRequestPendingLocal`), and logs `Preserve RTT during re-INVITE: yes/no reason=...` so the decision is auditable from the logs.
+- `requestRtt()` had the matching gap in the other direction (video preservation only checked live-active status) — fixed the same way, and it now sets/clears `rttRequestPendingLocal` and logs `Request RTT ON: textCount=...` / `Accept RTT: textCount=...` depending on whether an incoming request was pending.
+- Media-state logging was tightened: every text stream update now logs `RTT media stream status: index=... status=... direction=...`, and the connect/disconnect transitions now log `RTT negotiated active` / `RTT inactive/rejected/withdrawn` (previously less specific wording) plus `Initial call media offer: audio=... video=... rtt=...` on every outbound call.
+
+**Call type selector persistence and visibility (`src/gui/panels/CallPanel.*`, `src/core/AppSettings.h`)**
+- The existing "Call type" combo (Audio only / Audio+Video / Audio+RTT / Audio+Video+RTT / RTT only) now persists the last selection (`AppSettings::saveLastCallType`/`loadLastCallType`) and restores it on next launch, defaulting to Audio only when unset.
+- A new "Initial Offer" status card shows exactly what the outbound INVITE offered (e.g. "Initial offer: Audio + RTT"), so the UI reflects the actual SDP offer rather than only the combo's current selection.
+
+**Raw SIP/SDP capture for the SIP Ladder (`src/sip/PjsipTraceModule.*`, `src/sip/SipRawMessageParser.*`, `src/sip/SipTraceLogger.cpp`, `src/gui/SipMessageDetailsDialog.*`)**
+- Root cause: `SipManager` only ever logged synthetic per-action trace summaries (method/from/to/Call-ID) — no code path captured actual wire-level SIP text, so the SIP Ladder detail dialog (which already existed, fully built to show raw SIP and an extracted body) had nothing real to display.
+- Added a `pjsip_module` (`PjsipTraceModule`) registered on the PJSIP endpoint that hooks `on_tx_request`/`on_tx_response`/`on_rx_request`/`on_rx_response`, capturing the full request-line/status-line + headers + body (via `pjsip_tx_data_encode()` for outbound, `rdata->msg_info.msg_buf` for inbound) for every SIP transaction — INVITE, UPDATE, re-INVITE, ACK, BYE, CANCEL, REGISTER, OPTIONS, and all 1xx/2xx/4xx/5xx responses — and forwards it to `SipTraceLogger` (redacted, marshalled to the Qt main thread).
+- Added `SipRawMessageParser`, a pure-Qt/text parser (no PJSIP types) that extracts method/status/Call-ID/CSeq/From/To/Content-Type from the raw text, kept separate so it is unit-testable without a live PJSIP stack.
+- `SipMessageTrace` gained a `contentType` field; `SipMessageDetailsDialog` now shows it and labels the extracted body "SDP:" when `Content-Type: application/sdp`.
+- `SipTraceLogger::exportToJson()`/`exportToText()` previously omitted `rawSip` entirely — both now include the redacted raw SIP text (Authorization/Proxy-Authorization values already stripped by `logMessage()` before storage), so `sip_trace.json`/`sip_trace.txt` in the diagnostics bundle carry real SIP content.
+
 ### Validation
 
-- Build Debug: see final report
-- Build Release: see final report
-- ctest Debug / Release: see final report
-- Windows package regenerated: `dist/SIP-Client-Audio-Video-RTT-v1.4.1-windows.zip`
+- Build Debug: PASS (`cmake --build build`, MSVC/NMake, real PJSIP backend)
+- Build Release: PASS (`cmake --build build-release --config Release`, real PJSIP backend)
+- ctest Debug: 33/33 passed (includes new `test_sip_raw_message_parser` and extended `test_sip_trace`)
+- ctest Release: 33/33 passed
+- Windows package regenerated: `dist/SIP-Client-Audio-Video-RTT-v1.4.1-windows.zip` (62,156,993 bytes); smoke test PASS (`SIP backend initialized (PJSIP/pjsua2)`, clean shutdown, no missing DLLs)
 
 ---
 

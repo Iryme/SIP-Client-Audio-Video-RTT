@@ -33,6 +33,7 @@ private:
     QLabel         *m_to{nullptr};
     QLabel         *m_callId{nullptr};
     QLabel         *m_cseq{nullptr};
+    QLabel         *m_contentType{nullptr};
     QPlainTextEdit  *m_headers{nullptr};
     QPlainTextEdit  *m_body{nullptr};
     QPlainTextEdit  *m_raw{nullptr};

@@ -65,7 +65,16 @@ QString SipTraceLogger::exportToText() const
             ts << QStringLiteral("  CSeq: ") << t.cSeq;
         if (!t.callId.isEmpty())
             ts << QStringLiteral("  Call-ID: ") << t.callId;
+        if (!t.contentType.isEmpty())
+            ts << QStringLiteral("  Content-Type: ") << t.contentType;
         ts << '\n';
+        if (!t.rawSip.isEmpty()) {
+            // rawSip is already redacted by logMessage() before storage.
+            ts << t.rawSip;
+            if (!t.rawSip.endsWith(QLatin1Char('\n')))
+                ts << '\n';
+            ts << QStringLiteral("--- end message ---\n");
+        }
     }
     return out;
 }
@@ -86,6 +95,10 @@ QString SipTraceLogger::exportToJson() const
         obj[QStringLiteral("to")]         = t.toUri;
         obj[QStringLiteral("callId")]     = t.callId;
         obj[QStringLiteral("cseq")]       = t.cSeq;
+        obj[QStringLiteral("contentType")] = t.contentType;
+        // rawSip is already redacted (Authorization/Proxy-Authorization values
+        // stripped) by logMessage() before storage — safe to export as-is.
+        obj[QStringLiteral("rawSip")]     = t.rawSip;
         arr.append(obj);
     }
     return QJsonDocument(arr).toJson(QJsonDocument::Indented);
