@@ -30,6 +30,9 @@ private slots:
     // Edge cases
     void noCrashWithoutDevices();
     void activeCallCleanup();
+
+    // Codec formatting (pure static helper, no PJSIP/call required)
+    void audioCodecSummaryFormatting();
 };
 
 // ---------------------------------------------------------------------------
@@ -192,6 +195,18 @@ void TestAudioMedia::activeCallCleanup()
     QVERIFY(!mgr.isMediaActive());
     QCOMPARE(mgr.inputLevel(),  0);
     QCOMPARE(mgr.outputLevel(), 0);
+}
+
+void TestAudioMedia::audioCodecSummaryFormatting()
+{
+    QCOMPARE(SipCall::formatAudioCodecSummary(QStringLiteral("PCMA"), 8000, 8),
+             QStringLiteral("PCMA/8000 pt=8"));
+    QCOMPARE(SipCall::formatAudioCodecSummary(QStringLiteral("opus"), 48000, 111),
+             QStringLiteral("opus/48000 pt=111"));
+
+    // A freshly constructed call has no negotiated codec yet.
+    SipCall call;
+    QVERIFY(call.negotiatedAudioCodec().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TestAudioMedia)

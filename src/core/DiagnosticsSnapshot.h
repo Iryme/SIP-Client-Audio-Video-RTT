@@ -38,7 +38,7 @@ struct DiagnosticsSnapshot
 
     // ---- Media / RTP ----------------------------------------------------
     bool    audioConnected{false};
-    QString audioCodec{diagnosticsNotAvailable()};   // negotiated codec name is only logged today, not queryable
+    QString audioCodec{diagnosticsNotAvailable()};   // e.g. "PCMA/8000 pt=8"; from SipCall::negotiatedAudioCodec()
     QString audioPtime{diagnosticsNotAvailable()};    // not exposed by RtpStatsSnapshot
     bool    audioPacketsRxAvailable{false};
     unsigned audioPacketsRx{0};

@@ -87,6 +87,16 @@ public:
     // snapshot when there is no active call or PJSIP cannot expose stats.
     RtpStatsSnapshot mediaRtpStats() const;
 
+    // Negotiated audio codec for the active call's audio stream, formatted as
+    // "<name>/<clockRateHz> pt=<payloadType>" (e.g. "PCMA/8000 pt=8").
+    // Empty when no audio codec has been negotiated yet (or in stub mode).
+    QString negotiatedAudioCodec() const;
+
+    // Format a negotiated audio codec the same way it is stored/logged.
+    // Exposed as a static utility so tests can verify the exact string
+    // without needing a live PJSIP call.
+    static QString formatAudioCodecSummary(const QString &name, int clockRateHz, int payloadType);
+
     // Embed PJSIP video windows into Qt native widget handles.
     // remoteWidget: winId() of the main remote video area.
     // localPreview:  winId() of the local PiP widget.
@@ -186,6 +196,7 @@ private:
     int              m_micVolume{100};
     int              m_speakerVolume{100};
     bool             m_videoMuted{false};
+    QString          m_negotiatedAudioCodec;
     bool             m_localVideoAvailable{false};
     bool             m_remoteVideoAvailable{false};
     QTimer           m_levelTimer;

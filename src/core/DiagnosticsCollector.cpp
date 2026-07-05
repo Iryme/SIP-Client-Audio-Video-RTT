@@ -121,6 +121,11 @@ void DiagnosticsCollector::rebuild()
     s.audioPacketsRxAvailable = rtp.available;
     s.audioPacketsRx = rtp.packetReceivedPackets;
 
+    {
+        const QString codec = sip.activeCallAudioCodec();
+        s.audioCodec = codec.isEmpty() ? diagnosticsNotAvailable() : codec;
+    }
+
     s.audioConnected = audio.isMediaActive();
     s.audioMuted = audio.isMuted();
     s.microphoneVolume = audio.microphoneVolume();

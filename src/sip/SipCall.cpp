@@ -355,7 +355,9 @@ struct SipCall::Impl
                                     .arg(pjsua_call_get_conf_port(cid))
                                     .arg(mi.index));
                         }
-                        // Log negotiated audio codec from SDP.
+                        // Log negotiated audio codec from SDP and store it so
+                        // Diagnostics can display the real negotiated codec
+                        // instead of only ever seeing it in the log.
                         try {
                             pjsua_stream_info si;
                             pj_bzero(&si, sizeof(si));
@@ -372,6 +374,10 @@ struct SipCall::Impl
                                         .arg(encName)
                                         .arg(fmt.clock_rate)
                                         .arg(fmt.pt));
+                                if (m_impl->q) {
+                                    m_impl->q->m_negotiatedAudioCodec =
+                                        SipCall::formatAudioCodecSummary(encName, fmt.clock_rate, fmt.pt);
+                                }
                             }
                         } catch (...) {}
                     } catch (...) {
@@ -603,7 +609,9 @@ struct SipCall::Impl
 
             QPointer<SipCall> self = m_impl->q;
             QMetaObject::invokeMethod(self, [self]() {
-                if (self) emit self->audioMediaDisconnected();
+                if (!self) return;
+                self->m_negotiatedAudioCodec.clear();
+                emit self->audioMediaDisconnected();
             }, Qt::QueuedConnection);
         }
 
@@ -1954,6 +1962,7 @@ void SipCall::reset(const QString &reason)
     m_levelTimer.stop();
     m_localVideoAvailable  = false;
     m_remoteVideoAvailable = false;
+    m_negotiatedAudioCodec.clear();
     m_stateMachine.reset(reason);
 }
 
@@ -1961,6 +1970,13 @@ CallState SipCall::state()      const { return m_stateMachine.state(); }
 QString   SipCall::statusText() const { return m_stateMachine.statusText(); }
 QString   SipCall::remoteUri()  const { return m_remoteUri; }
 QString   SipCall::callId()     const { return m_callId; }
+
+QString SipCall::negotiatedAudioCodec() const { return m_negotiatedAudioCodec; }
+
+QString SipCall::formatAudioCodecSummary(const QString &name, int clockRateHz, int payloadType)
+{
+    return QStringLiteral("%1/%2 pt=%3").arg(name).arg(clockRateHz).arg(payloadType);
+}
 
 CallStateMachine &SipCall::stateMachine() { return m_stateMachine; }
 

@@ -5,6 +5,33 @@
 #include <QThread>
 #include <QTimer>
 
+// Some platforms register internal/virtual audio endpoints as ordinary
+// input/output devices (e.g. Windows Remote Desktop's redirected "Remote
+// Audio" endpoint). These are not physical hardware — offering them as a
+// selectable Speaker/Microphone can silently route call audio away from the
+// real device, so they are excluded from the physical device lists.
+static bool isInternalAudioEndpoint(const QString &displayName)
+{
+    static const QStringList kBlocked = { QStringLiteral("remote audio") };
+    const QString lower = displayName.trimmed().toLower();
+    for (const QString &blocked : kBlocked) {
+        if (lower.contains(blocked))
+            return true;
+    }
+    return false;
+}
+
+static QList<MediaDevice> filterPhysicalAudioDevices(const QList<MediaDevice> &devices)
+{
+    QList<MediaDevice> out;
+    out.reserve(devices.size());
+    for (const MediaDevice &d : devices) {
+        if (!isInternalAudioEndpoint(d.displayName))
+            out.append(d);
+    }
+    return out;
+}
+
 MediaDeviceManager &MediaDeviceManager::instance()
 {
     static MediaDeviceManager s_instance;
@@ -35,8 +62,8 @@ void MediaDeviceManager::ensureLoaded() const
 
 void MediaDeviceManager::loadAll()
 {
-    m_microphones = m_backend->microphones();
-    m_speakers    = m_backend->speakers();
+    m_microphones = filterPhysicalAudioDevices(m_backend->microphones());
+    m_speakers    = filterPhysicalAudioDevices(m_backend->speakers());
     m_cameras     = m_backend->cameras();
     m_loaded      = true;
 
@@ -73,9 +100,9 @@ void MediaDeviceManager::refreshDevices()
     // (internally mutex-protected). Results are posted back via QueuedConnection.
     auto *thread = QThread::create([this, startMs]() {
         const qint64 t0 = QDateTime::currentMSecsSinceEpoch();
-        auto mics = m_backend->microphones();
+        auto mics = filterPhysicalAudioDevices(m_backend->microphones());
         const qint64 t1 = QDateTime::currentMSecsSinceEpoch();
-        auto spk  = m_backend->speakers();
+        auto spk  = filterPhysicalAudioDevices(m_backend->speakers());
         const qint64 t2 = QDateTime::currentMSecsSinceEpoch();
         auto cams = m_backend->cameras();
         const qint64 t3 = QDateTime::currentMSecsSinceEpoch();

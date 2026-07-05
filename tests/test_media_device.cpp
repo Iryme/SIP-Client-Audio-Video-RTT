@@ -54,6 +54,8 @@ private slots:
     void selectedDevicePersistence();
     void emptyDeviceListHandling();
     void deviceTypeFiltering();
+    void remoteAudioExcludedFromPhysicalDeviceLists();
+    void defaultSpeakerAndMicrophoneNeverRemoteAudio();
 };
 
 static void purgeTestSettings()
@@ -187,6 +189,64 @@ void TestMediaDevice::deviceTypeFiltering()
     QVERIFY( mgr.findDevice(MediaDeviceType::Camera,     "dev-2").isNull()); // wrong type
     QVERIFY(!mgr.findDevice(MediaDeviceType::Camera,     "dev-3").isNull());
     QVERIFY( mgr.findDevice(MediaDeviceType::Microphone, "dev-3").isNull()); // wrong type
+}
+
+// ---------------------------------------------------------------------------
+// 5. remoteAudioExcludedFromPhysicalDeviceLists
+//    A backend that reports a virtual "Remote Audio" endpoint (e.g. Windows
+//    Remote Desktop's redirected audio device) must never surface it as a
+//    selectable physical Speaker/Microphone.
+// ---------------------------------------------------------------------------
+void TestMediaDevice::remoteAudioExcludedFromPhysicalDeviceLists()
+{
+    auto *stub = new StubMediaDeviceBackend;
+    stub->m_mics = {
+        StubMediaDeviceBackend::makeDevice("mic-1", "Built-in Mic",
+                                           MediaDeviceType::Microphone, true),
+        StubMediaDeviceBackend::makeDevice("mic-2", "Remote Audio",
+                                           MediaDeviceType::Microphone)
+    };
+    stub->m_speakers = {
+        StubMediaDeviceBackend::makeDevice("spk-1", "Built-in Speaker",
+                                           MediaDeviceType::Speaker, true),
+        StubMediaDeviceBackend::makeDevice("spk-2", "Remote Audio",
+                                           MediaDeviceType::Speaker)
+    };
+    injectStub(stub);
+
+    auto &mgr = MediaDeviceManager::instance();
+
+    QCOMPARE(mgr.listMicrophones().size(), 1);
+    QCOMPARE(mgr.listSpeakers().size(), 1);
+    QVERIFY(mgr.findDevice(MediaDeviceType::Microphone, "mic-2").isNull());
+    QVERIFY(mgr.findDevice(MediaDeviceType::Speaker, "spk-2").isNull());
+}
+
+// ---------------------------------------------------------------------------
+// 6. defaultSpeakerAndMicrophoneNeverRemoteAudio
+//    Even if the backend marks the "Remote Audio" endpoint as the OS default,
+//    it must be filtered out before default resolution runs, so the fallback
+//    default is a real physical device (or null if none exist).
+// ---------------------------------------------------------------------------
+void TestMediaDevice::defaultSpeakerAndMicrophoneNeverRemoteAudio()
+{
+    auto *stub = new StubMediaDeviceBackend;
+    stub->m_mics = {
+        StubMediaDeviceBackend::makeDevice("mic-1", "Remote Audio",
+                                           MediaDeviceType::Microphone, /*isDefault=*/true),
+        StubMediaDeviceBackend::makeDevice("mic-2", "USB Headset",
+                                           MediaDeviceType::Microphone)
+    };
+    stub->m_speakers = {
+        StubMediaDeviceBackend::makeDevice("spk-1", "Remote Audio",
+                                           MediaDeviceType::Speaker, /*isDefault=*/true)
+    };
+    injectStub(stub);
+
+    auto &mgr = MediaDeviceManager::instance();
+
+    QCOMPARE(mgr.defaultMicrophone().id, QStringLiteral("mic-2"));
+    QVERIFY(mgr.defaultSpeaker().isNull());
 }
 
 QTEST_GUILESS_MAIN(TestMediaDevice)

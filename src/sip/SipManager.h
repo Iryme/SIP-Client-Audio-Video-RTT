@@ -92,6 +92,10 @@ public:
     RttSession *rttSession();
     RtpStatsSnapshot currentRtpStats() const;
 
+    // Negotiated audio codec for the active call (e.g. "PCMA/8000 pt=8").
+    // Empty when no call is active or no audio codec has negotiated yet.
+    QString activeCallAudioCodec() const;
+
     CallState callState()          const;
     QString   callStatusText()     const;
     QString   activeCallRemoteUri() const;
