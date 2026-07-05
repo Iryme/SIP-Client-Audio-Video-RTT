@@ -971,11 +971,18 @@ RtpStatsSnapshot SipManager::currentRtpStats() const
     return m_activeCall->mediaRtpStats();
 }
 
-QString SipManager::activeCallAudioCodec() const
+AudioCodecInfo SipManager::activeAudioCodecInfo() const
 {
     if (!m_activeCall)
         return {};
-    return m_activeCall->negotiatedAudioCodec();
+    return m_activeCall->negotiatedAudioCodecInfo();
+}
+
+VideoCodecInfo SipManager::activeVideoCodecInfo() const
+{
+    if (!m_activeCall)
+        return {};
+    return m_activeCall->negotiatedVideoCodecInfo();
 }
 
 bool SipManager::sendEmergencyLocationUpdate(const SipCallOptions &opts)

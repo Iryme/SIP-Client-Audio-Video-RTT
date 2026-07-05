@@ -5,6 +5,8 @@
 #include <QSize>
 #include <QString>
 
+#include "core/CodecInfo.h"
+
 // Placeholder used for any value that has no real backing source yet.
 // Never invent a plausible-looking value instead of this — see task notes
 // in DiagnosticsCollector.cpp for exactly which fields are real vs N/A.
@@ -38,8 +40,10 @@ struct DiagnosticsSnapshot
 
     // ---- Media / RTP ----------------------------------------------------
     bool    audioConnected{false};
-    QString audioCodec{diagnosticsNotAvailable()};   // e.g. "PCMA/8000 pt=8"; from SipCall::negotiatedAudioCodec()
-    QString audioPtime{diagnosticsNotAvailable()};    // not exposed by RtpStatsSnapshot
+    // Structured negotiated audio codec (name/PT/clock rate/channels/ptime/
+    // bitrate) from SipCall::negotiatedAudioCodecInfo(). Invalid when no
+    // codec has been negotiated — the UI renders that as N/A.
+    AudioCodecInfo audioCodec;
     bool    audioPacketsRxAvailable{false};
     unsigned audioPacketsRx{0};
     QString audioPacketsTx{diagnosticsNotAvailable()}; // no TX counter exists
@@ -51,7 +55,10 @@ struct DiagnosticsSnapshot
     double  audioRttMs{0.0};
 
     bool    videoConnected{false};
-    QString videoCodec{diagnosticsNotAvailable()};    // best-effort: first entry of the configured codec order
+    // Structured video codec. negotiated == true when taken from the active
+    // call's SDP; otherwise best-effort from the configured codec preference
+    // and video quality settings (negotiated == false).
+    VideoCodecInfo videoCodec;
     QSize   videoResolution;
     int     videoFps{0};
     int     videoBitrateKbps{0};

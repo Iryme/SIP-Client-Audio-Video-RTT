@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <qwindowdefs.h>
 
+#include "core/CodecInfo.h"
 #include "sip/CallStateMachine.h"
 #include "sip/SipCallOptions.h"
 #include "media/RtpStats.h"
@@ -87,9 +88,17 @@ public:
     // snapshot when there is no active call or PJSIP cannot expose stats.
     RtpStatsSnapshot mediaRtpStats() const;
 
+    // Structured negotiated codec info for the active call's audio / video
+    // streams, captured from PJSIP stream info when media becomes active.
+    // Invalid (default-constructed) when nothing has been negotiated yet
+    // (or in stub mode).
+    AudioCodecInfo negotiatedAudioCodecInfo() const;
+    VideoCodecInfo negotiatedVideoCodecInfo() const;
+
     // Negotiated audio codec for the active call's audio stream, formatted as
     // "<name>/<clockRateHz> pt=<payloadType>" (e.g. "PCMA/8000 pt=8").
     // Empty when no audio codec has been negotiated yet (or in stub mode).
+    // Derived from negotiatedAudioCodecInfo(); kept for log/test compatibility.
     QString negotiatedAudioCodec() const;
 
     // Format a negotiated audio codec the same way it is stored/logged.
@@ -196,7 +205,8 @@ private:
     int              m_micVolume{100};
     int              m_speakerVolume{100};
     bool             m_videoMuted{false};
-    QString          m_negotiatedAudioCodec;
+    AudioCodecInfo   m_negotiatedAudioCodecInfo;
+    VideoCodecInfo   m_negotiatedVideoCodecInfo;
     bool             m_localVideoAvailable{false};
     bool             m_remoteVideoAvailable{false};
     QTimer           m_levelTimer;

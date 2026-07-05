@@ -254,6 +254,8 @@ Result generateBundle(const DiagnosticsSnapshot &snapshot, const QString &destin
         o[QStringLiteral("architecture")] = snapshot.architecture;
         o[QStringLiteral("buildType")] = snapshot.buildType;
         o[QStringLiteral("compiler")] = snapshot.compiler;
+        o[QStringLiteral("audioCodec")] = snapshot.audioCodec.toJson();
+        o[QStringLiteral("videoCodec")] = snapshot.videoCodec.toJson();
         o[QStringLiteral("capturedAtUtc")] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
         writeTextFile(dir.filePath(QStringLiteral("system_info.json")),
                       QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Indented)));

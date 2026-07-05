@@ -22,8 +22,7 @@ QJsonObject DiagnosticsSnapshot::toJson() const
     o.insert(QStringLiteral("lastSipError"), lastSipError);
 
     o.insert(QStringLiteral("audioConnected"), audioConnected);
-    o.insert(QStringLiteral("audioCodec"), audioCodec);
-    o.insert(QStringLiteral("audioPtime"), audioPtime);
+    o.insert(QStringLiteral("audioCodec"), audioCodec.toJson());
     o.insert(QStringLiteral("audioPacketsRxAvailable"), audioPacketsRxAvailable);
     o.insert(QStringLiteral("audioPacketsRx"), static_cast<qint64>(audioPacketsRx));
     o.insert(QStringLiteral("audioPacketsTx"), audioPacketsTx);
@@ -35,7 +34,7 @@ QJsonObject DiagnosticsSnapshot::toJson() const
     o.insert(QStringLiteral("audioRttMs"), audioRttMs);
 
     o.insert(QStringLiteral("videoConnected"), videoConnected);
-    o.insert(QStringLiteral("videoCodec"), videoCodec);
+    o.insert(QStringLiteral("videoCodec"), videoCodec.toJson());
     o.insert(QStringLiteral("videoResolutionWidth"), videoResolution.width());
     o.insert(QStringLiteral("videoResolutionHeight"), videoResolution.height());
     o.insert(QStringLiteral("videoFps"), videoFps);
@@ -100,8 +99,7 @@ DiagnosticsSnapshot DiagnosticsSnapshot::fromJson(const QJsonObject &o)
     s.lastSipError = o.value(QStringLiteral("lastSipError")).toString();
 
     s.audioConnected = o.value(QStringLiteral("audioConnected")).toBool();
-    s.audioCodec = o.value(QStringLiteral("audioCodec")).toString();
-    s.audioPtime = o.value(QStringLiteral("audioPtime")).toString();
+    s.audioCodec = AudioCodecInfo::fromJson(o.value(QStringLiteral("audioCodec")).toObject());
     s.audioPacketsRxAvailable = o.value(QStringLiteral("audioPacketsRxAvailable")).toBool();
     s.audioPacketsRx = static_cast<unsigned>(o.value(QStringLiteral("audioPacketsRx")).toInteger());
     s.audioPacketsTx = o.value(QStringLiteral("audioPacketsTx")).toString();
@@ -113,7 +111,7 @@ DiagnosticsSnapshot DiagnosticsSnapshot::fromJson(const QJsonObject &o)
     s.audioRttMs = o.value(QStringLiteral("audioRttMs")).toDouble();
 
     s.videoConnected = o.value(QStringLiteral("videoConnected")).toBool();
-    s.videoCodec = o.value(QStringLiteral("videoCodec")).toString();
+    s.videoCodec = VideoCodecInfo::fromJson(o.value(QStringLiteral("videoCodec")).toObject());
     s.videoResolution = QSize(o.value(QStringLiteral("videoResolutionWidth")).toInt(),
                               o.value(QStringLiteral("videoResolutionHeight")).toInt());
     s.videoFps = o.value(QStringLiteral("videoFps")).toInt();

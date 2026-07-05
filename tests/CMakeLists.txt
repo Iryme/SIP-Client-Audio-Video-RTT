@@ -332,6 +332,23 @@ target_link_libraries(test_call_history PRIVATE
 
 add_test(NAME test_call_history COMMAND test_call_history)
 
+# ---- test_codec_info ----------------------------------------------------
+# CodecInfo is header-only, so no src/ file needs to be compiled in.
+qt_add_executable(test_codec_info
+    test_codec_info.cpp
+)
+
+target_include_directories(test_codec_info PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_codec_info PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_codec_info COMMAND test_codec_info)
+
 # ---- test_diagnostics_snapshot -----------------------------------------
 qt_add_executable(test_diagnostics_snapshot
     test_diagnostics_snapshot.cpp

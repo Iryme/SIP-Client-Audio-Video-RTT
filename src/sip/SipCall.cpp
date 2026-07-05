@@ -375,8 +375,19 @@ struct SipCall::Impl
                                         .arg(fmt.clock_rate)
                                         .arg(fmt.pt));
                                 if (m_impl->q) {
-                                    m_impl->q->m_negotiatedAudioCodec =
-                                        SipCall::formatAudioCodecSummary(encName, fmt.clock_rate, fmt.pt);
+                                    AudioCodecInfo info;
+                                    info.name = encName;
+                                    info.clockRate = static_cast<int>(fmt.clock_rate);
+                                    info.payloadType = static_cast<int>(fmt.pt);
+                                    info.channels = static_cast<int>(fmt.channel_cnt);
+                                    if (si.info.aud.param) {
+                                        const pjmedia_codec_param *p = si.info.aud.param;
+                                        info.ptime = static_cast<int>(p->info.frm_ptime)
+                                                   * static_cast<int>(p->setting.frm_per_pkt);
+                                        info.bitrate = static_cast<int>(p->info.avg_bps);
+                                    }
+                                    info.negotiated = true;
+                                    m_impl->q->m_negotiatedAudioCodecInfo = info;
                                 }
                             }
                         } catch (...) {}
@@ -444,6 +455,22 @@ struct SipCall::Impl
                                     QStringLiteral("Negotiated video codec: %1  pt=%2")
                                         .arg(encName)
                                         .arg(vfmt.pt));
+                                if (m_impl->q) {
+                                    VideoCodecInfo info;
+                                    info.name = encName;
+                                    info.payloadType = static_cast<int>(vfmt.pt);
+                                    if (si.info.vid.codec_param) {
+                                        const pjmedia_vid_codec_param *p = si.info.vid.codec_param;
+                                        const pjmedia_video_format_detail &det = p->enc_fmt.det.vid;
+                                        info.width = static_cast<int>(det.size.w);
+                                        info.height = static_cast<int>(det.size.h);
+                                        if (det.fps.denum > 0)
+                                            info.fps = static_cast<int>(det.fps.num / det.fps.denum);
+                                        info.bitrate = static_cast<int>(det.avg_bps);
+                                    }
+                                    info.negotiated = true;
+                                    m_impl->q->m_negotiatedVideoCodecInfo = info;
+                                }
                             }
                         } catch (...) {}
                     } catch (...) {
@@ -610,7 +637,7 @@ struct SipCall::Impl
             QPointer<SipCall> self = m_impl->q;
             QMetaObject::invokeMethod(self, [self]() {
                 if (!self) return;
-                self->m_negotiatedAudioCodec.clear();
+                self->m_negotiatedAudioCodecInfo = AudioCodecInfo();
                 emit self->audioMediaDisconnected();
             }, Qt::QueuedConnection);
         }
@@ -624,6 +651,7 @@ struct SipCall::Impl
             QPointer<SipCall> self = m_impl->q;
             QMetaObject::invokeMethod(self, [self]() {
                 if (!self) return;
+                self->m_negotiatedVideoCodecInfo = VideoCodecInfo();
                 if (self->m_localVideoAvailable || self->m_remoteVideoAvailable) {
                     // Stop the local preview (camera) before signalling disconnect.
                     // Without this the capture device stays active after hangup.
@@ -1962,7 +1990,8 @@ void SipCall::reset(const QString &reason)
     m_levelTimer.stop();
     m_localVideoAvailable  = false;
     m_remoteVideoAvailable = false;
-    m_negotiatedAudioCodec.clear();
+    m_negotiatedAudioCodecInfo = AudioCodecInfo();
+    m_negotiatedVideoCodecInfo = VideoCodecInfo();
     m_stateMachine.reset(reason);
 }
 
@@ -1971,7 +2000,17 @@ QString   SipCall::statusText() const { return m_stateMachine.statusText(); }
 QString   SipCall::remoteUri()  const { return m_remoteUri; }
 QString   SipCall::callId()     const { return m_callId; }
 
-QString SipCall::negotiatedAudioCodec() const { return m_negotiatedAudioCodec; }
+AudioCodecInfo SipCall::negotiatedAudioCodecInfo() const { return m_negotiatedAudioCodecInfo; }
+VideoCodecInfo SipCall::negotiatedVideoCodecInfo() const { return m_negotiatedVideoCodecInfo; }
+
+QString SipCall::negotiatedAudioCodec() const
+{
+    if (!m_negotiatedAudioCodecInfo.isValid())
+        return {};
+    return formatAudioCodecSummary(m_negotiatedAudioCodecInfo.name,
+                                   m_negotiatedAudioCodecInfo.clockRate,
+                                   m_negotiatedAudioCodecInfo.payloadType);
+}
 
 QString SipCall::formatAudioCodecSummary(const QString &name, int clockRateHz, int payloadType)
 {

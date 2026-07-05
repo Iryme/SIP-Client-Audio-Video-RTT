@@ -121,10 +121,7 @@ void DiagnosticsCollector::rebuild()
     s.audioPacketsRxAvailable = rtp.available;
     s.audioPacketsRx = rtp.packetReceivedPackets;
 
-    {
-        const QString codec = sip.activeCallAudioCodec();
-        s.audioCodec = codec.isEmpty() ? diagnosticsNotAvailable() : codec;
-    }
+    s.audioCodec = sip.activeAudioCodecInfo();
 
     s.audioConnected = audio.isMediaActive();
     s.audioMuted = audio.isMuted();
@@ -158,11 +155,21 @@ void DiagnosticsCollector::rebuild()
     s.videoResolution = videoSettings.resolution;
     s.videoFps = videoSettings.fps;
     s.videoBitrateKbps = videoSettings.bitrateKbps;
-    // Best-effort: the app's configured codec preference order, first entry.
-    // This is NOT confirmed as the negotiated codec for the active call —
-    // SipCall only logs the negotiated codec, it does not expose it as a field.
-    s.videoCodec = videoSettings.codecOrder.isEmpty() ? diagnosticsNotAvailable()
-                                                       : videoSettings.codecOrder.first();
+    // Prefer the codec actually negotiated for the active call. Fall back to
+    // a best-effort description from the configured codec preference order
+    // and video quality settings, marked negotiated=false so consumers can
+    // tell it is only the local configuration.
+    s.videoCodec = sip.activeVideoCodecInfo();
+    if (!s.videoCodec.isValid() && !videoSettings.codecOrder.isEmpty()) {
+        VideoCodecInfo configured;
+        configured.name = videoSettings.codecOrder.first();
+        configured.width = videoSettings.resolution.width();
+        configured.height = videoSettings.resolution.height();
+        configured.fps = videoSettings.fps;
+        configured.bitrate = videoSettings.bitrateKbps * 1000;
+        configured.negotiated = false;
+        s.videoCodec = configured;
+    }
 
     s.rttState = rttStateName(sip.rttSession()->state());
 

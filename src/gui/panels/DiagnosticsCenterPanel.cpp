@@ -231,6 +231,11 @@ QWidget *DiagnosticsCenterPanel::buildAudioTab()
 {
     auto *page = new QWidget(this);
     auto *form = new QFormLayout(page);
+    addRow(form, QStringLiteral("audio.codec"),       tr("Codec:"));
+    addRow(form, QStringLiteral("audio.payloadType"), tr("Payload type:"));
+    addRow(form, QStringLiteral("audio.clockRate"),   tr("Clock rate:"));
+    addRow(form, QStringLiteral("audio.channels"),    tr("Channels:"));
+    addRow(form, QStringLiteral("audio.ptime"),       tr("ptime:"));
     addRow(form, QStringLiteral("audio.capture"),  tr("Capture device:"));
     addRow(form, QStringLiteral("audio.playback"), tr("Playback device:"));
     addRow(form, QStringLiteral("audio.micVol"),   tr("Mic volume:"));
@@ -248,9 +253,11 @@ QWidget *DiagnosticsCenterPanel::buildVideoTab()
     addRow(form, QStringLiteral("video.camera"),     tr("Camera:"));
     addRow(form, QStringLiteral("video.state"),      tr("Video state:"));
     addRow(form, QStringLiteral("video.muted"),      tr("Video muted:"));
-    addRow(form, QStringLiteral("video.resolution"), tr("Resolution:"));
-    addRow(form, QStringLiteral("video.fps"),        tr("FPS:"));
-    addRow(form, QStringLiteral("video.codec"),      tr("Codec:"));
+    addRow(form, QStringLiteral("video.codec"),       tr("Codec:"));
+    addRow(form, QStringLiteral("video.payloadType"), tr("Payload type:"));
+    addRow(form, QStringLiteral("video.resolution"),  tr("Resolution:"));
+    addRow(form, QStringLiteral("video.fps"),         tr("FPS:"));
+    addRow(form, QStringLiteral("video.bitrate"),     tr("Bitrate:"));
     return page;
 }
 
@@ -344,11 +351,18 @@ QWidget *DiagnosticsCenterPanel::buildTimelineTab()
 void DiagnosticsCenterPanel::applySnapshot(const DiagnosticsSnapshot &s)
 {
     const QString registration = QStringLiteral("%1 (%2)").arg(s.registrationState, s.registrationStatusText);
-    const QString audioSummary = QStringLiteral("%1 — %2").arg(connectedText(s.audioConnected), s.audioCodec);
-    const QString videoSummary = QStringLiteral("%1 — %2").arg(connectedText(s.videoConnected), s.videoCodec);
+    const QString audioSummary = QStringLiteral("%1 — %2").arg(connectedText(s.audioConnected), s.audioCodec.summaryString());
+    const QString videoSummary = QStringLiteral("%1 — %2").arg(connectedText(s.videoConnected), s.videoCodec.summaryString());
     const QString resolutionText = s.videoResolution.isValid()
         ? QStringLiteral("%1x%2").arg(s.videoResolution.width()).arg(s.videoResolution.height())
         : diagnosticsNotAvailable();
+    const QString audioChannelsText =
+        s.audioCodec.channels == 1 ? tr("Mono")
+        : s.audioCodec.channels == 2 ? tr("Stereo")
+        : s.audioCodec.channels > 0 ? QString::number(s.audioCodec.channels)
+                                     : diagnosticsNotAvailable();
+    const QString audioPtimeText = s.audioCodec.ptime > 0
+        ? QStringLiteral("%1 ms").arg(s.audioCodec.ptime) : diagnosticsNotAvailable();
 
     // Overview
     setValue(QStringLiteral("ov.registration"), registration);
@@ -391,14 +405,19 @@ void DiagnosticsCenterPanel::applySnapshot(const DiagnosticsSnapshot &s)
     setValue(QStringLiteral("rtp.audio.loss"),   s.audioLossAvailable ? QStringLiteral("%1%").arg(s.audioLossPercent, 0, 'f', 2) : diagnosticsNotAvailable());
     setValue(QStringLiteral("rtp.audio.jitter"), s.audioJitterAvailable ? QStringLiteral("%1 ms").arg(s.audioJitterMs, 0, 'f', 1) : diagnosticsNotAvailable());
     setValue(QStringLiteral("rtp.audio.rtt"),    s.audioRttAvailable ? QStringLiteral("%1 ms").arg(s.audioRttMs, 0, 'f', 1) : diagnosticsNotAvailable());
-    setValue(QStringLiteral("rtp.audio.codec"),  s.audioCodec);
-    setValue(QStringLiteral("rtp.audio.ptime"),  s.audioPtime);
-    setValue(QStringLiteral("rtp.video.codec"),      s.videoCodec);
+    setValue(QStringLiteral("rtp.audio.codec"),  s.audioCodec.summaryString());
+    setValue(QStringLiteral("rtp.audio.ptime"),  audioPtimeText);
+    setValue(QStringLiteral("rtp.video.codec"),      s.videoCodec.summaryString());
     setValue(QStringLiteral("rtp.video.resolution"), resolutionText);
     setValue(QStringLiteral("rtp.video.fps"),        s.videoFps > 0 ? QString::number(s.videoFps) : diagnosticsNotAvailable());
     setValue(QStringLiteral("rtp.video.bitrate"),    s.videoBitrateKbps > 0 ? tr("%1 kbps").arg(s.videoBitrateKbps) : diagnosticsNotAvailable());
 
     // Audio
+    setValue(QStringLiteral("audio.codec"),       s.audioCodec.isValid() ? s.audioCodec.name : diagnosticsNotAvailable());
+    setValue(QStringLiteral("audio.payloadType"), s.audioCodec.payloadType >= 0 ? QString::number(s.audioCodec.payloadType) : diagnosticsNotAvailable());
+    setValue(QStringLiteral("audio.clockRate"),   s.audioCodec.clockRate > 0 ? QStringLiteral("%1 Hz").arg(s.audioCodec.clockRate) : diagnosticsNotAvailable());
+    setValue(QStringLiteral("audio.channels"),    audioChannelsText);
+    setValue(QStringLiteral("audio.ptime"),       audioPtimeText);
     setValue(QStringLiteral("audio.capture"),  s.microphoneName);
     setValue(QStringLiteral("audio.playback"), s.speakerName);
     setValue(QStringLiteral("audio.micVol"),   tr("%1%").arg(s.microphoneVolume));
@@ -411,9 +430,12 @@ void DiagnosticsCenterPanel::applySnapshot(const DiagnosticsSnapshot &s)
     setValue(QStringLiteral("video.camera"),     s.cameraName);
     setValue(QStringLiteral("video.state"),      s.cameraEnabled ? tr("Enabled") : tr("Disabled"));
     setValue(QStringLiteral("video.muted"),      yesNo(s.videoMuted));
-    setValue(QStringLiteral("video.resolution"), resolutionText);
-    setValue(QStringLiteral("video.fps"),        s.videoFps > 0 ? QString::number(s.videoFps) : diagnosticsNotAvailable());
-    setValue(QStringLiteral("video.codec"),      s.videoCodec);
+    setValue(QStringLiteral("video.codec"),       s.videoCodec.isValid() ? s.videoCodec.name : diagnosticsNotAvailable());
+    setValue(QStringLiteral("video.payloadType"), s.videoCodec.payloadType >= 0 ? QString::number(s.videoCodec.payloadType) : diagnosticsNotAvailable());
+    setValue(QStringLiteral("video.resolution"),  s.videoCodec.width > 0 && s.videoCodec.height > 0
+                 ? QStringLiteral("%1x%2").arg(s.videoCodec.width).arg(s.videoCodec.height) : diagnosticsNotAvailable());
+    setValue(QStringLiteral("video.fps"),         s.videoCodec.fps > 0 ? QString::number(s.videoCodec.fps) : diagnosticsNotAvailable());
+    setValue(QStringLiteral("video.bitrate"),     s.videoCodec.bitrate > 0 ? tr("%1 kbps").arg(s.videoCodec.bitrate / 1000) : diagnosticsNotAvailable());
 
     // Network
     setValue(QStringLiteral("net.localIp"),    s.localIp);
