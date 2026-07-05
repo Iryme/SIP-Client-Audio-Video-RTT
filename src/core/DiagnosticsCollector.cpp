@@ -106,9 +106,11 @@ void DiagnosticsCollector::rebuild()
         s.transport = SipProfileManager::transportToString(p.transport);
     }
 
-    // Call-ID / dialog state are not exposed by SipCall today.
-    s.callId = diagnosticsNotAvailable();
-    s.dialogState = diagnosticsNotAvailable();
+    // Call-ID / dialog state of the active call (empty → N/A when idle).
+    const QString sipCallId = sip.activeCallSipId();
+    s.callId = sipCallId.isEmpty() ? diagnosticsNotAvailable() : sipCallId;
+    const QString dialogState = sip.activeCallDialogState();
+    s.dialogState = dialogState.isEmpty() ? diagnosticsNotAvailable() : dialogState;
 
     // ---- RTP / media stats ---------------------------------------------
     const RtpStatsSnapshot rtp = sip.currentRtpStats();
@@ -174,8 +176,36 @@ void DiagnosticsCollector::rebuild()
     s.rttState = rttStateName(sip.rttSession()->state());
 
     // ---- Network ----------------------------------------------------
-    // No local/remote IP:port or ICE/STUN/TURN plumbing exists in this
-    // codebase yet (plain UDP/TCP/TLS transports only) — left as N/A.
+    // Local SIP transport and remote RTP endpoint. ICE/STUN/TURN are not
+    // configured in this codebase (plain UDP/TCP/TLS transports) — those
+    // stay N/A.
+    {
+        const auto splitHostPort = [](const QString &addr,
+                                      QString &host, QString &port) {
+            const int idx = addr.lastIndexOf(QLatin1Char(':'));
+            if (idx > 0) {
+                host = addr.left(idx);
+                port = addr.mid(idx + 1);
+            } else if (!addr.isEmpty()) {
+                host = addr;
+            }
+        };
+
+        QString host, port;
+        splitHostPort(sip.localTransportAddress(), host, port);
+        if (!host.isEmpty()) {
+            s.localIp = host;
+            s.localPort = port.isEmpty() ? diagnosticsNotAvailable() : port;
+        }
+
+        host.clear();
+        port.clear();
+        splitHostPort(sip.activeCallRemoteMediaAddress(), host, port);
+        if (!host.isEmpty()) {
+            s.remoteIp = host;
+            s.remotePort = port.isEmpty() ? diagnosticsNotAvailable() : port;
+        }
+    }
 
     // ---- System -------------------------------------------------------
     s.qtVersion = QString::fromLatin1(qVersion());

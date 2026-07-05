@@ -4,6 +4,62 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.4.1 — Release Validation Bug Fixes
+
+**Status:** in development
+**Branch:** `release/v1.4.0`
+**Version bump type:** PATCH
+**Scope:** Fixes for the release-blocking bugs found during v1.4.0 manual validation. No new features, no unrelated refactoring.
+
+### Fixes
+
+**Hold/Resume preserves video (`src/sip/SipCall.cpp`)**
+- The negotiated video state is now remembered when the local hold is sent (`videoActiveBeforeHold`); the hold renegotiation clears the live availability flags, so resume could no longer see that video had been active and sent the unhold re-INVITE with `videoCount=0` (`m=video 0`) — the call came back audio-only.
+- The resume pre-check now also treats video streams in `LOCAL_HOLD` / `REMOTE_HOLD` status as negotiated (previously only `ACTIVE` counted).
+- The unhold re-INVITE now offers video as `ENCODING_DECODING` (bidirectional) instead of `DECODING` (receive-only), so the local camera resumes transmitting.
+- Remote resume: with the corrected offer/answer on both ends the video stream is restored by the existing media-state handling (which already re-attaches windows and restarts transmit when video becomes ACTIVE again).
+
+**Camera On/Off during an active video call (`src/sip/SipCall.cpp`)**
+- `setVideoMuted()` no longer depends on the cached `callVideoMedia` pointer, which goes stale across renegotiations (hold/resume, video re-INVITE) and caused every toggle to be ignored with "no active PJSIP video stream".
+- The current video stream index is now queried live via `pjsua_call_get_vid_stream_idx()` and `PJSUA_CALL_VID_STRM_STOP_TRANSMIT` / `START_TRANSMIT` are issued against that index, so the toggle works after any renegotiation.
+
+**Microphone mute (`src/sip/SipCall.cpp`)**
+- Mute is now deterministic: the microphone's conference-bridge connection to the call is disconnected (`stopTransmit`) on mute and reconnected (`startTransmit`, with the configured mic volume level re-applied) on unmute, instead of relying on level adjustment.
+- The media-state rewiring path now honours an active mute — previously every renegotiation (hold/resume, adding video/RTT) unconditionally reconnected the microphone, silently unmuting the call.
+- Speaker/microphone volume paths are unchanged.
+
+**Video aspect ratio (`src/gui/panels/VideoPanel.cpp`)**
+- Remote video frames are letterboxed (`Qt::KeepAspectRatio`, centered, black bars) instead of being stretched over the whole panel.
+- Embedded PJSIP video HWNDs are letterboxed to the negotiated video resolution instead of being stretched to the full client area.
+
+**Status cards show real call data (`src/gui/panels/CallPanel.cpp`, `src/gui/MainWindow.cpp`)**
+- Video Codec / Bitrate / Resolution now show the values actually negotiated for the active call (falling back to the configured settings only while negotiation is pending).
+- Audio Codec shows the negotiated codec (e.g. `PCMA/8000`).
+- Jitter and Latency are populated from live RTCP stats (`SipManager::currentRtpStats()`, updated via `rtpStatsChanged`); the Clients-page Packet Loss card shows the RTCP loss percentage. Values remain "—" when the backend reports no stats — never invented.
+
+**Diagnostics real values (`src/core/DiagnosticsCollector.cpp`, `src/sip/SipManager.*`, `src/sip/SipCall.*`)**
+- Call-ID: the SIP Call-ID of the active call (N/A when idle).
+- Dialog state: the PJSIP invite-session state (e.g. `CONFIRMED`; N/A when idle).
+- Local IP / local port: the bound SIP transport address (`Endpoint::transportGetInfo`).
+- Remote IP / remote port: the remote RTP address of the negotiated audio stream.
+- ICE / STUN / TURN remain N/A (not configured in this codebase).
+
+**VideoPanel attach retry loop (`src/gui/panels/VideoPanel.cpp`)**
+- The 3-second re-attach timer now stops after a successful attach (previously it re-attached the video windows every 3 seconds for the entire call, flooding the logs and churning the render pipeline) and gives up after 10 failed attempts.
+- `attachVideoWindows()` / `attachVideoToWidgets()` now report success so callers can stop retrying.
+
+**Remote `set_win` race (`src/sip/SipCall.cpp`)**
+- `pjsua_vid_win_set_win` is no longer called on a window id that `pjsua_vid_win_get_info` cannot verify (PJSIP creates the incoming render window lazily; the first media callback can deliver an id whose window does not exist yet — status 70004). The attach is deferred and reported as incomplete, and the retry path completes it deterministically.
+
+### Validation
+
+- Build Debug: see final report
+- Build Release: see final report
+- ctest Debug / Release: see final report
+- Windows package regenerated: `dist/SIP-Client-Audio-Video-RTT-v1.4.1-windows.zip`
+
+---
+
 ## v1.4.0 — Call History Foundation
 
 **Status:** in development

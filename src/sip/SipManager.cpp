@@ -1261,6 +1261,38 @@ QString SipManager::activeCallRemoteUri() const
     return m_activeCall ? m_activeCall->remoteUri() : QString{};
 }
 
+QString SipManager::activeCallSipId() const
+{
+    return m_activeCall ? m_activeCall->callId() : QString{};
+}
+
+QString SipManager::activeCallDialogState() const
+{
+    return m_activeCall ? m_activeCall->sipDialogStateText() : QString{};
+}
+
+QString SipManager::activeCallRemoteMediaAddress() const
+{
+    return m_activeCall ? m_activeCall->remoteMediaAddress() : QString{};
+}
+
+QString SipManager::localTransportAddress() const
+{
+#ifdef HAVE_PJSIP
+    if (m_ep) {
+        for (int tid : std::as_const(m_ep->transportIds)) {
+            try {
+                pj::TransportInfo ti = m_ep->ep.transportGetInfo(tid);
+                const QString addr = QString::fromStdString(ti.localName);
+                if (!addr.isEmpty())
+                    return addr;
+            } catch (...) {}
+        }
+    }
+#endif
+    return {};
+}
+
 void SipManager::onAccountIncomingCall(const QString &remoteUri)
 {
     Logger::instance().info(LogCategory::Sip,

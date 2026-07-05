@@ -103,14 +103,14 @@ bool VideoMediaManager::isRemoteVideoAvailable() const { return m_remoteVideoAva
 // Camera selection
 // ---------------------------------------------------------------------------
 
-void VideoMediaManager::attachVideoToWidgets(WId remoteWidget, WId localPreviewWidget)
+bool VideoMediaManager::attachVideoToWidgets(WId remoteWidget, WId localPreviewWidget)
 {
     if (!m_call) {
         Logger::instance().warn(LogCategory::Media,
             QStringLiteral("attachVideoToWidgets: no active call"));
-        return;
+        return false;
     }
-    m_call->attachVideoWindows(remoteWidget, localPreviewWidget);
+    return m_call->attachVideoWindows(remoteWidget, localPreviewWidget);
 }
 
 void VideoMediaManager::setCamera(const QString &deviceId)

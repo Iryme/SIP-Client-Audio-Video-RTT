@@ -614,6 +614,10 @@ CallPanel::CallPanel(QWidget *parent)
             this, &CallPanel::onRttMediaConnected);
     connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
             this, &CallPanel::onRttMediaDisconnected);
+    connect(&SipManager::instance(), &SipManager::rtpStatsChanged,
+            this, [this](const RtpStatsSnapshot &stats) {
+        updateRtpStatCards(stats);
+    });
 
     // Local / remote video lifecycle (from VideoMediaManager)
     connect(&VideoMediaManager::instance(), &VideoMediaManager::localVideoStarted,
@@ -967,21 +971,44 @@ void CallPanel::updateStatusCards()
         }
     }
 
-    // Video codec — preferred codec from settings (real data; negotiated codec not available in stub)
+    // Video codec / bitrate / resolution — prefer the codec actually
+    // negotiated for the active call; fall back to the configured settings
+    // while negotiation has not completed yet.
     if (m_videoConnected || m_localVideoActive) {
-        const VideoSettings vs = VideoQualityManager::instance().current();
-        const QString codec = vs.codecOrder.isEmpty() ? QStringLiteral("—") : vs.codecOrder.first();
-        m_cardVideoCodec->setValue(codec);
-        m_cardVideoCodec->setStatus(QStringLiteral("ok"));
+        const VideoCodecInfo neg = SipManager::instance().activeVideoCodecInfo();
+        if (neg.isValid()) {
+            m_cardVideoCodec->setValue(neg.name);
+            m_cardVideoCodec->setStatus(QStringLiteral("ok"));
 
-        // Bitrate
-        m_cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
-        m_cardBitrate->setStatus(QStringLiteral("ok"));
+            if (neg.bitrate > 0) {
+                m_cardBitrate->setValue(QStringLiteral("%1 kbps").arg(neg.bitrate / 1000));
+                m_cardBitrate->setStatus(QStringLiteral("ok"));
+            } else {
+                m_cardBitrate->setValue(QStringLiteral("—"));
+                m_cardBitrate->setStatus({});
+            }
 
-        // Resolution
-        m_cardResolution->setValue(QStringLiteral("%1x%2")
-            .arg(vs.resolution.width()).arg(vs.resolution.height()));
-        m_cardResolution->setStatus(QStringLiteral("ok"));
+            if (neg.width > 0 && neg.height > 0) {
+                m_cardResolution->setValue(QStringLiteral("%1x%2")
+                    .arg(neg.width).arg(neg.height));
+                m_cardResolution->setStatus(QStringLiteral("ok"));
+            } else {
+                m_cardResolution->setValue(QStringLiteral("—"));
+                m_cardResolution->setStatus({});
+            }
+        } else {
+            const VideoSettings vs = VideoQualityManager::instance().current();
+            const QString codec = vs.codecOrder.isEmpty() ? QStringLiteral("—") : vs.codecOrder.first();
+            m_cardVideoCodec->setValue(codec);
+            m_cardVideoCodec->setStatus(QStringLiteral("ok"));
+
+            m_cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
+            m_cardBitrate->setStatus(QStringLiteral("ok"));
+
+            m_cardResolution->setValue(QStringLiteral("%1x%2")
+                .arg(vs.resolution.width()).arg(vs.resolution.height()));
+            m_cardResolution->setStatus(QStringLiteral("ok"));
+        }
     } else {
         m_cardVideoCodec->setValue(QStringLiteral("—"));
         m_cardVideoCodec->setStatus({});
@@ -991,15 +1018,42 @@ void CallPanel::updateStatusCards()
         m_cardResolution->setStatus({});
     }
 
-    // Audio codec — not exposed by the stub; never invented
-    m_cardAudioCodec->setValue(QStringLiteral("—"));
-    m_cardAudioCodec->setStatus({});
+    // Audio codec — negotiated codec for the active call, when available.
+    {
+        const AudioCodecInfo neg = SipManager::instance().activeAudioCodecInfo();
+        if (m_audioConnected && neg.isValid()) {
+            m_cardAudioCodec->setValue(QStringLiteral("%1/%2")
+                .arg(neg.name).arg(neg.clockRate));
+            m_cardAudioCodec->setStatus(QStringLiteral("ok"));
+        } else {
+            m_cardAudioCodec->setValue(QStringLiteral("—"));
+            m_cardAudioCodec->setStatus({});
+        }
+    }
 
-    // Jitter / Latency — no source; never invented
-    m_cardJitter->setValue(QStringLiteral("—"));
-    m_cardJitter->setStatus({});
-    m_cardLatency->setValue(QStringLiteral("—"));
-    m_cardLatency->setStatus({});
+    // Jitter / Latency — from live RTCP stats; never invented.
+    updateRtpStatCards(SipManager::instance().currentRtpStats());
+}
+
+void CallPanel::updateRtpStatCards(const RtpStatsSnapshot &stats)
+{
+    if (stats.available && stats.jitterAvailable) {
+        m_cardJitter->setValue(QStringLiteral("%1 ms").arg(stats.jitterMs, 0, 'f', 1));
+        m_cardJitter->setStatus(stats.jitterMs > 50.0 ? QStringLiteral("warn")
+                                                      : QStringLiteral("ok"));
+    } else {
+        m_cardJitter->setValue(QStringLiteral("—"));
+        m_cardJitter->setStatus({});
+    }
+
+    if (stats.available && stats.rttAvailable) {
+        m_cardLatency->setValue(QStringLiteral("%1 ms").arg(stats.rttMs, 0, 'f', 1));
+        m_cardLatency->setStatus(stats.rttMs > 300.0 ? QStringLiteral("warn")
+                                                     : QStringLiteral("ok"));
+    } else {
+        m_cardLatency->setValue(QStringLiteral("—"));
+        m_cardLatency->setStatus({});
+    }
 }
 
 void CallPanel::refreshVideoRequestButton()

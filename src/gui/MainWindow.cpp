@@ -1280,14 +1280,27 @@ QWidget *MainWindow::buildClientsPage()
         cardRemoteVideo->setValue(remoteVideo ? tr("On") : tr("Off"));
         cardRemoteVideo->setStatus(remoteVideo ? QStringLiteral("ok") : QString{});
         if (videoActive || localVideo) {
-            cardVideoCodec->setValue(vs.codecOrder.isEmpty() ? QStringLiteral("—")
-                                                             : vs.codecOrder.first());
+            // Prefer what was actually negotiated for the active call; the
+            // configured settings are only a fallback while negotiating.
+            const VideoCodecInfo neg = SipManager::instance().activeVideoCodecInfo();
+            if (neg.isValid()) {
+                cardVideoCodec->setValue(neg.name);
+                cardBitrate->setValue(neg.bitrate > 0
+                    ? QStringLiteral("%1 kbps").arg(neg.bitrate / 1000)
+                    : QStringLiteral("—"));
+                cardResolution->setValue((neg.width > 0 && neg.height > 0)
+                    ? QStringLiteral("%1x%2").arg(neg.width).arg(neg.height)
+                    : QStringLiteral("—"));
+            } else {
+                cardVideoCodec->setValue(vs.codecOrder.isEmpty() ? QStringLiteral("—")
+                                                                 : vs.codecOrder.first());
+                cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
+                cardResolution->setValue(QStringLiteral("%1x%2")
+                                             .arg(vs.resolution.width())
+                                             .arg(vs.resolution.height()));
+            }
             cardVideoCodec->setStatus(QStringLiteral("ok"));
-            cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
             cardBitrate->setStatus(QStringLiteral("ok"));
-            cardResolution->setValue(QStringLiteral("%1x%2")
-                                         .arg(vs.resolution.width())
-                                         .arg(vs.resolution.height()));
             cardResolution->setStatus(QStringLiteral("ok"));
             cardFps->setValue(QStringLiteral("%1 fps").arg(QString::number(vs.fps, 'f', 1)));
         } else {
@@ -1306,11 +1319,39 @@ QWidget *MainWindow::buildClientsPage()
         cardRemoteUri->setStatus(remoteUri.isEmpty() ? QString{} : QStringLiteral("ok"));
         cardLocalAccount->setValue(localAccount.isEmpty() ? QStringLiteral("—") : localAccount);
         cardLocalAccount->setStatus(localAccount.isEmpty() ? QString{} : QStringLiteral("ok"));
-        cardPacketLoss->setValue(QStringLiteral("—"));
-        cardJitter->setValue(QStringLiteral("—"));
-        cardLatency->setValue(QStringLiteral("—"));
+        // RTP quality metrics from live RTCP stats; "—" when not reported.
+        {
+            const RtpStatsSnapshot rtp = SipManager::instance().currentRtpStats();
+            if (rtp.available && rtp.packetLossAvailable) {
+                cardPacketLoss->setValue(QStringLiteral("%1 %")
+                    .arg(rtp.packetLossPercent, 0, 'f', 1));
+                cardPacketLoss->setStatus(rtp.packetLossPercent > 1.0
+                    ? QStringLiteral("warn") : QStringLiteral("ok"));
+            } else {
+                cardPacketLoss->setValue(QStringLiteral("—"));
+                cardPacketLoss->setStatus({});
+            }
+            if (rtp.available && rtp.jitterAvailable) {
+                cardJitter->setValue(QStringLiteral("%1 ms").arg(rtp.jitterMs, 0, 'f', 1));
+                cardJitter->setStatus(rtp.jitterMs > 50.0
+                    ? QStringLiteral("warn") : QStringLiteral("ok"));
+            } else {
+                cardJitter->setValue(QStringLiteral("—"));
+                cardJitter->setStatus({});
+            }
+            if (rtp.available && rtp.rttAvailable) {
+                cardLatency->setValue(QStringLiteral("%1 ms").arg(rtp.rttMs, 0, 'f', 1));
+                cardLatency->setStatus(rtp.rttMs > 300.0
+                    ? QStringLiteral("warn") : QStringLiteral("ok"));
+            } else {
+                cardLatency->setValue(QStringLiteral("—"));
+                cardLatency->setStatus({});
+            }
+        }
         refreshRequestVideoButton();
     };
+    connect(&SipManager::instance(), &SipManager::rtpStatsChanged,
+            page, [=](const RtpStatsSnapshot &) { refreshCards(); });
 
     connect(&SipManager::instance(), &SipManager::callStateChanged,
             this, [=](CallState state, const QString &, int) {

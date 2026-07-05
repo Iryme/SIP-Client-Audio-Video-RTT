@@ -48,7 +48,8 @@ public:
     // Attach PJSIP video windows to the given Qt widget native handles.
     // Forwards to the active SipCall::attachVideoWindows(). No-op when no
     // active call or on non-Windows / stub builds.
-    void attachVideoToWidgets(WId remoteWidget, WId localPreviewWidget);
+    // Returns true when the attach completed and needs no retry.
+    bool attachVideoToWidgets(WId remoteWidget, WId localPreviewWidget);
 
 public slots:
     void setVideoMuted(bool muted);

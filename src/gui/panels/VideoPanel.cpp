@@ -134,14 +134,30 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
         // onCallMediaState callback).
         m_videoRetryTimer.setInterval(3000);
         connect(&m_videoRetryTimer, &QTimer::timeout, this, [this]() {
-            if (!m_videoActive) return;
+            if (!m_videoActive) {
+                m_videoRetryTimer.stop();
+                return;
+            }
             Logger::instance().info(LogCategory::Media,
                 "VideoPanel: retry attach video windows");
             QElapsedTimer t;
             t.start();
-            VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
+            const bool ok = VideoMediaManager::instance().attachVideoToWidgets(
+                winId(), m_localPreview->winId());
             Logger::instance().info(LogCategory::Media,
-                QStringLiteral("VideoPanel: retry attach done in %1 ms").arg(t.elapsed()));
+                QStringLiteral("VideoPanel: retry attach done in %1 ms (ok=%2)")
+                    .arg(t.elapsed()).arg(ok));
+            if (ok) {
+                // Attached — stop retrying; repeated re-attachment is not
+                // needed and only churns the render pipeline and the logs.
+                m_remoteAttached = true;
+                m_videoRetryTimer.stop();
+            } else if (++m_videoRetryCount >= kMaxVideoAttachRetries) {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("VideoPanel: giving up video window attach after %1 attempts")
+                        .arg(m_videoRetryCount));
+                m_videoRetryTimer.stop();
+            }
         });
 
         connect(&VideoMediaManager::instance(), &VideoMediaManager::videoMediaConnected,
@@ -280,13 +296,28 @@ void VideoPanel::resizeEmbeddedVideoWindows()
         ? reinterpret_cast<HWND>(static_cast<quintptr>(m_localPreview->winId()))
         : nullptr;
 
+    // Letterbox helper: fit vidW x vidH into the client rect without
+    // stretching. Falls back to filling when the video size is unknown.
+    const auto letterbox = [](const RECT &rcClient, int vidW, int vidH) -> QRect {
+        const int cw = rcClient.right;
+        const int ch = rcClient.bottom;
+        if (vidW <= 0 || vidH <= 0 || cw <= 0 || ch <= 0)
+            return QRect(0, 0, cw, ch);
+        const QSize target = QSize(vidW, vidH).scaled(QSize(cw, ch),
+                                                      Qt::KeepAspectRatio);
+        return QRect((cw - target.width()) / 2, (ch - target.height()) / 2,
+                     target.width(), target.height());
+    };
+    const VideoCodecInfo codec = SipManager::instance().activeVideoCodecInfo();
+
     HWND child = GetWindow(parentHwnd, GW_CHILD);
     while (child) {
         if (child != localPreviewHwnd) {
-            MoveWindow(child, 0, 0, rc.right, rc.bottom, TRUE);
+            const QRect r = letterbox(rc, codec.width, codec.height);
+            MoveWindow(child, r.x(), r.y(), r.width(), r.height(), TRUE);
             Logger::instance().debug(LogCategory::Media,
-                QStringLiteral("Remote video HWND resized to %1x%2")
-                    .arg(rc.right).arg(rc.bottom));
+                QStringLiteral("Remote video HWND resized to %1x%2 at %3,%4")
+                    .arg(r.width()).arg(r.height()).arg(r.x()).arg(r.y()));
         }
         child = GetNextWindow(child, GW_HWNDNEXT);
     }
@@ -296,8 +327,10 @@ void VideoPanel::resizeEmbeddedVideoWindows()
         RECT prc{};
         GetClientRect(localPreviewHwnd, &prc);
         HWND pchild = GetWindow(localPreviewHwnd, GW_CHILD);
-        if (pchild)
-            MoveWindow(pchild, 0, 0, prc.right, prc.bottom, TRUE);
+        if (pchild) {
+            const QRect r = letterbox(prc, codec.width, codec.height);
+            MoveWindow(pchild, r.x(), r.y(), r.width(), r.height(), TRUE);
+        }
     }
 #endif
 }
@@ -313,10 +346,18 @@ void VideoPanel::paintEvent(QPaintEvent *event)
         // and stored in the "_pjFrame" property.  Draw the latest one; fall back to
         // black if no frame has arrived yet.
         const QImage frame = property("_pjFrame").value<QImage>();
-        if (!frame.isNull())
-            p.drawImage(rect(), frame);
-        else
+        if (!frame.isNull()) {
+            // Letterbox: preserve the frame's aspect ratio instead of
+            // stretching it over the whole panel.
             p.fillRect(rect(), QColor(0x0a, 0x0a, 0x0a));
+            const QSize target = frame.size().scaled(size(), Qt::KeepAspectRatio);
+            const QRect dst(QPoint((width() - target.width()) / 2,
+                                   (height() - target.height()) / 2),
+                            target);
+            p.drawImage(dst, frame);
+        } else {
+            p.fillRect(rect(), QColor(0x0a, 0x0a, 0x0a));
+        }
         if (VideoQualityManager::instance().current().overlayEnabled)
             drawDebugOverlay(p);
         return;
@@ -613,13 +654,20 @@ void VideoPanel::onVideoMediaConnected()
 
     QElapsedTimer attachTimer;
     attachTimer.start();
-    VideoMediaManager::instance().attachVideoToWidgets(remoteHwnd, localHwnd);
+    const bool attached =
+        VideoMediaManager::instance().attachVideoToWidgets(remoteHwnd, localHwnd);
     Logger::instance().info(LogCategory::Media,
-        QStringLiteral("VideoPanel: attach local preview done in %1 ms")
-            .arg(attachTimer.elapsed()));
+        QStringLiteral("VideoPanel: attach local preview done in %1 ms (ok=%2)")
+            .arg(attachTimer.elapsed()).arg(attached));
 
-    m_remoteAttached = true;
-    m_videoRetryTimer.start();
+    m_remoteAttached = attached;
+    m_videoRetryCount = 0;
+    // Only poll while the attach is incomplete (PJSIP creates the incoming
+    // render window lazily); once attached there is nothing left to retry.
+    if (attached)
+        m_videoRetryTimer.stop();
+    else
+        m_videoRetryTimer.start();
 }
 
 void VideoPanel::onVideoMediaDisconnected()
@@ -630,6 +678,7 @@ void VideoPanel::onVideoMediaDisconnected()
     m_localVideoAvail  = false;
     m_remoteVideoAvail = false;
     m_remoteAttached   = false;
+    m_videoRetryCount  = 0;
     if (m_autoStartIdlePreview)
         startIdlePreview();
     applyVideoState();
@@ -658,11 +707,14 @@ void VideoPanel::onRemoteVideoStarted()
     if (m_videoActive && !m_remoteAttached) {
         QElapsedTimer t;
         t.start();
-        VideoMediaManager::instance().attachVideoToWidgets(winId(), m_localPreview->winId());
+        const bool attached = VideoMediaManager::instance().attachVideoToWidgets(
+            winId(), m_localPreview->winId());
         Logger::instance().info(LogCategory::Media,
-            QStringLiteral("VideoPanel: attach remote video on start in %1 ms")
-                .arg(t.elapsed()));
-        m_remoteAttached = true;
+            QStringLiteral("VideoPanel: attach remote video on start in %1 ms (ok=%2)")
+                .arg(t.elapsed()).arg(attached));
+        m_remoteAttached = attached;
+        if (attached)
+            m_videoRetryTimer.stop();
     }
 }
 

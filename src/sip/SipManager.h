@@ -101,6 +101,13 @@ public:
     CallState callState()          const;
     QString   callStatusText()     const;
     QString   activeCallRemoteUri() const;
+    // Diagnostics accessors for the active call / SIP transport. All return
+    // an empty string when the information is unavailable (no call, stub
+    // mode, or transport not created yet).
+    QString   activeCallSipId()    const;           // SIP Call-ID header value
+    QString   activeCallDialogState() const;        // e.g. "CONFIRMED"
+    QString   activeCallRemoteMediaAddress() const; // remote RTP "ip:port"
+    QString   localTransportAddress() const;        // bound SIP "ip:port"
     // -------------------------------------------------------------------------
 
     bool    isInitialized()        const;

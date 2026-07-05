@@ -323,7 +323,11 @@ struct SipCall::Impl
                         // on the old pointer (it would assert with slot=-1).
                         // Just wire to the new media object if it changed.
                         if (m_impl->callAudioMedia != aud) {
-                            adm.getCaptureDevMedia().startTransmit(*aud);
+                            // Honour an active mute: reconnecting the mic here
+                            // would silently unmute the call on every
+                            // renegotiation (hold/resume, video re-INVITE).
+                            if (!m_impl->q->m_muted)
+                                adm.getCaptureDevMedia().startTransmit(*aud);
                             aud->startTransmit(adm.getPlaybackDevMedia());
                             m_impl->callAudioMedia = aud;
                         }
@@ -809,6 +813,7 @@ struct SipCall::Impl
     bool                rttRequestNotified{false};    // incoming RTT request notified to UI; reset on RTT active
     bool                rttMediaActive{false};         // true while T.140 text stream is active
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
+    bool                videoActiveBeforeHold{false};  // video was negotiated when local hold was sent
 #endif
 };
 
@@ -1183,6 +1188,11 @@ bool SipCall::hold()
         } catch (...) {}
 
         try {
+            // Remember the negotiated video state now: the media-state callback
+            // that follows the hold re-INVITE will clear m_localVideoAvailable /
+            // m_remoteVideoAvailable, so resume() cannot rely on them.
+            m_impl->videoActiveBeforeHold =
+                m_localVideoAvailable || m_remoteVideoAvailable;
             pj::CallOpParam prm;
             m_impl->pjCall->setHold(prm);
             // setHold() sends a re-INVITE with a=sendonly.  PJSIP stays in
@@ -1228,7 +1238,10 @@ bool SipCall::resume()
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
         // Log dialog state for transport diagnostics and collect media counts.
-        bool videoWasActive = m_localVideoAvailable || m_remoteVideoAvailable;
+        // videoActiveBeforeHold was captured in hold(): the hold renegotiation
+        // clears the live availability flags, so they alone cannot be trusted.
+        bool videoWasActive = m_impl->videoActiveBeforeHold
+            || m_localVideoAvailable || m_remoteVideoAvailable;
         const bool rttWasActive = m_impl->rttMediaActive;
         try {
             const pj::CallInfo ci = m_impl->pjCall->getInfo();
@@ -1246,7 +1259,13 @@ bool SipCall::resume()
                     .arg(videoWasActive ? QStringLiteral("yes") : QStringLiteral("no"))
                     .arg(rttWasActive   ? QStringLiteral("yes") : QStringLiteral("no")));
             for (const auto &mi : ci.media) {
-                if (mi.type == PJMEDIA_TYPE_VIDEO && mi.status == PJSUA_CALL_MEDIA_ACTIVE)
+                // A held video stream reports LOCAL_HOLD / REMOTE_HOLD, not
+                // ACTIVE — all three mean video was negotiated and must be
+                // restored by the unhold re-INVITE.
+                if (mi.type == PJMEDIA_TYPE_VIDEO
+                        && (mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                            || mi.status == PJSUA_CALL_MEDIA_LOCAL_HOLD
+                            || mi.status == PJSUA_CALL_MEDIA_REMOTE_HOLD))
                     videoWasActive = true;
             }
         } catch (...) {}
@@ -1261,11 +1280,11 @@ bool SipCall::resume()
             prm.opt.textCount  = rttWasActive   ? 1 : 0;
             prm.opt.mediaDir = {
                 PJMEDIA_DIR_ENCODING_DECODING, // audio: sendrecv
-                prm.opt.videoCount > 0 ? PJMEDIA_DIR_DECODING : PJMEDIA_DIR_NONE,
+                // video must resume bidirectional (camera transmit + remote
+                // decode), not receive-only
+                prm.opt.videoCount > 0 ? PJMEDIA_DIR_ENCODING_DECODING : PJMEDIA_DIR_NONE,
                 prm.opt.textCount  > 0 ? PJMEDIA_DIR_ENCODING_DECODING : PJMEDIA_DIR_NONE
             };
-            if (prm.opt.videoCount > 0)
-                applyVideoMediaDirectionIfNeeded(prm.opt);
             prm.opt.flag |= PJSUA_CALL_UNHOLD;
 
             // Clear holdActive before reinvite so the CONFIRMED callback
@@ -1280,6 +1299,7 @@ bool SipCall::resume()
                     .arg(prm.opt.videoCount)
                     .arg(prm.opt.textCount));
             m_impl->pjCall->reinvite(prm);
+            m_impl->videoActiveBeforeHold = false;
             m_stateMachine.tryTransition(CallState::Active, QStringLiteral("Call resumed"));
             return true;
         } catch (const pj::Error &e) {
@@ -1312,8 +1332,21 @@ bool SipCall::setMuted(bool muted)
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall && m_impl->callAudioMedia) {
         try {
+            // Deterministic mute: disconnect the microphone from the call on
+            // the conference bridge instead of adjusting levels (level
+            // adjustment is not honoured by every bridge backend and is
+            // silently undone when the media session is rebuilt).
             pj::AudDevManager &adm = pj::Endpoint::instance().audDevManager();
-            adm.getCaptureDevMedia().adjustTxLevel(muted ? 0.0f : (m_micVolume / 100.0f));
+            if (muted) {
+                adm.getCaptureDevMedia().stopTransmit(*m_impl->callAudioMedia);
+            } else {
+                adm.getCaptureDevMedia().startTransmit(*m_impl->callAudioMedia);
+                adm.getCaptureDevMedia().adjustTxLevel(m_micVolume / 100.0f);
+            }
+        } catch (const pj::Error &e) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("setMuted(%1) bridge error (call id=%2): %3")
+                    .arg(muted).arg(m_callId, QString::fromStdString(e.reason)));
         } catch (...) {}
     }
 #endif
@@ -1381,14 +1414,21 @@ bool SipCall::setVideoMuted(bool muted)
 
 #ifdef HAVE_PJSIP
     if (m_impl->pjCall) {
-        if (!m_impl->callVideoMedia) {
+        // Do NOT gate this on callVideoMedia: that pointer goes stale across
+        // renegotiations (hold/resume, video re-INVITE) even while the video
+        // stream itself is active.  Ask PJSIP for the current video stream
+        // index instead — vidSetStream needs only the call and the index.
+        const pjsua_call_id cid =
+            static_cast<pjsua_call_id>(m_impl->pjCall->getId());
+        const int vidIdx = pjsua_call_get_vid_stream_idx(cid);
+        if (vidIdx < 0) {
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("Video mute ignored: no active PJSIP video stream (call id=%1)")
                     .arg(m_callId));
         } else {
             try {
                 pj::CallVidSetStreamParam prm;
-                prm.medIdx = -1; // default video stream
+                prm.medIdx = vidIdx;
                 if (muted) {
                     m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_STOP_TRANSMIT, prm);
                     m_impl->pauseCapture();
@@ -1396,6 +1436,11 @@ bool SipCall::setVideoMuted(bool muted)
                     m_impl->resumeCapture();
                     m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_START_TRANSMIT, prm);
                 }
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Video transmit %1 via vidSetStream: call id=%2 medIdx=%3")
+                        .arg(muted ? QStringLiteral("stopped") : QStringLiteral("started"),
+                             m_callId)
+                        .arg(vidIdx));
             } catch (const pj::Error &e) {
                 Logger::instance().warn(LogCategory::Sip,
                     QStringLiteral("vidSetStream error (call id=%1): %2")
@@ -1765,11 +1810,13 @@ void SipCall::releasePjsipCall()
 #endif
 }
 
-void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
+bool SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
 {
 #if defined(HAVE_PJSIP) && defined(_WIN32)
     if (!m_impl)
-        return;
+        return false;
+    bool remoteOk = false;
+    bool localOk  = false;
 
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("attachVideoWindows: remoteHwnd=0x%1 localHwnd=0x%2 "
@@ -1797,7 +1844,7 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
     // onCallMediaState callback may return -1 or 0 depending on timing.
     if (!isValidIncomingWinId(m_impl->videoIncomingWinId) && m_impl->pjCall) {
         if (isTeardownState(m_stateMachine.state()))
-            return;
+            return false;
         try {
             pj::CallInfo ci = m_impl->pjCall->getInfo();
             for (const auto &mi : ci.media) {
@@ -1820,11 +1867,20 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
         pjsua_vid_win_info wi;
         pj_bzero(&wi, sizeof(wi));
         pj_status_t st = pjsua_vid_win_get_info(m_impl->videoIncomingWinId, &wi);
-        if (st == PJ_SUCCESS && wi.is_native) {
+        if (st != PJ_SUCCESS) {
+            // The incoming render window is not fully created yet (PJSIP
+            // assigns it lazily right after negotiation). Do NOT call
+            // set_win on an unverified id — report failure and let the
+            // caller retry once the window exists.
+            Logger::instance().info(LogCategory::Media,
+                QStringLiteral("Remote video window not ready yet: winId=%1 status=%2 — deferring attach")
+                    .arg(m_impl->videoIncomingWinId).arg(st));
+        } else if (wi.is_native) {
             HWND nativeHwnd = reinterpret_cast<HWND>(wi.hwnd.info.win.hwnd);
             if (nativeHwnd) {
                 SetParent(nativeHwnd, qtHwnd);
                 ShowWindow(nativeHwnd, SW_SHOW);
+                remoteOk = true;
                 Logger::instance().info(LogCategory::Media,
                     QStringLiteral("Remote native video HWND parented to Qt widget: winId=%1 nativeHwnd=0x%2")
                         .arg(m_impl->videoIncomingWinId)
@@ -1838,6 +1894,7 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
             pjmedia_vid_dev_hwnd h = makeWinHwnd(qtHwnd);
             st = pjsua_vid_win_set_win(m_impl->videoIncomingWinId, &h);
             if (st == PJ_SUCCESS) {
+                remoteOk = true;
                 Logger::instance().info(LogCategory::Media,
                     QStringLiteral("Remote video GDI renderer pointed at Qt widget: winId=%1")
                         .arg(m_impl->videoIncomingWinId));
@@ -1899,6 +1956,7 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
             pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
             if (st == PJ_SUCCESS) {
                 previewWinId = pjsua_vid_preview_get_win(capDev);
+                localOk = true;
                 if (renderDev != PJMEDIA_VID_DEFAULT_RENDER_DEV) {
                     pjmedia_vid_dev_hwnd h = makeWinHwnd(qtPreviewHwnd);
                     const pj_status_t bindSt = pjsua_vid_win_set_win(previewWinId, &h);
@@ -1909,6 +1967,7 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                                 .arg(previewWinId)
                                 .arg(reinterpret_cast<quintptr>(qtPreviewHwnd), 0, 16));
                     } else {
+                        localOk = false;
                         Logger::instance().warn(LogCategory::Media,
                             QStringLiteral("Local preview embed failed: capDev=%1 winId=%2 status=%3 (%4)")
                                 .arg(m_impl->videoCapDev)
@@ -1932,6 +1991,7 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
             pjmedia_vid_dev_hwnd h = makeWinHwnd(qtPreviewHwnd);
             pj_status_t st = PJ_SUCCESS;
             if (st == PJ_SUCCESS) {
+                localOk = true;
                 Logger::instance().info(LogCategory::Media,
                     QStringLiteral("Local preview GDI renderer pointed at Qt widget: "
                                    "capDev=%1 previewWinId=%2")
@@ -1958,6 +2018,7 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                 pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
                 if (st == PJ_SUCCESS) {
                     previewWinId = pjsua_vid_preview_get_win(capDev);
+                    localOk = true;
                     Logger::instance().info(LogCategory::Media,
                         QStringLiteral("Local preview restarted with GDI renderer: "
                                        "capDev=%1 previewWinId=%2")
@@ -1972,14 +2033,19 @@ void SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
             }
         }
     } else {
+        // No local preview widget was supplied — nothing left to attach.
+        // An invalid capture device, however, means the attach is incomplete.
+        localOk = (localPreview == 0);
         Logger::instance().info(LogCategory::Media,
             QStringLiteral("Local preview attach skipped: capDev=%1 localWidget=%2")
                 .arg(m_impl->videoCapDev)
                 .arg(static_cast<quintptr>(localPreview)));
     }
+    return remoteOk && localOk;
 #else
     Q_UNUSED(remoteWidget)
     Q_UNUSED(localPreview)
+    return false;
 #endif
 }
 
@@ -1999,6 +2065,51 @@ CallState SipCall::state()      const { return m_stateMachine.state(); }
 QString   SipCall::statusText() const { return m_stateMachine.statusText(); }
 QString   SipCall::remoteUri()  const { return m_remoteUri; }
 QString   SipCall::callId()     const { return m_callId; }
+
+QString SipCall::sipDialogStateText() const
+{
+#ifdef HAVE_PJSIP
+    if (m_impl && m_impl->pjCall) {
+        try {
+            const pj::CallInfo ci = m_impl->pjCall->getInfo();
+            return QString::fromStdString(ci.stateText);
+        } catch (...) {}
+    }
+#endif
+    return {};
+}
+
+QString SipCall::remoteMediaAddress() const
+{
+#ifdef HAVE_PJSIP
+    if (m_impl && m_impl->pjCall) {
+        try {
+            const pjsua_call_id cid =
+                static_cast<pjsua_call_id>(m_impl->pjCall->getId());
+            pjsua_call_info ci;
+            if (pjsua_call_get_info(cid, &ci) == PJ_SUCCESS) {
+                for (unsigned i = 0; i < ci.media_cnt; ++i) {
+                    if (ci.media[i].type != PJMEDIA_TYPE_AUDIO)
+                        continue;
+                    pjsua_stream_info si;
+                    pj_bzero(&si, sizeof(si));
+                    if (pjsua_call_get_stream_info(cid, i, &si) == PJ_SUCCESS
+                            && si.type == PJMEDIA_TYPE_AUDIO) {
+                        char buf[PJ_INET6_ADDRSTRLEN + 16] = {};
+                        // Flags 3 = address + port ("ip:port").
+                        pj_sockaddr_print(&si.info.aud.rem_addr, buf,
+                                          sizeof(buf), 3);
+                        const QString addr = QString::fromLatin1(buf);
+                        if (!addr.isEmpty())
+                            return addr;
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+#endif
+    return {};
+}
 
 AudioCodecInfo SipCall::negotiatedAudioCodecInfo() const { return m_negotiatedAudioCodecInfo; }
 VideoCodecInfo SipCall::negotiatedVideoCodecInfo() const { return m_negotiatedVideoCodecInfo; }

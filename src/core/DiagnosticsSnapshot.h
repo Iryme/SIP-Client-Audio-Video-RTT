@@ -33,8 +33,8 @@ struct DiagnosticsSnapshot
     QString outboundProxy;
     QString transport;                // UDP / TCP / TLS
     QString remoteUri;
-    QString callId;                   // Not exposed by SipCall today -> N/A
-    QString dialogState;              // Not tracked separately from callState today -> N/A
+    QString callId;                   // SIP Call-ID of the active call; N/A when idle
+    QString dialogState;              // PJSIP invite-session state (CONFIRMED, ...); N/A when idle
     QString lastSipResponse;          // "<code> <text>" from the most recent registration or call event
     QString lastSipError;
 

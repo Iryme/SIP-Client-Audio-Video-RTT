@@ -111,7 +111,9 @@ public:
     // localPreview:  winId() of the local PiP widget.
     // Call from the Qt main thread after videoMediaConnected is emitted.
     // No-op on non-Windows or stub builds.
-    void attachVideoWindows(WId remoteWidget, WId localPreview);
+    // Returns true when both windows were attached (or legitimately skipped);
+    // false means the attach is incomplete and should be retried.
+    bool attachVideoWindows(WId remoteWidget, WId localPreview);
 
     // Send a T.140 RTT text block via the active RTP text stream.
     // No-op in stub mode or when the text stream is not active.
@@ -135,6 +137,13 @@ public:
     QString   statusText() const;
     QString   remoteUri()  const;
     QString   callId()     const;
+
+    // PJSIP invite-session state text (e.g. "CONFIRMED"); empty in stub
+    // mode or when no PJSIP call exists.
+    QString sipDialogStateText() const;
+    // Remote RTP address "ip:port" of the negotiated audio stream; empty
+    // when unavailable (stub mode, no media, or call not connected).
+    QString remoteMediaAddress() const;
 
     CallStateMachine &stateMachine();
 

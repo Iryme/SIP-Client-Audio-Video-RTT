@@ -7,6 +7,7 @@
 #include "emergency/EmergencyCallStateMachine.h"
 #include "sip/CallStateMachine.h"
 #include "sip/CallMediaOptions.h"
+#include "media/RtpStats.h"
 
 class QLabel;
 class QComboBox;
@@ -77,6 +78,7 @@ private:
     void applyCallState(CallState state);
     void populateDeviceCombos();
     void updateStatusCards();
+    void updateRtpStatCards(const RtpStatsSnapshot &stats);
     void refreshVideoRequestButton();
     void resetStatusCards();
     void updateVideoMuteState();

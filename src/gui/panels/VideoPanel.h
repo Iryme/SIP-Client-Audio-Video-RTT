@@ -88,4 +88,9 @@ private:
     // True once PJSIP video windows have been successfully attached to this
     // panel; reset on disconnect. Prevents redundant attach calls.
     bool m_remoteAttached{false};
+
+    // Failed attach attempts since the current call's video connected; the
+    // retry timer gives up after kMaxVideoAttachRetries to avoid looping.
+    static constexpr int kMaxVideoAttachRetries = 10;
+    int  m_videoRetryCount{0};
 };
