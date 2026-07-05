@@ -1157,6 +1157,13 @@ bool SipManager::makeCall(const QString &remoteUri, const CallMediaOptions &opts
         applyVideoSettingsForCall();
     }
 
+    // Map the selected call type onto the per-call SIP options so the SDP
+    // offer matches what the user picked (audio-only by default).
+    SipCallOptions callOpts;
+    callOpts.requireAudio = opts.enableAudio;
+    callOpts.allowVideo   = opts.enableVideo;
+    callOpts.requireRtt   = opts.enableRtt;
+
     // Emit INVITE outbound trace.
     {
         SipMessageTrace trace;
@@ -1169,7 +1176,7 @@ bool SipManager::makeCall(const QString &remoteUri, const CallMediaOptions &opts
         SipTraceLogger::instance().logMessage(trace);
     }
 
-    return m_activeCall->makeCall(remoteUri);
+    return m_activeCall->makeCallWithOptions(remoteUri, callOpts);
 }
 
 bool SipManager::makeEmergencyCall(const QString &remoteUri, const SipCallOptions &options)
@@ -1201,6 +1208,9 @@ bool SipManager::answerCall()
             QStringLiteral("answerCall: no incoming call to answer"));
         return false;
     }
+    // A previous audio-only outgoing call zeroes all video codec priorities;
+    // restore them so an incoming video offer can actually be negotiated.
+    applyVideoSettingsForCall();
     return m_activeCall->answer();
 }
 

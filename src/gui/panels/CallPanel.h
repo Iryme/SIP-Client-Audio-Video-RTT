@@ -9,6 +9,7 @@
 #include "sip/CallMediaOptions.h"
 #include "media/RtpStats.h"
 
+class AudioLevelMeter;
 class QLabel;
 class QComboBox;
 class QLineEdit;
@@ -94,9 +95,9 @@ private:
     QComboBox   *m_micSelector{nullptr};
     QComboBox   *m_spkSelector{nullptr};
 
-    // Level meters
-    QProgressBar *m_inputMeter{nullptr};
-    QProgressBar *m_outputMeter{nullptr};
+    // Level meters (green→red color scale)
+    AudioLevelMeter *m_inputMeter{nullptr};
+    AudioLevelMeter *m_outputMeter{nullptr};
 
     // Volume sliders — backed by AudioMediaManager::setMicrophoneVolume/setSpeakerVolume.
     QSlider     *m_micVolumeSlider{nullptr};

@@ -24,6 +24,7 @@
 #include "emergency/EmergencyLocation.h"
 #include "emergency/PidfLoBuilder.h"
 #include "emergency/StaticLocationProvider.h"
+#include "gui/widgets/AudioLevelMeter.h"
 #include "gui/widgets/FlowLayout.h"
 #include "gui/widgets/StatusCard.h"
 #include "media/AudioMediaManager.h"
@@ -116,14 +117,8 @@ CallPanel::CallPanel(QWidget *parent)
         micLabel->setStyleSheet("color: #888; font-size: 10px;");
         micLabel->setFixedWidth(68);
 
-        m_inputMeter = new QProgressBar(this);
-        m_inputMeter->setRange(0, 100);
-        m_inputMeter->setValue(0);
-        m_inputMeter->setTextVisible(false);
-        m_inputMeter->setFixedHeight(8);
-        m_inputMeter->setStyleSheet(
-            "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
-            "QProgressBar::chunk { background: #50c878; border-radius: 2px; }");
+        m_inputMeter = new AudioLevelMeter(this);
+        m_inputMeter->setToolTip(tr("Microphone input level (green = quiet, red = loud)"));
 
         m_micVolumeSlider = new QSlider(Qt::Horizontal, this);
         m_micVolumeSlider->setRange(0, 100);
@@ -160,14 +155,8 @@ CallPanel::CallPanel(QWidget *parent)
         spkLabel->setStyleSheet("color: #888; font-size: 10px;");
         spkLabel->setFixedWidth(68);
 
-        m_outputMeter = new QProgressBar(this);
-        m_outputMeter->setRange(0, 100);
-        m_outputMeter->setValue(0);
-        m_outputMeter->setTextVisible(false);
-        m_outputMeter->setFixedHeight(8);
-        m_outputMeter->setStyleSheet(
-            "QProgressBar { border: 1px solid #444; border-radius: 3px; background: #222; }"
-            "QProgressBar::chunk { background: #5090e0; border-radius: 2px; }");
+        m_outputMeter = new AudioLevelMeter(this);
+        m_outputMeter->setToolTip(tr("Speaker output level (green = quiet, red = loud)"));
 
         m_spkVolumeSlider = new QSlider(Qt::Horizontal, this);
         m_spkVolumeSlider->setRange(0, 100);
@@ -1122,8 +1111,8 @@ void CallPanel::resetStatusCards()
         c->setStatus({});
     }
 
-    m_inputMeter->setValue(0);
-    m_outputMeter->setValue(0);
+    m_inputMeter->setLevel(0);
+    m_outputMeter->setLevel(0);
 }
 
 QString CallPanel::formatDuration(int seconds) const
@@ -1181,8 +1170,8 @@ void CallPanel::onCallFailed(const QString &, const QString &reason, int)
         QStringLiteral("Call failed — dial row visible; user can retry"));
 }
 
-void CallPanel::onInputLevelChanged(int level)  { m_inputMeter->setValue(level); }
-void CallPanel::onOutputLevelChanged(int level) { m_outputMeter->setValue(level); }
+void CallPanel::onInputLevelChanged(int level)  { m_inputMeter->setLevel(level); }
+void CallPanel::onOutputLevelChanged(int level) { m_outputMeter->setLevel(level); }
 
 void CallPanel::onMicrophoneVolumeChanged(int percent)
 {

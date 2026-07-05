@@ -263,7 +263,9 @@ void RttPanel::updateInputState()
 // All other codepoints are appended to the live buffer.
 void RttPanel::processRemoteText(const QString &incoming)
 {
-    if (incoming.trimmed().isEmpty())
+    // Do NOT trim: spaces are payload and a lone CR/LF must flush the
+    // current buffer to the transcript (this is how Enter is signalled).
+    if (incoming.isEmpty())
         return;
 
     Logger::instance().debug(LogCategory::Sip,

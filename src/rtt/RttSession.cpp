@@ -57,7 +57,11 @@ void RttSession::enableForCall(SipCall *call)
         onCallMediaStateChanged(false);
     });
     connect(call, &SipCall::rttTextReceived, this, [this](const QString &text) {
-        if (text.trimmed().isEmpty()) {
+        // Suppress only truly empty keepalive packets. Whitespace and control
+        // characters (space, CR, LF, BS) are REAL T.140 payload — trimming
+        // them here would swallow spaces between words and the CR that
+        // flushes a message to the transcript.
+        if (text.isEmpty()) {
             ++m_suppressedEmptyRtt;
             if (!m_suppressedLogTimer.isActive())
                 m_suppressedLogTimer.start();

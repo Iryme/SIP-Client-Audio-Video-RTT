@@ -10,6 +10,7 @@
 #include <memory>
 
 #include <QApplication>
+#include <QDateTime>
 #include <QImage>
 #include <QLabel>
 #include <QMetaObject>
@@ -386,7 +387,10 @@ static pj_status_t qt_stream_put_frame(pjmedia_vid_dev_stream *s, const pjmedia_
             return;
         }
         // Generic widget (VideoPanel remote video): store frame and repaint.
+        // The timestamp lets VideoPanel blank the view when frames stop
+        // arriving (peer camera off) instead of freezing on the last frame.
         widget->setProperty("_pjFrame", QVariant::fromValue(std::move(img)));
+        widget->setProperty("_pjFrameTs", QDateTime::currentMSecsSinceEpoch());
         widget->update();
     }, Qt::QueuedConnection);
 

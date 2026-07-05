@@ -51,6 +51,40 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 **Remote `set_win` race (`src/sip/SipCall.cpp`)**
 - `pjsua_vid_win_set_win` is no longer called on a window id that `pjsua_vid_win_get_info` cannot verify (PJSIP creates the incoming render window lazily; the first media callback can deliver an id whose window does not exist yet — status 70004). The attach is deferred and reported as incomplete, and the retry path completes it deterministically.
 
+### Additional stabilization fixes (post `8db1001`)
+
+**RTT transcript preserves whitespace (`src/rtt/RttSession.cpp`, `src/gui/panels/RttPanel.cpp`)**
+- Incoming T.140 text is no longer trimmed before being checked for emptiness. Spaces between words and the CR/LF that flushes a line to the transcript are real payload; only genuinely empty keepalive packets are suppressed.
+
+**Calls default to audio-only (`src/sip/SipCallOptions.h`, `src/sip/SipManager.cpp`)**
+- `SipCallOptions` defaults changed to `requireRtt = false`, `allowVideo = false` — a call is audio-only unless video/RTT are explicitly selected.
+- `SipManager::makeCall()` now maps the caller's selected call type (`CallMediaOptions`) onto per-call `SipCallOptions` and places the INVITE via `makeCallWithOptions()`, so the SDP offer matches what the user actually picked instead of always offering audio+video+RTT.
+
+**Request Video / Request RTT drive the real SDP offer (`src/sip/SipCall.cpp`, `src/sip/SipManager.cpp`)**
+- Incoming video re-INVITE offers are now detected from the parsed `pjmedia_sdp_session` (via `prm.offer.pjSdpSession`) instead of a substring search on `wholeSdp`, which is empty on some pjsua2 callback paths and cannot distinguish a real offer from a disabled stream (`m=video 0`).
+- `answerCall()` now calls `applyVideoSettingsForCall()` before answering: a prior audio-only outgoing call had zeroed all video codec priorities, which silently prevented a subsequent incoming video offer from being negotiated.
+
+**Camera Off no longer leaves a frozen frame (`src/gui/panels/VideoPanel.cpp`, `src/media/PjsipGdiRenderer.cpp`)**
+- The local preview widget is blanked (with a "Camera Off" placeholder) instead of retaining the last rendered frame when the camera is disabled mid-call.
+- A remote stale-frame watchdog blanks the remote view to black if no decoded frame has arrived in 2 seconds (e.g. the peer's camera goes off), instead of leaving the last received frame frozen on screen. Each frame delivered by the PJSIP GDI renderer is now timestamped (`_pjFrameTs`) so the watchdog can detect staleness.
+
+**Camera On reattaches the preview correctly (`src/sip/SipCall.cpp`, `src/gui/panels/VideoPanel.cpp`)**
+- The local preview device now defaults to the same Qt GDI renderer used by `attachVideoWindows()` (`PjsipGdiRenderer::deviceIndex()`), so a preview restarted by Camera On can be re-embedded into the local PiP widget.
+- `attachVideoWindows()` now actually rebinds an already-running preview's render target via `pjsua_vid_win_set_win()` (previously a no-op stub left `st = PJ_SUCCESS` without calling it, so frames went nowhere after the capture device was reopened).
+- `VideoPanel` re-attaches the embedded preview ~400 ms after `CameraController::enabledChanged(true)` fires mid-call, retrying via the existing attach-retry path on failure.
+
+**New `AudioLevelMeter` widget (`src/gui/widgets/AudioLevelMeter.h/.cpp`)**
+- Replaces the plain `QProgressBar` mic/speaker meters in `CallPanel` and the Clients-page status area (`MainWindow`) with a level meter that shades green→red with level, wired to `AudioMediaManager::inputLevelChanged` / `outputLevelChanged`.
+
+**Diagnostics device names fall back to PJSIP (`src/core/DiagnosticsCollector.cpp`)**
+- When Qt's device enumeration returns an empty list (seen with RDP-redirected audio devices) and no persisted selection resolves to a device, the microphone/speaker name is now taken from `PjsipAudioMapper::activeCaptureDeviceName()` / `activePlaybackDeviceName()` instead of reporting "N/A".
+
+**RTP TX packet count in Diagnostics (`src/media/RtpStats.h`, `src/core/DiagnosticsCollector.cpp`)**
+- `RtpStatsSnapshot` gained `packetsTxAvailable`/`packetsTx` (from `stat.rtcp.txStat.pkt`), surfaced in the diagnostics snapshot alongside the existing RX packet count.
+
+**Pause/Resume preserves RTT across hold (`src/sip/SipCall.cpp`)**
+- `rttActiveBeforeHold` is now recorded when local hold is sent, mirroring the existing `videoActiveBeforeHold` handling — the hold renegotiation deactivates the text stream, so the live `rttMediaActive` flag alone would drop RTT from the unhold re-INVITE. The resume path also treats a text stream in `LOCAL_HOLD`/`REMOTE_HOLD` status as negotiated.
+
 ### Validation
 
 - Build Debug: see final report

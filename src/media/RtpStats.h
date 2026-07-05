@@ -19,6 +19,9 @@ struct RtpStatsSnapshot
     unsigned packetLossPackets{0};
     unsigned packetReceivedPackets{0};
 
+    bool    packetsTxAvailable{false};
+    unsigned packetsTx{0};
+
     bool    rttAvailable{false};
     double  rttMs{0.0};
 

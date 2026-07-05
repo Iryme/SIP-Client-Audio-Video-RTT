@@ -13,6 +13,7 @@
 #include "media/VideoMediaManager.h"
 #include "media/MediaDeviceManager.h"
 #include "media/VideoQualityManager.h"
+#include "sip/PjsipAudioMapper.h"
 #include "gui/CameraController.h"
 #include "rtt/RttSession.h"
 
@@ -122,6 +123,8 @@ void DiagnosticsCollector::rebuild()
     s.audioRttMs = rtp.rttMs;
     s.audioPacketsRxAvailable = rtp.available;
     s.audioPacketsRx = rtp.packetReceivedPackets;
+    if (rtp.packetsTxAvailable)
+        s.audioPacketsTx = QString::number(rtp.packetsTx);
 
     s.audioCodec = sip.activeAudioCodecInfo();
 
@@ -133,19 +136,41 @@ void DiagnosticsCollector::rebuild()
     s.speakerLevel = audio.outputLevel();
 
     {
-        const QString micId = AppSettings::loadSelectedMicrophone();
-        const MediaDevice mic = micId.isEmpty() ? devices.defaultMicrophone()
-                                                 : devices.findDevice(MediaDeviceType::Microphone, micId);
-        s.microphoneName = mic.isNull() ? diagnosticsNotAvailable() : mic.displayName;
+        // Resolve each device from the persisted selection; a stale persisted
+        // id (device ids change across sessions, e.g. RDP-redirected devices)
+        // falls back to the default device. When Qt device enumeration comes
+        // up empty (seen with RDP-redirected audio), ask PJSIP which devices
+        // it actually opened for the call instead of reporting N/A.
+        const auto resolve = [&devices](MediaDeviceType type, const QString &id) {
+            MediaDevice dev;
+            if (!id.isEmpty())
+                dev = devices.findDevice(type, id);
+            if (dev.isNull()) {
+                switch (type) {
+                case MediaDeviceType::Microphone: dev = devices.defaultMicrophone(); break;
+                case MediaDeviceType::Speaker:    dev = devices.defaultSpeaker();    break;
+                case MediaDeviceType::Camera:     dev = devices.defaultCamera();     break;
+                }
+            }
+            return dev;
+        };
 
-        const QString spkId = AppSettings::loadSelectedSpeaker();
-        const MediaDevice spk = spkId.isEmpty() ? devices.defaultSpeaker()
-                                                 : devices.findDevice(MediaDeviceType::Speaker, spkId);
-        s.speakerName = spk.isNull() ? diagnosticsNotAvailable() : spk.displayName;
+        const MediaDevice mic = resolve(MediaDeviceType::Microphone,
+                                        AppSettings::loadSelectedMicrophone());
+        QString micName = mic.isNull() ? QString{} : mic.displayName;
+        if (micName.isEmpty())
+            micName = PjsipAudioMapper::activeCaptureDeviceName();
+        s.microphoneName = micName.isEmpty() ? diagnosticsNotAvailable() : micName;
 
-        const QString camId = AppSettings::loadSelectedCamera();
-        const MediaDevice cam = camId.isEmpty() ? devices.defaultCamera()
-                                                 : devices.findDevice(MediaDeviceType::Camera, camId);
+        const MediaDevice spk = resolve(MediaDeviceType::Speaker,
+                                        AppSettings::loadSelectedSpeaker());
+        QString spkName = spk.isNull() ? QString{} : spk.displayName;
+        if (spkName.isEmpty())
+            spkName = PjsipAudioMapper::activePlaybackDeviceName();
+        s.speakerName = spkName.isEmpty() ? diagnosticsNotAvailable() : spkName;
+
+        const MediaDevice cam = resolve(MediaDeviceType::Camera,
+                                        AppSettings::loadSelectedCamera());
         s.cameraName = cam.isNull() ? diagnosticsNotAvailable() : cam.displayName;
     }
 

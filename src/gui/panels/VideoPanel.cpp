@@ -1,6 +1,7 @@
 #include "VideoPanel.h"
 
 #include <QCamera>
+#include <QDateTime>
 #include <QLabel>
 #include <QMediaCaptureSession>
 #include <QMediaDevices>
@@ -208,10 +209,52 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
     connect(&CameraController::instance(), &CameraController::enabledChanged,
             this, [this](bool enabled) {
         if (enabled) {
-            if (m_autoStartIdlePreview || isVisible())
+            if (m_videoActive) {
+                // Mid-call Camera On: PJSIP re-opened the capture device but
+                // the new preview stream is not bound to our PiP widget yet.
+                // Re-attach after the transmit resume has settled.
+                m_localPreview->setText(QString{});
+                QTimer::singleShot(400, this, [this]() {
+                    if (!m_videoActive)
+                        return;
+                    const bool ok = VideoMediaManager::instance().attachVideoToWidgets(
+                        winId(), m_localPreview->winId());
+                    Logger::instance().info(LogCategory::Media,
+                        QStringLiteral("VideoPanel: re-attach after Camera On (ok=%1)")
+                            .arg(ok));
+                    if (!ok) {
+                        m_remoteAttached = false;
+                        m_videoRetryCount = 0;
+                        m_videoRetryTimer.start();
+                    }
+                });
+            } else if (m_autoStartIdlePreview || isVisible()) {
                 startIdlePreview();
+            }
         } else {
             stopIdlePreview();
+            if (m_videoActive && m_localPreview) {
+                // The embedded PJSIP preview was stopped by Camera Off — clear
+                // the last (frozen) frame and show an explicit placeholder.
+                m_localPreview->setPixmap(QPixmap());
+                m_localPreview->setText(tr("Camera\nOff"));
+            }
+        }
+    });
+
+    // Remote stale-frame watchdog: when the peer stops sending (camera off),
+    // the last decoded frame would stay frozen on screen. Blank it instead.
+    m_remoteStaleTimer.setInterval(1000);
+    connect(&m_remoteStaleTimer, &QTimer::timeout, this, [this]() {
+        if (!m_videoActive) {
+            m_remoteStaleTimer.stop();
+            return;
+        }
+        const qint64 ts = property("_pjFrameTs").toLongLong();
+        if (ts > 0 && QDateTime::currentMSecsSinceEpoch() - ts > 2000
+            && !property("_pjFrame").value<QImage>().isNull()) {
+            setProperty("_pjFrame", QVariant::fromValue(QImage()));
+            update(); // paintEvent falls back to a black fill
         }
     });
 
@@ -636,6 +679,9 @@ void VideoPanel::onVideoMediaConnected()
 {
     m_videoActive = true;
     m_noVideoDeviceAvailable = false;
+    setProperty("_pjFrame", QVariant::fromValue(QImage()));
+    setProperty("_pjFrameTs", 0);
+    m_remoteStaleTimer.start();
     // Stop Qt Camera: PJSIP's DirectShow capture locks the camera device.
     // PJSIP renders local frames to m_localPreview via our GDI renderer.
     stopIdlePreview();
@@ -674,6 +720,9 @@ void VideoPanel::onVideoMediaDisconnected()
 {
     m_videoRetryTimer.stop();
     m_resizeDebounceTimer.stop();
+    m_remoteStaleTimer.stop();
+    setProperty("_pjFrame", QVariant::fromValue(QImage()));
+    setProperty("_pjFrameTs", 0);
     m_videoActive      = false;
     m_localVideoAvail  = false;
     m_remoteVideoAvail = false;

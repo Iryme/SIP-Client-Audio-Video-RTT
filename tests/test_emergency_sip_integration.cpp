@@ -48,13 +48,14 @@ private slots:
         QVERIFY(SipCallOptions::normal().isEmpty());
     }
 
-    // 5. Default options have audio/rtt/video enabled (mirrors makeCall behavior)
+    // 5. Default options are audio-only (video/RTT are offered only when
+    //    explicitly selected by the caller — mirrors makeCall behavior)
     void test_defaultOptionsMediaDefaults()
     {
         SipCallOptions opts;
         QVERIFY(opts.requireAudio);
-        QVERIFY(opts.requireRtt);
-        QVERIFY(opts.allowVideo);
+        QVERIFY(!opts.requireRtt);
+        QVERIFY(!opts.allowVideo);
     }
 
     // -----------------------------------------------------------------------

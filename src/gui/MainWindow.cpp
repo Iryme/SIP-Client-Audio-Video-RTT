@@ -11,6 +11,7 @@
 #include "gui/panels/NavRail.h"
 #include "gui/panels/SettingsPanel.h"
 #include "gui/panels/SipLadderPage.h"
+#include "gui/widgets/AudioLevelMeter.h"
 #include "gui/widgets/FlowLayout.h"
 #include "gui/widgets/StatusCard.h"
 #include "media/AudioMediaManager.h"
@@ -803,6 +804,35 @@ QWidget *MainWindow::buildClientsPage()
 
     cardsArea->setWidget(cardsHost);
     statusLayout->addWidget(cardsArea);
+
+    // Live audio level meters (green→red): microphone capture + speaker output.
+    {
+        auto *meterGrid = new QGridLayout();
+        meterGrid->setHorizontalSpacing(6);
+        meterGrid->setVerticalSpacing(4);
+
+        auto *micMeterLabel = new QLabel(tr("Mic level"), statusGroup);
+        micMeterLabel->setStyleSheet("color: #888; font-size: 10px;");
+        auto *micMeter = new AudioLevelMeter(statusGroup);
+        micMeter->setToolTip(tr("Microphone input level of the active call"));
+
+        auto *spkMeterLabel = new QLabel(tr("Speaker level"), statusGroup);
+        spkMeterLabel->setStyleSheet("color: #888; font-size: 10px;");
+        auto *spkMeter = new AudioLevelMeter(statusGroup);
+        spkMeter->setToolTip(tr("Speaker output level of the active call"));
+
+        meterGrid->addWidget(micMeterLabel, 0, 0);
+        meterGrid->addWidget(micMeter,      0, 1);
+        meterGrid->addWidget(spkMeterLabel, 1, 0);
+        meterGrid->addWidget(spkMeter,      1, 1);
+        meterGrid->setColumnStretch(1, 1);
+        statusLayout->addLayout(meterGrid);
+
+        connect(&AudioMediaManager::instance(), &AudioMediaManager::inputLevelChanged,
+                micMeter, &AudioLevelMeter::setLevel);
+        connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
+                spkMeter, &AudioLevelMeter::setLevel);
+    }
 
     auto *deviceRow = new QHBoxLayout();
     deviceRow->setSpacing(6);

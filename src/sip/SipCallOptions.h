@@ -14,9 +14,12 @@ struct SipCallOptions
     QString body;                                 // PIDF-LO body for multipart/mixed INVITE
     QString contentType;
     QString contentId;
-    bool    requireAudio = true;   // offer m=audio
-    bool    requireRtt   = true;   // offer m=text (RFC 4103)
-    bool    allowVideo   = true;   // offer m=video
+    // Media defaults: audio-only. Video and RTT are offered only when the
+    // caller explicitly selects them (call-type combo / Request buttons) or
+    // requests them mid-call via re-INVITE.
+    bool    requireAudio = true;    // offer m=audio
+    bool    requireRtt   = false;   // offer m=text (RFC 4103)
+    bool    allowVideo   = false;   // offer m=video
 
     bool isEmpty() const
     {

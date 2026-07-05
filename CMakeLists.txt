@@ -111,6 +111,7 @@ set(SOURCES
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
     src/gui/widgets/StatusCard.cpp
+    src/gui/widgets/AudioLevelMeter.cpp
     src/sip/SipTraceLogger.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp

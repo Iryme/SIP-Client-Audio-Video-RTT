@@ -82,6 +82,10 @@ private:
     // Debounces resizeEmbeddedVideoWindows: coalesces rapid WM_SIZE events.
     QTimer m_resizeDebounceTimer;
 
+    // Watchdog: while video is active, blank the remote view (black frame)
+    // when no decoded frame has arrived recently (e.g. peer camera off).
+    QTimer m_remoteStaleTimer;
+
     // Frame throttle: drop idle-preview frames arriving faster than ~30 fps.
     QElapsedTimer m_frameThrottle;
 

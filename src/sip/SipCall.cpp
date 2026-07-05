@@ -591,12 +591,28 @@ struct SipCall::Impl
             // Extract m= lines from the created SDP offer/answer so callers can
             // verify that m=audio and m=video are both present without needing a
             // live SIP trace capture.
-            const QString sdp = QString::fromStdString(prm.sdp.wholeSdp);
             QStringList mLines;
+            const QString sdp = QString::fromStdString(prm.sdp.wholeSdp);
             for (const QString &line : sdp.split(QLatin1Char('\n'))) {
                 const QString trimmed = line.trimmed();
                 if (trimmed.startsWith(QLatin1String("m=")))
                     mLines.append(trimmed);
+            }
+            // wholeSdp is empty in some pjsua2 callback paths — fall back to
+            // the parsed SDP session so this log stays useful.
+            if (mLines.isEmpty()) {
+                if (const auto *s = static_cast<const pjmedia_sdp_session *>(
+                        prm.sdp.pjSdpSession)) {
+                    for (unsigned i = 0; i < s->media_count; ++i) {
+                        const pjmedia_sdp_media *m = s->media[i];
+                        if (!m)
+                            continue;
+                        mLines.append(QStringLiteral("m=%1 %2")
+                            .arg(QString::fromLatin1(m->desc.media.ptr,
+                                     static_cast<int>(m->desc.media.slen)))
+                            .arg(m->desc.port));
+                    }
+                }
             }
             Logger::instance().info(LogCategory::Media,
                 QStringLiteral("SDP offer/answer m= lines (%1): %2")
@@ -674,9 +690,32 @@ struct SipCall::Impl
             if (!m_impl || !m_impl->q)
                 return;
 
-            const QString offerSdp = QString::fromStdString(prm.offer.wholeSdp);
-            const bool hasVideoOffer = offerSdp.contains(QStringLiteral("m=video"), Qt::CaseInsensitive);
-            const bool hasTextOffer  = offerSdp.contains(QStringLiteral("m=text"),  Qt::CaseInsensitive);
+            // Inspect the parsed SDP session rather than wholeSdp: wholeSdp is
+            // empty in some pjsua2 callback paths, and a plain string search
+            // cannot tell a real offer from a disabled stream ("m=video 0").
+            bool hasVideoOffer = false;
+            bool hasTextOffer  = false;
+            if (const auto *sdp = static_cast<const pjmedia_sdp_session *>(
+                    prm.offer.pjSdpSession)) {
+                for (unsigned i = 0; i < sdp->media_count; ++i) {
+                    const pjmedia_sdp_media *m = sdp->media[i];
+                    if (!m || m->desc.port == 0)
+                        continue; // disabled stream — not an offer
+                    if (pj_stricmp2(&m->desc.media, "video") == 0)
+                        hasVideoOffer = true;
+                    else if (pj_stricmp2(&m->desc.media, "text") == 0)
+                        hasTextOffer = true;
+                }
+            } else {
+                const QString offerSdp = QString::fromStdString(prm.offer.wholeSdp);
+                hasVideoOffer = offerSdp.contains(QStringLiteral("m=video"), Qt::CaseInsensitive);
+                hasTextOffer  = offerSdp.contains(QStringLiteral("m=text"),  Qt::CaseInsensitive);
+            }
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("re-INVITE offer received: callId=%1 video=%2 text=%3")
+                    .arg(getId())
+                    .arg(hasVideoOffer ? QStringLiteral("yes") : QStringLiteral("no"))
+                    .arg(hasTextOffer  ? QStringLiteral("yes") : QStringLiteral("no")));
 
             // ── Video consent ───────────────────────────────────────────────
             if (hasVideoOffer && !m_impl->videoRequestPendingLocal) {
@@ -794,6 +833,12 @@ struct SipCall::Impl
         pjsua_vid_preview_param pvp;
         pjsua_vid_preview_param_default(&pvp);
         pvp.rend_id = PJMEDIA_VID_DEFAULT_RENDER_DEV;
+#if defined(_WIN32)
+        // Use the same Qt GDI renderer as attachVideoWindows() so the preview
+        // can be re-embedded into the local PiP widget after Camera On.
+        if (PjsipGdiRenderer::deviceIndex() != PJMEDIA_VID_INVALID_DEV)
+            pvp.rend_id = PjsipGdiRenderer::deviceIndex();
+#endif
         pvp.show    = PJ_FALSE;
         const pj_status_t st = pjsua_vid_preview_start(capDev, &pvp);
         Logger::instance().info(LogCategory::Media,
@@ -814,6 +859,7 @@ struct SipCall::Impl
     bool                rttMediaActive{false};         // true while T.140 text stream is active
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
     bool                videoActiveBeforeHold{false};  // video was negotiated when local hold was sent
+    bool                rttActiveBeforeHold{false};    // T.140 text was active when local hold was sent
 #endif
 };
 
@@ -1193,6 +1239,7 @@ bool SipCall::hold()
             // m_remoteVideoAvailable, so resume() cannot rely on them.
             m_impl->videoActiveBeforeHold =
                 m_localVideoAvailable || m_remoteVideoAvailable;
+            m_impl->rttActiveBeforeHold = m_impl->rttMediaActive;
             pj::CallOpParam prm;
             m_impl->pjCall->setHold(prm);
             // setHold() sends a re-INVITE with a=sendonly.  PJSIP stays in
@@ -1242,7 +1289,9 @@ bool SipCall::resume()
         // clears the live availability flags, so they alone cannot be trusted.
         bool videoWasActive = m_impl->videoActiveBeforeHold
             || m_localVideoAvailable || m_remoteVideoAvailable;
-        const bool rttWasActive = m_impl->rttMediaActive;
+        // The hold renegotiation deactivates the text stream, so the live
+        // rttMediaActive flag alone would drop RTT from the unhold re-INVITE.
+        bool rttWasActive = m_impl->rttActiveBeforeHold || m_impl->rttMediaActive;
         try {
             const pj::CallInfo ci = m_impl->pjCall->getInfo();
             Logger::instance().info(LogCategory::Sip,
@@ -1267,6 +1316,11 @@ bool SipCall::resume()
                             || mi.status == PJSUA_CALL_MEDIA_LOCAL_HOLD
                             || mi.status == PJSUA_CALL_MEDIA_REMOTE_HOLD))
                     videoWasActive = true;
+                if (mi.type == PJMEDIA_TYPE_TEXT
+                        && (mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                            || mi.status == PJSUA_CALL_MEDIA_LOCAL_HOLD
+                            || mi.status == PJSUA_CALL_MEDIA_REMOTE_HOLD))
+                    rttWasActive = true;
             }
         } catch (...) {}
 
@@ -1300,6 +1354,7 @@ bool SipCall::resume()
                     .arg(prm.opt.textCount));
             m_impl->pjCall->reinvite(prm);
             m_impl->videoActiveBeforeHold = false;
+            m_impl->rttActiveBeforeHold   = false;
             m_stateMachine.tryTransition(CallState::Active, QStringLiteral("Call resumed"));
             return true;
         } catch (const pj::Error &e) {
@@ -1777,6 +1832,11 @@ RtpStatsSnapshot SipCall::mediaRtpStats() const
             snap.rttAvailable = true;
             snap.rttMs = static_cast<double>(stat.rtcp.rttUsec.mean) / 1000.0;
         }
+
+        if (stat.rtcp.txStat.pkt > 0) {
+            snap.packetsTxAvailable = true;
+            snap.packetsTx = static_cast<unsigned>(stat.rtcp.txStat.pkt);
+        }
         return snap;
     } catch (const pj::Error &e) {
         snap.reason = QStringLiteral("PJSIP stream statistics unavailable: %1")
@@ -1987,9 +2047,11 @@ bool SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                         .arg(pjsipStatusText(st)));
             }
         } else {
-            // Preview already running — redirect its render target to our widget.
+            // Preview already running (e.g. re-opened by Camera On) — rebind
+            // its render target to our widget. Without this the preview frames
+            // go nowhere after the capture device is re-opened mid-call.
             pjmedia_vid_dev_hwnd h = makeWinHwnd(qtPreviewHwnd);
-            pj_status_t st = PJ_SUCCESS;
+            pj_status_t st = pjsua_vid_win_set_win(previewWinId, &h);
             if (st == PJ_SUCCESS) {
                 localOk = true;
                 Logger::instance().info(LogCategory::Media,
@@ -2008,7 +2070,7 @@ bool SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
                 pjsua_vid_preview_param pvp;
                 pjsua_vid_preview_param_default(&pvp);
                 pvp.show    = PJ_FALSE;
-                pvp.rend_id = PJMEDIA_VID_DEFAULT_RENDER_DEV;
+                pvp.rend_id = renderDev;
                 pvp.wnd = makeWinHwnd(qtPreviewHwnd);
                 Logger::instance().info(LogCategory::Media,
                     QStringLiteral("Local preview restart params: capDev=%1 rendId=%2 hwnd=0x%3")
