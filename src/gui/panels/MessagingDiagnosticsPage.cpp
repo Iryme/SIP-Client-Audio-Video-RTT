@@ -16,6 +16,7 @@
 
 #include "core/AppSettings.h"
 #include "gui/MessagingMessageDetailsDialog.h"
+#include "sip/MessageHistoryStore.h"
 #include "sip/MessagingContentKind.h"
 #include "sip/MessagingDiagnosticsStore.h"
 #include "sip/MessagingEventStore.h"
@@ -108,6 +109,60 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     connect(m_toUriEdit, &QLineEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
     connect(m_bodyEdit, &QPlainTextEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
     connect(m_sendBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onSendClicked);
+
+    // ---- Message History (Task W093) ---------------------------------------
+    auto *historyGroup = new QGroupBox(tr("Message History"), this);
+    auto *historyLayout = new QVBoxLayout(historyGroup);
+
+    auto *historyToolbar = new QHBoxLayout();
+    m_historyDirectionFilter = new QComboBox(historyGroup);
+    m_historyDirectionFilter->addItem(tr("All"), QStringLiteral("all"));
+    m_historyDirectionFilter->addItem(tr("Inbound"), QStringLiteral("inbound"));
+    m_historyDirectionFilter->addItem(tr("Outbound"), QStringLiteral("outbound"));
+    m_historyDirectionFilter->addItem(tr("Failed"), QStringLiteral("failed"));
+    historyToolbar->addWidget(m_historyDirectionFilter);
+
+    m_historyContentTypeFilter = new QComboBox(historyGroup);
+    m_historyContentTypeFilter->addItem(tr("All content types"), QString());
+    m_historyContentTypeFilter->addItem(QStringLiteral("text/plain; charset=utf-8"),
+                                        QStringLiteral("text/plain; charset=utf-8"));
+    m_historyContentTypeFilter->addItem(QStringLiteral("text/html; charset=utf-8"),
+                                        QStringLiteral("text/html; charset=utf-8"));
+    m_historyContentTypeFilter->addItem(QStringLiteral("message/cpim"),
+                                        QStringLiteral("message/cpim"));
+    historyToolbar->addWidget(m_historyContentTypeFilter);
+    historyToolbar->addStretch(1);
+
+    m_clearHistoryBtn = new QPushButton(tr("Clear History"), historyGroup);
+    historyToolbar->addWidget(m_clearHistoryBtn);
+    historyLayout->addLayout(historyToolbar);
+
+    m_historyTable = new QTableWidget(0, 6, historyGroup);
+    m_historyTable->setHorizontalHeaderLabels({
+        tr("Time"), tr("Dir"), tr("Peer"), tr("Content-Type"), tr("Preview"), tr("Status")
+    });
+    m_historyTable->horizontalHeader()->setStretchLastSection(true);
+    m_historyTable->verticalHeader()->setVisible(false);
+    m_historyTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_historyTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    historyLayout->addWidget(m_historyTable);
+
+    root->addWidget(historyGroup);
+
+    connect(m_historyDirectionFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MessagingDiagnosticsPage::applyHistoryFilters);
+    connect(m_historyContentTypeFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MessagingDiagnosticsPage::applyHistoryFilters);
+    connect(m_clearHistoryBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onClearHistory);
+    connect(&MessageHistoryStore::instance(), &MessageHistoryStore::entryAppended,
+            this, &MessagingDiagnosticsPage::onHistoryEntryAppended);
+    connect(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated,
+            this, &MessagingDiagnosticsPage::onHistoryEntryUpdated);
+    connect(&MessageHistoryStore::instance(), &MessageHistoryStore::cleared,
+            this, &MessagingDiagnosticsPage::onHistoryCleared);
+
+    m_historyEntries = MessageHistoryStore::instance().snapshot();
+    rebuildHistoryTable();
 
     auto *toolbar = new QHBoxLayout();
     toolbar->setSpacing(8);
@@ -370,11 +425,114 @@ void MessagingDiagnosticsPage::onSendClicked()
     QString error;
     const bool ok = SipManager::instance().sendSipMessage(composed, error);
     if (ok) {
-        m_sendStatusLabel->setText(tr("Sent to %1").arg(composed.toUri));
+        m_sendStatusLabel->setText(tr("Submitted to %1").arg(composed.toUri));
         m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #7fd08a;"));
         m_bodyEdit->clear();
     } else {
         m_sendStatusLabel->setText(tr("Send failed: %1").arg(error));
         m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #e08080;"));
     }
+}
+
+namespace {
+QString historyStatusText(const MessageHistoryEntry &entry)
+{
+    if (entry.direction == MessageHistoryEntry::Direction::Inbound)
+        return QObject::tr("received");
+    return MessageHistoryEntry::outboundStatusToString(entry.outboundStatus);
+}
+} // namespace
+
+void MessagingDiagnosticsPage::onHistoryEntryAppended(const MessageHistoryEntry &entry)
+{
+    m_historyEntries.append(entry);
+    if (passesHistoryFilters(entry))
+        addHistoryRow(entry);
+}
+
+void MessagingDiagnosticsPage::onHistoryEntryUpdated(const MessageHistoryEntry &entry)
+{
+    for (int i = 0; i < m_historyEntries.size(); ++i) {
+        if (m_historyEntries.at(i).id == entry.id) {
+            m_historyEntries[i] = entry;
+            break;
+        }
+    }
+    // Status is the only field that changes post-append; find the row (if
+    // currently visible under the active filters) and update its cell
+    // in place rather than rebuilding the whole table.
+    for (int row = 0; row < m_historyTable->rowCount(); ++row) {
+        QTableWidgetItem *item = m_historyTable->item(row, 0);
+        if (item && item->data(Qt::UserRole).toLongLong() == entry.id) {
+            m_historyTable->item(row, 5)->setText(historyStatusText(entry));
+            return;
+        }
+    }
+    // Row not currently shown (e.g. filtered out) — nothing further to do.
+}
+
+void MessagingDiagnosticsPage::onHistoryCleared()
+{
+    m_historyEntries.clear();
+    m_historyTable->setRowCount(0);
+}
+
+bool MessagingDiagnosticsPage::passesHistoryFilters(const MessageHistoryEntry &entry) const
+{
+    const QString directionFilter = m_historyDirectionFilter->currentData().toString();
+    if (directionFilter == QStringLiteral("inbound")
+        && entry.direction != MessageHistoryEntry::Direction::Inbound)
+        return false;
+    if (directionFilter == QStringLiteral("outbound")
+        && entry.direction != MessageHistoryEntry::Direction::Outbound)
+        return false;
+    if (directionFilter == QStringLiteral("failed")
+        && entry.outboundStatus != MessageHistoryEntry::OutboundStatus::Failed)
+        return false;
+
+    const QString contentTypeFilter = m_historyContentTypeFilter->currentData().toString();
+    if (!contentTypeFilter.isEmpty() && entry.contentType != contentTypeFilter)
+        return false;
+
+    return true;
+}
+
+void MessagingDiagnosticsPage::applyHistoryFilters()
+{
+    rebuildHistoryTable();
+}
+
+void MessagingDiagnosticsPage::rebuildHistoryTable()
+{
+    m_historyTable->setRowCount(0);
+    for (const MessageHistoryEntry &entry : m_historyEntries) {
+        if (passesHistoryFilters(entry))
+            addHistoryRow(entry);
+    }
+}
+
+void MessagingDiagnosticsPage::addHistoryRow(const MessageHistoryEntry &entry)
+{
+    const int row = m_historyTable->rowCount();
+    m_historyTable->insertRow(row);
+
+    auto setCell = [this, row](int col, const QString &text) {
+        auto *item = new QTableWidgetItem(text);
+        item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+        m_historyTable->setItem(row, col, item);
+    };
+
+    setCell(0, entry.timestamp.toString(QStringLiteral("hh:mm:ss.zzz")));
+    setCell(1, entry.direction == MessageHistoryEntry::Direction::Outbound ? tr("Out") : tr("In"));
+    setCell(2, entry.peerUri);
+    setCell(3, entry.contentType);
+    setCell(4, entry.bodyPreview);
+    setCell(5, historyStatusText(entry));
+
+    m_historyTable->item(row, 0)->setData(Qt::UserRole, static_cast<qlonglong>(entry.id));
+}
+
+void MessagingDiagnosticsPage::onClearHistory()
+{
+    MessageHistoryStore::instance().clear();
 }

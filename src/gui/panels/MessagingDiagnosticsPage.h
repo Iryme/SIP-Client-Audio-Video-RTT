@@ -2,6 +2,7 @@
 
 #include <QWidget>
 
+#include "sip/MessageHistoryEntry.h"
 #include "sip/MessagingEvent.h"
 
 class QCheckBox;
@@ -44,10 +45,20 @@ private slots:
     void onEnableCpimToggled(bool on);
     void onRequestImdnToggled(bool on);
 
+    void onHistoryEntryAppended(const MessageHistoryEntry &entry);
+    void onHistoryEntryUpdated(const MessageHistoryEntry &entry);
+    void onHistoryCleared();
+    void applyHistoryFilters();
+    void onClearHistory();
+
 private:
     void addRow(const MessagingEvent &event);
     void rebuildTable();
     bool passesFilters(const MessagingEvent &event) const;
+
+    void addHistoryRow(const MessageHistoryEntry &entry);
+    void rebuildHistoryTable();
+    bool passesHistoryFilters(const MessageHistoryEntry &entry) const;
 
     QTableWidget *m_table{nullptr};
     QLineEdit    *m_callIdFilter{nullptr};
@@ -67,5 +78,13 @@ private:
     QPushButton    *m_sendBtn{nullptr};
     QLabel         *m_sendStatusLabel{nullptr};
 
-    QList<MessagingEvent> m_events;
+    // Message History (Task W093) — separate table/store from the
+    // diagnostics feed above; see MessageHistoryStore for why.
+    QTableWidget *m_historyTable{nullptr};
+    QComboBox    *m_historyDirectionFilter{nullptr};
+    QComboBox    *m_historyContentTypeFilter{nullptr};
+    QPushButton  *m_clearHistoryBtn{nullptr};
+
+    QList<MessagingEvent>      m_events;
+    QList<MessageHistoryEntry> m_historyEntries;
 };
