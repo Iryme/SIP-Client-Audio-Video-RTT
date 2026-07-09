@@ -11,6 +11,7 @@
 #include "gui/panels/NavRail.h"
 #include "gui/panels/SettingsPanel.h"
 #include "gui/panels/SipLadderPage.h"
+#include "gui/panels/MessagingDiagnosticsPage.h"
 #include "gui/widgets/AudioLevelMeter.h"
 #include "gui/widgets/FlowLayout.h"
 #include "gui/widgets/StatusCard.h"
@@ -1734,7 +1735,7 @@ void MainWindow::buildCentralWidget()
     // on first navigation via ensurePage(). This keeps the constructor fast so
     // MainWindow::show() is called before any heavy page construction.
     static const char *const kPageNames[] = {
-        "Dashboard", "Clients", "SIP Ladder", "Call History", "Logs", "Settings", "Diagnostics"
+        "Dashboard", "Clients", "SIP Ladder", "Messaging", "Call History", "Logs", "Settings", "Diagnostics"
     };
     for (int i = 0; i < kPageCount; ++i) {
         m_pageStack->addWidget(makePlaceholder(tr(kPageNames[i]), m_pageStack));
@@ -1775,13 +1776,17 @@ void MainWindow::ensurePage(int index)
         m_ladderPage = new SipLadderPage(m_pageStack);
         real = m_ladderPage;
         break;
-    case 3: real = buildCallHistoryPage();                       break;
-    case 4: real = buildLogsPage();                              break;
-    case 5:
+    case 3:
+        m_messagingPage = new MessagingDiagnosticsPage(m_pageStack);
+        real = m_messagingPage;
+        break;
+    case 4: real = buildCallHistoryPage();                       break;
+    case 5: real = buildLogsPage();                              break;
+    case 6:
         m_settingsPanel = new SettingsPanel(m_pageStack);
         real = m_settingsPanel;
         break;
-    case 6: real = buildDiagnosticsCenterPage();                 break;
+    case 7: real = buildDiagnosticsCenterPage();                 break;
     default:
         return;
     }
@@ -1818,17 +1823,19 @@ void MainWindow::onNavPageRequested(const QString &page)
         activePage = QStringLiteral("clients");
     } else if (page == QLatin1String("sipladder")) {
         pageIndex = 2;
-    } else if (page == QLatin1String("callhistory")) {
+    } else if (page == QLatin1String("messaging")) {
         pageIndex = 3;
-    } else if (page == QLatin1String("logs")) {
+    } else if (page == QLatin1String("callhistory")) {
         pageIndex = 4;
+    } else if (page == QLatin1String("logs")) {
+        pageIndex = 5;
     } else if (page == QLatin1String("settings")) {
-        pageIndex = 5;
+        pageIndex = 6;
     } else if (page == QLatin1String("settings-video")) {
-        pageIndex = 5;
+        pageIndex = 6;
         activePage = QStringLiteral("settings");
     } else if (page == QLatin1String("diagnostics")) {
-        pageIndex = 6;
+        pageIndex = 7;
     }
 
     if (pageIndex >= 0) {

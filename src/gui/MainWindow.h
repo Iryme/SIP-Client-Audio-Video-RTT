@@ -12,6 +12,7 @@ class RttPanel;
 class DiagnosticsPanel;
 class SettingsPanel;
 class SipLadderPage;
+class MessagingDiagnosticsPage;
 class CallHistoryPanel;
 class DiagnosticsCenterPanel;
 class AppStatusBar;
@@ -60,7 +61,7 @@ private:
     void ensurePage(int index);
 
     // Tracks which pages have been built (false = still a placeholder).
-    static constexpr int kPageCount = 7;
+    static constexpr int kPageCount = 8;
     bool m_pageBuilt[kPageCount]{};
 
     // Dashboard page (kept for signal wiring in buildDashboardPage)
@@ -76,6 +77,7 @@ private:
     DiagnosticsPanel *m_diagnostics{nullptr};
     SettingsPanel    *m_settingsPanel{nullptr};
     SipLadderPage    *m_ladderPage{nullptr};
+    MessagingDiagnosticsPage *m_messagingPage{nullptr};
     CallHistoryPanel *m_callHistoryPanel{nullptr};
     DiagnosticsCenterPanel *m_diagnosticsCenterPanel{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
