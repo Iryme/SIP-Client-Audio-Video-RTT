@@ -13,6 +13,25 @@ static QString normalizedKey(const QString &value)
 {
     return value.trimmed().toLower();
 }
+
+// Short badge shown under MESSAGE / messaging-related rows so the SIP Ladder
+// surfaces CPIM / IMDN / is-composing / MSRP-SDP content at a glance without
+// needing to open the details dialog. Header-string / body-substring based
+// only — matches the lightweight detection style already used elsewhere for
+// the ladder (no dependency on the Messaging Diagnostics store).
+static QString contentTypeTag(const SipMessageTrace &t)
+{
+    const QString ct = t.contentType.trimmed().toLower();
+    if (ct.startsWith(QStringLiteral("message/cpim")))
+        return QStringLiteral("CPIM");
+    if (ct.startsWith(QStringLiteral("message/imdn+xml")))
+        return QStringLiteral("IMDN");
+    if (ct.startsWith(QStringLiteral("application/im-iscomposing+xml")))
+        return QStringLiteral("is-composing");
+    if (t.rawSip.contains(QStringLiteral("m=message")))
+        return QStringLiteral("MSRP-SDP");
+    return QString();
+}
 }
 
 SipLadderWidget::SipLadderWidget(QWidget *parent)
@@ -317,10 +336,15 @@ void SipLadderWidget::paintEvent(QPaintEvent *)
         p.drawText(midX - labelW / 2, rowMid + 3, label);
 
         // CSeq / Call-ID annotation below shaft (smaller, muted)
-        if (!t.cSeq.isEmpty() || !t.callId.isEmpty()) {
+        const QString tag = contentTypeTag(t);
+        if (!t.cSeq.isEmpty() || !t.callId.isEmpty() || !tag.isEmpty()) {
             QString ann;
-            if (!t.cSeq.isEmpty())
-                ann = QStringLiteral("CSeq ") + t.cSeq;
+            if (!tag.isEmpty())
+                ann = QStringLiteral("[%1]").arg(tag);
+            if (!t.cSeq.isEmpty()) {
+                if (!ann.isEmpty()) ann += QStringLiteral("  ");
+                ann += QStringLiteral("CSeq ") + t.cSeq;
+            }
             if (!t.callId.isEmpty()) {
                 if (!ann.isEmpty()) ann += QStringLiteral("  ");
                 ann += t.callId.left(16);
@@ -349,5 +373,6 @@ QColor SipLadderWidget::colorForTrace(const SipMessageTrace &t)
     if (m == QStringLiteral("BYE"))       return QColor("#FF6B6B");
     if (m == QStringLiteral("CANCEL"))    return QColor("#FF9944");
     if (m == QStringLiteral("ACK"))       return QColor("#CCCCAA");
+    if (m == QStringLiteral("MESSAGE"))   return QColor("#B084F5");
     return QColor("#CCCCCC");
 }
