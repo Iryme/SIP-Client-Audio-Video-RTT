@@ -1,6 +1,10 @@
 # Messaging Diagnostics
 
 **Task W090** — Added in branch `feature/w090-msrp-lmpe-diagnostics`.
+**Task W091** — Extended in branch `feature/w091-messaging-event-store`: the
+UI/export layer now reads from the transport-independent `MessagingEventStore`
+instead of talking to `MessagingDiagnosticsStore` directly. See
+[messaging-event-store.md](messaging-event-store.md) for the new model.
 
 ## Overview
 
@@ -34,9 +38,20 @@ MessagingDiagnosticsStore::onSipMessageLogged()
                                      is-composing/MSRP-SDP structs)
           │  emits entryLogged(MessagingTraceEntry)
           ▼
-MessagingDiagnosticsPage           (new "Messaging" nav page — table + filters
-                                     + Clear/Export Text/Export JSON)
-          │  row double-click
+MessagingEventStore::onDiagnosticsEntryLogged()   (Task W091 — maps into the
+          │  transport-independent MessagingEvent shape; no re-parsing)
+          ▼
+      MessagingEvent                (id, direction, transport, payloadType,
+                                      from/to/callId/cseq/contentType,
+                                      bodyPreview, rawSipRedacted,
+                                      parseStatus, parseWarnings)
+          │  emits eventAppended(MessagingEvent)
+          ▼
+MessagingDiagnosticsPage           ("Messaging" nav page — table + filters
+                                     + Clear/Export Text/Export JSON, sourced
+                                     from MessagingEventStore)
+          │  row double-click (resolves structured detail by id from
+          │  MessagingDiagnosticsStore — not duplicated in the UI)
           ▼
 MessagingMessageDetailsDialog      (full structured detail view + raw SIP)
 ```
@@ -120,15 +135,20 @@ Singleton, same shape as `SipTraceLogger`:
 
 ### `MessagingDiagnosticsPage` (`src/gui/panels/MessagingDiagnosticsPage.h/.cpp`)
 
-New "Messaging" nav-rail page (own icon, between "SIP Ladder" and "History" —
-does not crowd call control). Read-only `QTableWidget` feed with columns
-Time / Direction / Method-Status / From / To / Call-ID / Content-Type /
-Preview, filters (Call-ID substring, content kind, direction), and
-Clear / Export Text / Export JSON buttons. A visible banner states the
-feature is read-only and never starts an MSRP session. Row double-click opens
-`MessagingMessageDetailsDialog` (`src/gui/MessagingMessageDetailsDialog.h/.cpp`)
-showing the full structured sections plus the redacted raw SIP text (with a
-"Copy raw SIP" button), mirroring `SipMessageDetailsDialog`.
+"Messaging" nav-rail page (own icon, between "SIP Ladder" and "History" —
+does not crowd call control). Read-only `QTableWidget` feed sourced from
+`MessagingEventStore` (Task W091; see [messaging-event-store.md](messaging-event-store.md))
+with columns Time / Direction / Transport / From / To / Call-ID /
+Content-Type / Preview / Parse, filters (Call-ID substring, payload type,
+direction), and Clear / Export Text / Export JSON buttons acting on the
+event store. Parse warnings are shown inline in the "Parse" cell (with the
+full list in the cell's tooltip) — never as a blocking dialog, so a
+malformed body never interrupts the live feed or the UI thread. A visible
+banner states the feature is read-only and never starts an MSRP session.
+Row double-click resolves the event's structured CPIM/IMDN/is-composing/
+SDP-MSRP detail from `MessagingDiagnosticsStore` (by id, not re-parsed) and
+opens `MessagingMessageDetailsDialog` (`src/gui/MessagingMessageDetailsDialog.h/.cpp`),
+mirroring `SipMessageDetailsDialog`.
 
 All parsing happens synchronously inside the Qt slot invoked when
 `SipTraceLogger` emits `messageLogged` (already marshaled to the GUI thread by
@@ -160,16 +180,17 @@ this mirrors the existing tolerant, best-effort style of `SipRawMessageParser`.
 | `tests/test_is_composing_parser.cpp` | active/idle/gone states, refresh, timeout |
 | `tests/test_sdp_msrp_diagnostics_parser.cpp` | TCP/MSRP and TCP/TLS/MSRP media blocks, session-id extraction, non-MSRP SDP rejection |
 | `tests/test_messaging_diagnostics_store.cpp` | Relevance filtering, CPIM→IMDN nesting, is-composing, INVITE+MSRP-SDP relevance, clear/export |
+| `tests/test_messaging_event_store.cpp` | See [messaging-event-store.md](messaging-event-store.md) |
 
 Run (see [build-windows.md](build-windows.md) for full environment setup):
 
 ```powershell
 cmake -S . -B build_tests -G "NMake Makefiles" -DQt6_DIR=<path-to-Qt6-cmake> -DBUILD_TESTS=ON
-cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_messaging_diagnostics_store
-ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store" --output-on-failure
+cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_messaging_diagnostics_store test_messaging_event_store
+ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store|test_messaging_event_store" --output-on-failure
 ```
 
-All 5 new suites pass locally (24 test functions total).
+All 6 suites (W090 + W091) pass locally.
 
 ## Known Limitations
 
