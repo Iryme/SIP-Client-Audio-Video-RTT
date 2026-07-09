@@ -108,6 +108,8 @@ set(SOURCES
     src/gui/panels/SipLadderPage.cpp
     src/gui/SipLadderWidget.cpp
     src/gui/SipMessageDetailsDialog.cpp
+    src/gui/panels/MessagingDiagnosticsPage.cpp
+    src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
     src/gui/widgets/StatusCard.cpp
@@ -115,6 +117,12 @@ set(SOURCES
     src/sip/SipTraceLogger.cpp
     src/sip/SipRawMessageParser.cpp
     src/sip/PjsipTraceModule.cpp
+    src/sip/MessagingContentKind.cpp
+    src/sip/CpimParser.cpp
+    src/sip/ImdnParser.cpp
+    src/sip/IsComposingParser.cpp
+    src/sip/SdpMsrpDiagnosticsParser.cpp
+    src/sip/MessagingDiagnosticsStore.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -196,10 +204,23 @@ set(HEADERS
     src/gui/panels/SipLadderPage.h
     src/gui/SipLadderWidget.h
     src/gui/SipMessageDetailsDialog.h
+    src/gui/panels/MessagingDiagnosticsPage.h
+    src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h
     src/sip/SipRawMessageParser.h
     src/sip/PjsipTraceModule.h
+    src/sip/MessagingContentKind.h
+    src/sip/CpimInfo.h
+    src/sip/CpimParser.h
+    src/sip/ImdnInfo.h
+    src/sip/ImdnParser.h
+    src/sip/IsComposingInfo.h
+    src/sip/IsComposingParser.h
+    src/sip/SdpMsrpInfo.h
+    src/sip/SdpMsrpDiagnosticsParser.h
+    src/sip/MessagingTraceEntry.h
+    src/sip/MessagingDiagnosticsStore.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h
