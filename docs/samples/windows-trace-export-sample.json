@@ -1,0 +1,96 @@
+{
+    "schemaVersion": 1,
+    "source": "windows-client",
+    "exportedAt": "2026-07-09T21:00:00.000Z",
+    "events": [
+        {
+            "bodyPreview": "Wheee!",
+            "callId": "a84b4c76e66710",
+            "contentType": "message/cpim",
+            "cpim": {
+                "contentType": "text/plain; charset=utf-8",
+                "dateTime": "2000-12-13T13:40:00-08:00",
+                "from": "MR SANDERS <im:piglet@example.com>",
+                "subject": "the weather will be fine today",
+                "to": "Depressed Donkey <im:eeyore@example.com>"
+            },
+            "cseq": "1 MESSAGE",
+            "direction": "inbound",
+            "eventId": 1,
+            "from": "sip:alice@example.com",
+            "messageId": "",
+            "payloadType": "cpim",
+            "rawSipRedacted": "MESSAGE sip:bob@example.com SIP/2.0\r\nContent-Type: message/cpim\r\n\r\nFrom: MR SANDERS <im:piglet@example.com>\r\nTo: Depressed Donkey <im:eeyore@example.com>\r\nDateTime: 2000-12-13T13:40:00-08:00\r\nSubject: the weather will be fine today\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nWheee!",
+            "status": "ok",
+            "timestamp": "2026-07-09T20:59:59.500Z",
+            "to": "sip:bob@example.com",
+            "transport": "sip-message"
+        },
+        {
+            "bodyPreview": "<imdn xmlns=\"urn:ietf:params:xml:ns:imdn\"><message-id>msg-42</message-id>...",
+            "callId": "a84b4c76e66711",
+            "contentType": "message/imdn+xml",
+            "cseq": "1 MESSAGE",
+            "direction": "outbound",
+            "eventId": 2,
+            "from": "sip:bob@example.com",
+            "imdn": {
+                "disposition": "delivered",
+                "finalRecipient": "sip:alice@example.com",
+                "messageId": "msg-42",
+                "originalRecipient": "sip:alice@example.com"
+            },
+            "messageId": "msg-42",
+            "payloadType": "imdn",
+            "rawSipRedacted": "MESSAGE sip:alice@example.com SIP/2.0\r\nContent-Type: message/imdn+xml\r\n\r\n<imdn xmlns=\"urn:ietf:params:xml:ns:imdn\"><message-id>msg-42</message-id><original-recipient>sip:alice@example.com</original-recipient><final-recipient>sip:alice@example.com</final-recipient><delivery-notification><status><delivered/></status></delivery-notification></imdn>",
+            "status": "ok",
+            "timestamp": "2026-07-09T21:00:01.200Z",
+            "to": "sip:alice@example.com",
+            "transport": "sip-message"
+        },
+        {
+            "bodyPreview": "<isComposing xmlns=\"urn:ietf:params:xml:ns:im-iscomposing\"><state>active</state>...",
+            "callId": "a84b4c76e66712",
+            "contentType": "application/im-iscomposing+xml",
+            "cseq": "1 MESSAGE",
+            "direction": "inbound",
+            "eventId": 3,
+            "from": "sip:alice@example.com",
+            "isComposing": {
+                "refresh": "60",
+                "state": "active",
+                "timeout": ""
+            },
+            "payloadType": "is-composing",
+            "rawSipRedacted": "MESSAGE sip:bob@example.com SIP/2.0\r\nContent-Type: application/im-iscomposing+xml\r\n\r\n<isComposing xmlns=\"urn:ietf:params:xml:ns:im-iscomposing\"><state>active</state><refresh>60</refresh></isComposing>",
+            "status": "ok",
+            "timestamp": "2026-07-09T21:00:02.750Z",
+            "to": "sip:bob@example.com",
+            "transport": "sip-message"
+        },
+        {
+            "bodyPreview": "v=0 o=- 0 0 IN IP4 127.0.0.1 s=- c=IN IP4 127.0.0.1 t=0 0 m=message 12345 TCP/MSRP * a=path:msrp://127.0.0.1:12345/session-xyz;tcp a=accept-types:text/plain message/cpim a=setup:active a=connection:new",
+            "callId": "a84b4c76e66713",
+            "contentType": "application/sdp",
+            "cseq": "1 INVITE",
+            "direction": "outbound",
+            "eventId": 4,
+            "from": "sip:alice@example.com",
+            "msrp": {
+                "acceptTypes": "text/plain message/cpim",
+                "connection": "new",
+                "mediaLine": "m=message 12345 TCP/MSRP *",
+                "path": "msrp://127.0.0.1:12345/session-xyz;tcp",
+                "sessionId": "session-xyz",
+                "setup": "active",
+                "transportProtocol": "TCP/MSRP"
+            },
+            "payloadType": "sdp",
+            "rawSipRedacted": "INVITE sip:bob@example.com SIP/2.0\r\nContent-Type: application/sdp\r\n\r\nv=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nc=IN IP4 127.0.0.1\r\nt=0 0\r\nm=message 12345 TCP/MSRP *\r\na=path:msrp://127.0.0.1:12345/session-xyz;tcp\r\na=accept-types:text/plain message/cpim\r\na=setup:active\r\na=connection:new\r\n",
+            "status": "ok",
+            "timestamp": "2026-07-09T21:00:03.900Z",
+            "to": "sip:bob@example.com",
+            "transport": "msrp"
+        }
+    ]
+}

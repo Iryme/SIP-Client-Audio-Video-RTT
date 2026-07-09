@@ -1,6 +1,12 @@
 # MSRP Diagnostics (SDP Detection Only)
 
 **Task W090** — Added in branch `feature/w090-msrp-lmpe-diagnostics`.
+**Task W094** — [Windows Trace JSON Export](windows-trace-json-export.md)
+(branch `feature/w094-windows-trace-json-export`) adds an interop-compatible
+JSON export that includes these same `SdpMsrpInfo` fields (nested under an
+`"msrp"` key) alongside SIP MESSAGE/CPIM/IMDN/is-composing events, for
+diffing against a SIP-Server-RTT server-side trace. It reads the fields
+described below as-is — no new MSRP parsing or detection logic was added.
 
 ## Overview
 

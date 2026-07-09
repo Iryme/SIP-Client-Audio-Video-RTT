@@ -10,6 +10,14 @@ same page gained a "Send SIP MESSAGE" composer, so this feed is no longer
 purely passive — it also displays messages this client itself sends. MSRP
 remains completely untouched/disabled. See [sip-message.md](sip-message.md)
 for the send/receive foundation.
+**Task W093** — Extended in branch `feature/w093-incoming-message-history`:
+added a dedicated inbound-message callback and a separate "Message History"
+table. See [message-history.md](message-history.md).
+**Task W094** — Extended in branch `feature/w094-windows-trace-json-export`:
+added an "Export Interop JSON" button producing a server-comparable schema
+(SIP-Server-RTT `compare-client-server-trace.py`). Purely an additional
+export format — no changes to capture/parsing. See
+[windows-trace-json-export.md](windows-trace-json-export.md).
 
 ## Overview
 
@@ -155,7 +163,9 @@ does not crowd call control). Read-only `QTableWidget` feed sourced from
 `MessagingEventStore` (Task W091; see [messaging-event-store.md](messaging-event-store.md))
 with columns Time / Direction / Transport / From / To / Call-ID /
 Content-Type / Preview / Parse, filters (Call-ID substring, payload type,
-direction), and Clear / Export Text / Export JSON buttons acting on the
+direction), and Clear / Export Text / Export JSON / Export Interop JSON
+(Task W094 — server-comparable schema, see
+[windows-trace-json-export.md](windows-trace-json-export.md)) buttons acting on the
 event store. Parse warnings are shown inline in the "Parse" cell (with the
 full list in the cell's tooltip) — never as a blocking dialog, so a
 malformed body never interrupts the live feed or the UI thread. A visible
@@ -203,16 +213,18 @@ this mirrors the existing tolerant, best-effort style of `SipRawMessageParser`.
 | `tests/test_messaging_diagnostics_store.cpp` | Relevance filtering, CPIM→IMDN nesting, is-composing, INVITE+MSRP-SDP relevance, clear/export |
 | `tests/test_messaging_event_store.cpp` | See [messaging-event-store.md](messaging-event-store.md) |
 | `tests/test_sip_message_foundation.cpp` | See [sip-message.md](sip-message.md) |
+| `tests/test_message_history.cpp` | See [message-history.md](message-history.md) |
+| `tests/test_windows_trace_json_export.cpp` | See [windows-trace-json-export.md](windows-trace-json-export.md) |
 
 Run (see [build-windows.md](build-windows.md) for full environment setup):
 
 ```powershell
 cmake -S . -B build_tests -G "NMake Makefiles" -DQt6_DIR=<path-to-Qt6-cmake> -DBUILD_TESTS=ON
-cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_messaging_diagnostics_store test_messaging_event_store test_sip_message_foundation
-ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store|test_messaging_event_store|test_sip_message_foundation" --output-on-failure
+cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_messaging_diagnostics_store test_messaging_event_store test_sip_message_foundation test_message_history test_windows_trace_json_export
+ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store|test_messaging_event_store|test_sip_message_foundation|test_message_history|test_windows_trace_json_export" --output-on-failure
 ```
 
-All 7 suites (W090 + W091 + W092) pass locally.
+All 9 suites (W090 + W091 + W092 + W093 + W094) pass locally.
 
 ## Known Limitations
 
