@@ -70,6 +70,7 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SdpMsrpDiagnosticsParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingDiagnosticsStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/MessagingEventStore.cpp
 )
 
 # Audio + video media sources — required by any test that uses AudioMediaManager or VideoMediaManager
@@ -703,6 +704,25 @@ target_link_libraries(test_messaging_diagnostics_store PRIVATE
 )
 
 add_test(NAME test_messaging_diagnostics_store COMMAND test_messaging_diagnostics_store)
+
+# ---- test_messaging_event_store ------------------------------------------
+qt_add_executable(test_messaging_event_store
+    test_messaging_event_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SIP_TRACE_SOURCES}
+    ${MESSAGING_DIAGNOSTICS_SOURCES}
+)
+
+target_include_directories(test_messaging_event_store PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_messaging_event_store PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_messaging_event_store COMMAND test_messaging_event_store)
 
 # PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
 if(CALL_SOURCES_EXTRA_LIBS)

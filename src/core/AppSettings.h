@@ -66,6 +66,12 @@ public:
         settings().setValue("emergency/testMode", on);
     }
 
+    // Messaging Diagnostics — max MessagingEvent rows retained in memory
+    // (oldest evicted first once the limit is exceeded). Diagnostic-only
+    // setting; has no effect on SIP/MSRP transport behavior.
+    static int  loadMaxMessagingEventsRetained()        { return settings().value(QStringLiteral("messaging/maxEventsRetained"), 1000).toInt(); }
+    static void saveMaxMessagingEventsRetained(int max) { settings().setValue(QStringLiteral("messaging/maxEventsRetained"), max); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {
