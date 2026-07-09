@@ -73,6 +73,16 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingEventStore.cpp
 )
 
+# SIP MESSAGE Foundation sources (Task W092) — composer + CPIM builder, plus
+# the URI normalizer they depend on. Pure Qt/text, no PJSIP types; kept
+# separate from MESSAGING_DIAGNOSTICS_SOURCES so existing messaging test
+# targets that don't need URI normalization stay unaffected.
+set(SIP_MESSAGE_FOUNDATION_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/CpimBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipMessageComposer.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
+)
+
 # Audio + video media sources — required by any test that uses AudioMediaManager or VideoMediaManager
 set(AUDIO_MEDIA_SOURCES
     ${CMAKE_SOURCE_DIR}/src/media/AudioMediaManager.cpp
@@ -723,6 +733,26 @@ target_link_libraries(test_messaging_event_store PRIVATE
 )
 
 add_test(NAME test_messaging_event_store COMMAND test_messaging_event_store)
+
+# ---- test_sip_message_foundation -----------------------------------------
+qt_add_executable(test_sip_message_foundation
+    test_sip_message_foundation.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SIP_TRACE_SOURCES}
+    ${MESSAGING_DIAGNOSTICS_SOURCES}
+    ${SIP_MESSAGE_FOUNDATION_SOURCES}
+)
+
+target_include_directories(test_sip_message_foundation PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sip_message_foundation PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sip_message_foundation COMMAND test_sip_message_foundation)
 
 # PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
 if(CALL_SOURCES_EXTRA_LIBS)
