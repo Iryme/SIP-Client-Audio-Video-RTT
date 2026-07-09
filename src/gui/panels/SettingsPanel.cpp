@@ -196,6 +196,22 @@ SettingsPanel::SettingsPanel(QWidget *parent)
         messagingDesc->setWordWrap(true);
         messagingDesc->setStyleSheet("color: #8899aa; font-size: 11px;");
         messagingForm->addRow(messagingDesc);
+
+        m_enableSipMessage = new QCheckBox(tr("Enable SIP MESSAGE"), messagingGroup);
+        m_enableCpim       = new QCheckBox(tr("Enable CPIM"), messagingGroup);
+        m_requestImdn      = new QCheckBox(tr("Request IMDN by default"), messagingGroup);
+        messagingForm->addRow(QString(), m_enableSipMessage);
+        messagingForm->addRow(QString(), m_enableCpim);
+        messagingForm->addRow(QString(), m_requestImdn);
+        auto *messagingSendDesc = new QLabel(
+            tr("Conservative by default: SIP MESSAGE sending, CPIM wrapping, and IMDN "
+               "requests are all off until explicitly enabled here. MSRP is never "
+               "activated by any of these settings."),
+            messagingGroup);
+        messagingSendDesc->setWordWrap(true);
+        messagingSendDesc->setStyleSheet("color: #8899aa; font-size: 11px;");
+        messagingForm->addRow(messagingSendDesc);
+
         textLayout->addWidget(messagingGroup);
 
         textLayout->addStretch();
@@ -249,6 +265,9 @@ void SettingsPanel::load()
     loadTextAppearance();
     if (m_messagingMaxEvents)
         m_messagingMaxEvents->setValue(AppSettings::loadMaxMessagingEventsRetained());
+    if (m_enableSipMessage) m_enableSipMessage->setChecked(AppSettings::enableSipMessage());
+    if (m_enableCpim)       m_enableCpim->setChecked(AppSettings::enableCpim());
+    if (m_requestImdn)      m_requestImdn->setChecked(AppSettings::requestImdnByDefault());
 
     // Sync theme combo to whatever is currently active
     if (m_themeCombo) {
@@ -315,6 +334,9 @@ void SettingsPanel::onLoadDefaults()
     if (m_lmpeBold) m_lmpeBold->setChecked(false);
     if (m_lmpeHighContrast) m_lmpeHighContrast->setChecked(false);
     if (m_messagingMaxEvents) m_messagingMaxEvents->setValue(1000);
+    if (m_enableSipMessage) m_enableSipMessage->setChecked(false);
+    if (m_enableCpim)       m_enableCpim->setChecked(false);
+    if (m_requestImdn)      m_requestImdn->setChecked(false);
     applyDebugToggle(false);
 }
 
@@ -333,6 +355,9 @@ void SettingsPanel::onSave()
         AppSettings::saveMaxMessagingEventsRetained(m_messagingMaxEvents->value());
         MessagingEventStore::instance().setMaxEventsRetained(m_messagingMaxEvents->value());
     }
+    if (m_enableSipMessage) AppSettings::setEnableSipMessage(m_enableSipMessage->isChecked());
+    if (m_enableCpim)       AppSettings::setEnableCpim(m_enableCpim->isChecked());
+    if (m_requestImdn)      AppSettings::setRequestImdnByDefault(m_requestImdn->isChecked());
     s.sync();
     applyDebugToggle(m_debugSIP->isChecked());
 }

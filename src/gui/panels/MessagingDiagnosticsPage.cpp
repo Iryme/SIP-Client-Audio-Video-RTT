@@ -1,19 +1,27 @@
 #include "MessagingDiagnosticsPage.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFileDialog>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTextStream>
 #include <QFile>
 
+#include "core/AppSettings.h"
 #include "gui/MessagingMessageDetailsDialog.h"
+#include "sip/MessagingContentKind.h"
 #include "sip/MessagingDiagnosticsStore.h"
 #include "sip/MessagingEventStore.h"
+#include "sip/SipManager.h"
+#include "sip/SipMessageComposer.h"
+#include "sip/SipProfileManager.h"
 
 namespace {
 QString normalizedKey(const QString &value)
@@ -37,12 +45,69 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
 
     auto *note = new QLabel(
         tr("Read-only diagnostics for SIP MESSAGE, CPIM, IMDN, is-composing and MSRP/SDP "
-           "attributes, backed by the transport-independent messaging event store. No MSRP "
-           "session is ever started from this view — detection and logging only."),
+           "attributes, backed by the transport-independent messaging event store. MSRP "
+           "sessions are never started from this feature — detection and logging only."),
         this);
     note->setWordWrap(true);
     note->setStyleSheet("color: #b7c4d6;");
     root->addWidget(note);
+
+    // ---- SIP MESSAGE composer (Task W092) ---------------------------------
+    auto *composeGroup = new QGroupBox(tr("Send SIP MESSAGE"), this);
+    auto *composeLayout = new QVBoxLayout(composeGroup);
+
+    auto *destRow = new QHBoxLayout();
+    m_toUriEdit = new QLineEdit(composeGroup);
+    m_toUriEdit->setPlaceholderText(tr("Recipient SIP URI, e.g. sip:user@example.com"));
+    destRow->addWidget(new QLabel(tr("To:"), composeGroup));
+    destRow->addWidget(m_toUriEdit, 1);
+
+    m_composeContentType = new QComboBox(composeGroup);
+    m_composeContentType->addItem(QStringLiteral("text/plain"),
+                                   static_cast<int>(MessagingContentKind::PlainText));
+    m_composeContentType->addItem(QStringLiteral("text/html"),
+                                   static_cast<int>(MessagingContentKind::Html));
+    m_composeContentType->addItem(QStringLiteral("message/cpim"),
+                                   static_cast<int>(MessagingContentKind::Cpim));
+    destRow->addWidget(new QLabel(tr("Content-Type:"), composeGroup));
+    destRow->addWidget(m_composeContentType);
+    composeLayout->addLayout(destRow);
+
+    m_bodyEdit = new QPlainTextEdit(composeGroup);
+    m_bodyEdit->setPlaceholderText(tr("Message body"));
+    m_bodyEdit->setFixedHeight(70);
+    composeLayout->addWidget(m_bodyEdit);
+
+    auto *optionsRow = new QHBoxLayout();
+    m_enableSipMessageCheck = new QCheckBox(tr("Enable SIP MESSAGE"), composeGroup);
+    m_enableCpimCheck       = new QCheckBox(tr("Enable CPIM"), composeGroup);
+    m_requestImdnCheck      = new QCheckBox(tr("Request IMDN"), composeGroup);
+    m_enableSipMessageCheck->setChecked(AppSettings::enableSipMessage());
+    m_enableCpimCheck->setChecked(AppSettings::enableCpim());
+    m_requestImdnCheck->setChecked(AppSettings::requestImdnByDefault());
+    optionsRow->addWidget(m_enableSipMessageCheck);
+    optionsRow->addWidget(m_enableCpimCheck);
+    optionsRow->addWidget(m_requestImdnCheck);
+    optionsRow->addStretch(1);
+    m_sendBtn = new QPushButton(tr("Send"), composeGroup);
+    optionsRow->addWidget(m_sendBtn);
+    composeLayout->addLayout(optionsRow);
+
+    m_sendStatusLabel = new QLabel(composeGroup);
+    m_sendStatusLabel->setWordWrap(true);
+    composeLayout->addWidget(m_sendStatusLabel);
+
+    root->addWidget(composeGroup);
+
+    connect(m_enableSipMessageCheck, &QCheckBox::toggled,
+            this, &MessagingDiagnosticsPage::onEnableSipMessageToggled);
+    connect(m_enableCpimCheck, &QCheckBox::toggled,
+            this, &MessagingDiagnosticsPage::onEnableCpimToggled);
+    connect(m_requestImdnCheck, &QCheckBox::toggled,
+            this, &MessagingDiagnosticsPage::onRequestImdnToggled);
+    connect(m_toUriEdit, &QLineEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
+    connect(m_bodyEdit, &QPlainTextEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
+    connect(m_sendBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onSendClicked);
 
     auto *toolbar = new QHBoxLayout();
     toolbar->setSpacing(8);
@@ -108,6 +173,7 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
 
     m_events = MessagingEventStore::instance().snapshot();
     rebuildTable();
+    updateSendEnabled();
 }
 
 void MessagingDiagnosticsPage::onEventAppended(const MessagingEvent &event)
@@ -253,4 +319,62 @@ void MessagingDiagnosticsPage::onExportJson()
     if (!f.open(QFile::WriteOnly | QFile::Text))
         return;
     QTextStream(&f) << MessagingEventStore::instance().exportToJson();
+}
+
+void MessagingDiagnosticsPage::onEnableSipMessageToggled(bool on)
+{
+    AppSettings::setEnableSipMessage(on);
+    updateSendEnabled();
+}
+
+void MessagingDiagnosticsPage::onEnableCpimToggled(bool on)
+{
+    AppSettings::setEnableCpim(on);
+    if (!on && m_composeContentType->currentData().toInt()
+                   == static_cast<int>(MessagingContentKind::Cpim)) {
+        m_composeContentType->setCurrentIndex(0); // fall back to text/plain
+    }
+}
+
+void MessagingDiagnosticsPage::onRequestImdnToggled(bool on)
+{
+    AppSettings::setRequestImdnByDefault(on);
+}
+
+void MessagingDiagnosticsPage::updateSendEnabled()
+{
+    const bool enabled = m_enableSipMessageCheck->isChecked()
+        && !m_toUriEdit->text().trimmed().isEmpty()
+        && !m_bodyEdit->toPlainText().trimmed().isEmpty();
+    m_sendBtn->setEnabled(enabled);
+}
+
+void MessagingDiagnosticsPage::onSendClicked()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = m_toUriEdit->text();
+    const SipProfile activeProfile = SipProfileManager::instance().activeProfile();
+    opts.fromUri = activeProfile.isNull() ? QString() : activeProfile.effectiveSipUri();
+    opts.contentType = static_cast<MessagingContentKind>(m_composeContentType->currentData().toInt());
+    opts.body = m_bodyEdit->toPlainText();
+    opts.cpimEnabled = m_enableCpimCheck->isChecked();
+    opts.requestImdn = m_requestImdnCheck->isChecked();
+
+    const ComposedSipMessage composed = SipMessageComposer::compose(opts);
+    if (!composed.valid) {
+        m_sendStatusLabel->setText(tr("Not sent: %1").arg(composed.error));
+        m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #e08080;"));
+        return;
+    }
+
+    QString error;
+    const bool ok = SipManager::instance().sendSipMessage(composed, error);
+    if (ok) {
+        m_sendStatusLabel->setText(tr("Sent to %1").arg(composed.toUri));
+        m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #7fd08a;"));
+        m_bodyEdit->clear();
+    } else {
+        m_sendStatusLabel->setText(tr("Send failed: %1").arg(error));
+        m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #e08080;"));
+    }
 }

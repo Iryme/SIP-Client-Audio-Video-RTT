@@ -65,4 +65,9 @@ private:
 
     // Messaging Diagnostics — max MessagingEvent rows retained in memory
     QSpinBox *m_messagingMaxEvents{nullptr};
+
+    // SIP MESSAGE Foundation (Task W092) — conservative-by-default toggles
+    QCheckBox *m_enableSipMessage{nullptr};
+    QCheckBox *m_enableCpim{nullptr};
+    QCheckBox *m_requestImdn{nullptr};
 };
