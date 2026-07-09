@@ -60,6 +60,18 @@ set(PJSIP_TRACE_MODULE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/PjsipTraceModule.cpp
 )
 
+# Messaging Diagnostics parser sources — CPIM / IMDN / is-composing / SDP MSRP.
+# Pure Qt/text parsing, no PJSIP types, so these are reused as-is by both the
+# app target and the standalone parser test targets below.
+set(MESSAGING_DIAGNOSTICS_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/MessagingContentKind.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CpimParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/ImdnParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SdpMsrpDiagnosticsParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/MessagingDiagnosticsStore.cpp
+)
+
 # Audio + video media sources — required by any test that uses AudioMediaManager or VideoMediaManager
 set(AUDIO_MEDIA_SOURCES
     ${CMAKE_SOURCE_DIR}/src/media/AudioMediaManager.cpp
@@ -604,6 +616,93 @@ target_link_libraries(test_sip_raw_message_parser PRIVATE
 )
 
 add_test(NAME test_sip_raw_message_parser COMMAND test_sip_raw_message_parser)
+
+# ---- test_cpim_parser ---------------------------------------------------
+qt_add_executable(test_cpim_parser
+    test_cpim_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CpimParser.cpp
+)
+
+target_include_directories(test_cpim_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_cpim_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_cpim_parser COMMAND test_cpim_parser)
+
+# ---- test_imdn_parser ----------------------------------------------------
+qt_add_executable(test_imdn_parser
+    test_imdn_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/ImdnParser.cpp
+)
+
+target_include_directories(test_imdn_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_imdn_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_imdn_parser COMMAND test_imdn_parser)
+
+# ---- test_is_composing_parser --------------------------------------------
+qt_add_executable(test_is_composing_parser
+    test_is_composing_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
+)
+
+target_include_directories(test_is_composing_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_is_composing_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_is_composing_parser COMMAND test_is_composing_parser)
+
+# ---- test_sdp_msrp_diagnostics_parser ------------------------------------
+qt_add_executable(test_sdp_msrp_diagnostics_parser
+    test_sdp_msrp_diagnostics_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SdpMsrpDiagnosticsParser.cpp
+)
+
+target_include_directories(test_sdp_msrp_diagnostics_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sdp_msrp_diagnostics_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sdp_msrp_diagnostics_parser COMMAND test_sdp_msrp_diagnostics_parser)
+
+# ---- test_messaging_diagnostics_store ------------------------------------
+qt_add_executable(test_messaging_diagnostics_store
+    test_messaging_diagnostics_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SIP_TRACE_SOURCES}
+    ${MESSAGING_DIAGNOSTICS_SOURCES}
+)
+
+target_include_directories(test_messaging_diagnostics_store PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_messaging_diagnostics_store PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_messaging_diagnostics_store COMMAND test_messaging_diagnostics_store)
 
 # PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
 if(CALL_SOURCES_EXTRA_LIBS)
