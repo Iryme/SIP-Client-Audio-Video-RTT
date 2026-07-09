@@ -123,6 +123,7 @@ set(SOURCES
     src/sip/IsComposingParser.cpp
     src/sip/SdpMsrpDiagnosticsParser.cpp
     src/sip/MessagingDiagnosticsStore.cpp
+    src/sip/MessagingEventStore.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -221,6 +222,8 @@ set(HEADERS
     src/sip/SdpMsrpDiagnosticsParser.h
     src/sip/MessagingTraceEntry.h
     src/sip/MessagingDiagnosticsStore.h
+    src/sip/MessagingEvent.h
+    src/sip/MessagingEventStore.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h
