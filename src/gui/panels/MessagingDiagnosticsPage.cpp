@@ -16,6 +16,7 @@
 
 #include "core/AppSettings.h"
 #include "gui/MessagingMessageDetailsDialog.h"
+#include "sip/InteropTraceExporter.h"
 #include "sip/MessageHistoryStore.h"
 #include "sip/MessagingContentKind.h"
 #include "sip/MessagingDiagnosticsStore.h"
@@ -190,9 +191,14 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     m_clearBtn = new QPushButton(tr("Clear"), this);
     m_exportTextBtn = new QPushButton(tr("Export Text"), this);
     m_exportJsonBtn = new QPushButton(tr("Export JSON"), this);
+    m_exportInteropJsonBtn = new QPushButton(tr("Export Interop JSON"), this);
+    m_exportInteropJsonBtn->setToolTip(
+        tr("Export in the server-compatible schema used by "
+           "scripts/interop/compare-client-server-trace.py (SIP-Server-RTT)."));
     toolbar->addWidget(m_clearBtn);
     toolbar->addWidget(m_exportTextBtn);
     toolbar->addWidget(m_exportJsonBtn);
+    toolbar->addWidget(m_exportInteropJsonBtn);
     root->addLayout(toolbar);
 
     m_table = new QTableWidget(0, 9, this);
@@ -214,6 +220,8 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     connect(m_clearBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onClear);
     connect(m_exportTextBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onExportText);
     connect(m_exportJsonBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onExportJson);
+    connect(m_exportInteropJsonBtn, &QPushButton::clicked,
+            this, &MessagingDiagnosticsPage::onExportInteropJson);
     connect(m_table, &QTableWidget::cellDoubleClicked, this, &MessagingDiagnosticsPage::onRowActivated);
 
     // Data comes exclusively from MessagingEventStore (Task W091), which
@@ -374,6 +382,21 @@ void MessagingDiagnosticsPage::onExportJson()
     if (!f.open(QFile::WriteOnly | QFile::Text))
         return;
     QTextStream(&f) << MessagingEventStore::instance().exportToJson();
+}
+
+void MessagingDiagnosticsPage::onExportInteropJson()
+{
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Export Interop-Compatible Messaging/MSRP Trace"),
+        QStringLiteral("windows-trace-export.json"),
+        tr("JSON files (*.json);;All (*.*)"));
+    if (path.isEmpty())
+        return;
+
+    QFile f(path);
+    if (!f.open(QFile::WriteOnly | QFile::Text))
+        return;
+    QTextStream(&f) << InteropTraceExporter::exportToJson();
 }
 
 void MessagingDiagnosticsPage::onEnableSipMessageToggled(bool on)

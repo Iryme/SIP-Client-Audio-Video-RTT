@@ -37,6 +37,7 @@ private slots:
     void onClear();
     void onExportText();
     void onExportJson();
+    void onExportInteropJson();
     void onRowActivated(int row, int column);
 
     void onSendClicked();
@@ -67,6 +68,7 @@ private:
     QPushButton  *m_clearBtn{nullptr};
     QPushButton  *m_exportTextBtn{nullptr};
     QPushButton  *m_exportJsonBtn{nullptr};
+    QPushButton  *m_exportInteropJsonBtn{nullptr}; // Task W094
 
     // SIP MESSAGE composer (Task W092)
     QLineEdit      *m_toUriEdit{nullptr};
