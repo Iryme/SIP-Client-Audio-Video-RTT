@@ -1,8 +1,8 @@
 # Project Status
 
-Last updated: 2026-06-27
-Current task count: 43 of N (Tasks 1–28.6 + Task 34–43 complete)
-Active branch: `feature/project-handoff-002`
+Last updated: 2026-07-09
+Current task count: 44 of N (Tasks 1–28.6 + Task 34–43 + Task W090 complete)
+Active branch: `feature/w090-msrp-lmpe-diagnostics`
 
 ---
 
@@ -80,6 +80,7 @@ Active branch: `feature/project-handoff-002`
 | 41 | Live Emergency INVITE Capture — live probe ran, headers confirmed, PIDF-LO confirmed, 404 from Kamailio (PSAP absent, expected) | feature/project-handoff-002 | COMPLETE — live validated |
 | 42 | Emergency GUI Wiring — 112 button in CallPanel, EmergencyCallController → SipManager, StaticLocationProvider DEMO, confirm dialog TEST/LAB | feature/project-handoff-002 | COMPLETE — 26/26 CTest PASS |
 | 43 | Manual PIDF-LO Generator + SIP Location Update — manual lat/lon/unc UI, PIDF-LO preview, SipCall::sendLocationUpdate() via SIP UPDATE, SipManager::sendEmergencyLocationUpdate() | feature/project-handoff-002 | COMPLETE — 26/26 CTest PASS (existing) + test_emergency_location_update 8 tests |
+| W090 | Messaging and MSRP Diagnostics Foundation — MessagingDiagnosticsStore, CpimParser, ImdnParser, IsComposingParser, SdpMsrpDiagnosticsParser, Messaging Diagnostics nav page, SIP Ladder MESSAGE badges | feature/w090-msrp-lmpe-diagnostics | COMPLETE — read-only diagnostics only, no real MSRP session; 5 new test suites pass |
 
 ---
 
@@ -119,7 +120,11 @@ Active branch: `feature/project-handoff-002`
 | CodecManager | COMPLETE | Audio/video codec matrix, priorities, negotiation logging |
 | SipUriNormalizer | COMPLETE | bare users → sip:user@domain, full URI passthrough |
 | SipMessageTrace / SipTraceLogger | COMPLETE | Credential redaction, export Text/JSON |
-| SipLadderWidget | COMPLETE | paintEvent ladder, arrows, CSeq/Call-ID annotation |
+| SipLadderWidget | COMPLETE | paintEvent ladder, arrows, CSeq/Call-ID annotation, MESSAGE color + content-type badge |
+| MessagingDiagnosticsStore | COMPLETE | Filters SipTraceLogger traces for MESSAGE/CPIM/IMDN/is-composing/MSRP-SDP, builds MessagingTraceEntry, export Text/JSON |
+| CpimParser / ImdnParser / IsComposingParser | COMPLETE | RFC 3862 / RFC 5438 / RFC 3994 minimal parsers, pure Qt/text, unit tested |
+| SdpMsrpDiagnosticsParser | COMPLETE | Detects m=message, a=path/accept-types/setup/connection, session-id — detection only, no MSRP session |
+| MessagingDiagnosticsPage | COMPLETE | Read-only "Messaging" nav page — table, filters, Clear/Export Text/Export JSON |
 | RttSession | COMPLETE | 5-state SM, sendText, onCallMediaStateChanged |
 | RttPanel | COMPLETE | TX delta, RX accumulation, BS, CR→transcript |
 | FindPJSIP.cmake | COMPLETE | PJSIP discovery, PJSIP::pjsua2 imported target |
@@ -147,7 +152,10 @@ Active branch: `feature/project-handoff-002`
 | EmergencyMultipartBuilder | COMPLETE | Declarative MIME part builder. PIDF-LO part with Content-ID header. No PJSIP. |
 | test_emergency_protocol_validation | COMPLETE | 12 subtests — negative/positive protocol validation. No PJSIP. |
 | live_emergency_call_probe | COMPLETE | CLI live probe. Full chain to PJSIP. Live validated (Task 41) — INVITE sent, 404 from Kamailio (PSAP absent, expected). |
-| LMPE messaging | NOT STARTED | |
+| LMPE messaging | NOT STARTED | Messaging Diagnostics foundation (Task W090) observes SIP MESSAGE traffic but does not implement LMPE encode/decode |
+| SIP MESSAGE / CPIM / IMDN / is-composing diagnostics | COMPLETE | Task W090 — read-only, see [messaging-diagnostics.md](messaging-diagnostics.md) |
+| MSRP diagnostics (SDP detection) | COMPLETE | Task W090 — detection only, no real MSRP session, see [msrp-diagnostics.md](msrp-diagnostics.md) |
+| MSRP session (real transport) | NOT STARTED | Explicitly out of scope for Task W090 |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |
 | ETSI TS 103 480 | NOT STARTED | Blocked on Task 37–38 |
 | ETSI TS 103 698 | NOT STARTED | Blocked on Task 37 (location provider) |
