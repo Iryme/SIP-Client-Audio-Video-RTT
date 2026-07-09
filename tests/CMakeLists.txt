@@ -34,6 +34,11 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
     ${CMAKE_SOURCE_DIR}/src/rtt/RttSession.cpp
+    # SipManager.cpp calls into MessageHistoryStore (Task W093) from
+    # sendSipMessage()/onAccountInstantMessageReceived(); pure Qt, no
+    # further link dependency (only uses ComposedSipMessage's fields, not
+    # SipMessageComposer's own .cpp).
+    ${CMAKE_SOURCE_DIR}/src/sip/MessageHistoryStore.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -81,6 +86,13 @@ set(SIP_MESSAGE_FOUNDATION_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/CpimBuilder.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipMessageComposer.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
+)
+
+# Message History sources (Task W093). Pure Qt, no PJSIP types; independent
+# of MESSAGING_DIAGNOSTICS_SOURCES/MessagingEventStore on purpose — see
+# MessageHistoryStore.h for why the two pipelines are kept disjoint.
+set(MESSAGE_HISTORY_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/MessageHistoryStore.cpp
 )
 
 # Audio + video media sources — required by any test that uses AudioMediaManager or VideoMediaManager
@@ -753,6 +765,26 @@ target_link_libraries(test_sip_message_foundation PRIVATE
 )
 
 add_test(NAME test_sip_message_foundation COMMAND test_sip_message_foundation)
+
+# ---- test_message_history -------------------------------------------------
+qt_add_executable(test_message_history
+    test_message_history.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/MessagingContentKind.cpp
+    ${SIP_MESSAGE_FOUNDATION_SOURCES}
+    ${MESSAGE_HISTORY_SOURCES}
+)
+
+target_include_directories(test_message_history PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_message_history PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_message_history COMMAND test_message_history)
 
 # PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
 if(CALL_SOURCES_EXTRA_LIBS)
