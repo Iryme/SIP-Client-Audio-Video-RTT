@@ -76,6 +76,7 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SdpMsrpDiagnosticsParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingDiagnosticsStore.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingEventStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/InteropTraceExporter.cpp
 )
 
 # SIP MESSAGE Foundation sources (Task W092) — composer + CPIM builder, plus
@@ -785,6 +786,25 @@ target_link_libraries(test_message_history PRIVATE
 )
 
 add_test(NAME test_message_history COMMAND test_message_history)
+
+# ---- test_windows_trace_json_export ---------------------------------------
+qt_add_executable(test_windows_trace_json_export
+    test_windows_trace_json_export.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${SIP_TRACE_SOURCES}
+    ${MESSAGING_DIAGNOSTICS_SOURCES}
+)
+
+target_include_directories(test_windows_trace_json_export PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_windows_trace_json_export PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_windows_trace_json_export COMMAND test_windows_trace_json_export)
 
 # PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
 if(CALL_SOURCES_EXTRA_LIBS)
