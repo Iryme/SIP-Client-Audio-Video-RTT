@@ -8,6 +8,15 @@ synthetic trace into the same `SipTraceLogger → MessagingDiagnosticsStore`
 pipeline this store already listens to — no changes were needed here.
 Outbound and inbound SIP MESSAGE events both map into `MessagingEvent`
 exactly as before.
+**Task W093** — [Message History](message-history.md) (branch
+`feature/w093-incoming-message-history`) adds a dedicated pjsua2
+incoming-message callback and a separate `MessageHistoryStore` for a simple
+conversational history view. This store is explicitly **not** touched by
+that callback — `MessagingEventStore` keeps being fed exclusively by the
+trace-capture pipeline, which is what keeps the same inbound message from
+being logged twice into two different places within this store. See
+[message-history.md](message-history.md#why-a-separate-store-from-messagingeventstore)
+for the full reasoning.
 
 ## Overview
 

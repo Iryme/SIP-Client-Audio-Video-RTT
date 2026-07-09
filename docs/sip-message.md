@@ -3,6 +3,13 @@
 **Task W092** — Added in branch `feature/w092-sip-message-foundation`, built on
 top of [Messaging Diagnostics (W090)](messaging-diagnostics.md) and the
 [Messaging Event Store (W091)](messaging-event-store.md).
+**Task W093** — [Message History](message-history.md) (branch
+`feature/w093-incoming-message-history`) adds a dedicated pjsua2
+`onInstantMessage`/`onInstantMessageStatus` callback pair on top of the send
+path described here: outbound status now confirms `Sent`/`Failed` via
+`onInstantMessageStatus` (previously "submitted only", see that task's
+Limitations at the time), and inbound messages get a proper conversational
+history feed in addition to the diagnostics table.
 
 ## Overview
 
@@ -141,15 +148,20 @@ composing/attempting a send remains visible in diagnostics.
 
 ## Receiving
 
-No new inbound-handling code was added. `PjsipTraceModule` (Task W090)
-already taps every raw SIP request at the PJSIP transport layer,
-method-agnostic, so an incoming SIP MESSAGE is captured exactly like any
-other SIP message and flows through the unchanged
-`MessagingDiagnosticsStore` → `MessagingEventStore` pipeline automatically.
-pjsua's default UA behavior sends `200 OK` to an incoming MESSAGE when no
-application-level `Account::onInstantMessage` callback is registered — this
-task does not register one, so delivery still succeeds at the SIP level, but
-the app has no dedicated "new message" notification hook yet (see below).
+At the time this task (W092) shipped, no inbound-handling code was added:
+`PjsipTraceModule` (Task W090) already taps every raw SIP request at the
+PJSIP transport layer, method-agnostic, so an incoming SIP MESSAGE was
+captured exactly like any other SIP message and flowed through the
+unchanged `MessagingDiagnosticsStore` → `MessagingEventStore` pipeline
+automatically, with no dedicated "new message" application-level hook.
+
+**Task W093** added that dedicated hook: `Account::onInstantMessage` /
+`Account::onInstantMessageStatus` on the same `pj::Account` subclass, feeding
+a new, separate `MessageHistoryStore` (never `MessagingEventStore` — see
+[message-history.md](message-history.md) for why that separation is what
+avoids duplicate rows between the two pipelines). `MessagingEventStore`
+itself is untouched by W093 and still only ever sees inbound messages via
+the original raw-trace tap.
 
 ## CPIM generation
 
@@ -212,17 +224,14 @@ Safety guards:
 - Sending calls straight into `SipManager`/pjsua2's fire-and-forget submit
   path — nothing here blocks the UI thread.
 
-History: no separate history table was added. Every SIP MESSAGE (outbound
-attempts and inbound captures alike) already appears as a row in the
-existing Messaging Diagnostics table above the composer — timestamp,
-direction, from/to, Content-Type, and body preview are all already columns
-there (see [messaging-diagnostics.md](messaging-diagnostics.md)). This keeps
-the feed as the single source of truth instead of a second, potentially
-inconsistent list. The one piece that table does *not* show is a live
-"Sent"/"Failed" submit status for the message just composed — that's shown
-transiently in the compose panel's status label instead (see "What remains
-diagnostic-only / limitations" below for why final delivery confirmation
-isn't wired up).
+History: at the time this task (W092) shipped, no separate history table
+existed — every SIP MESSAGE appeared only as a row in the Messaging
+Diagnostics table, with no live "Sent"/"Failed" status. **Task W093** added a
+dedicated "Message History" table (with All/Inbound/Outbound/Failed and
+Content-Type filters) below this composer, with per-row outbound status that
+now upgrades from `Submitted` to `Sent`/`Failed` once PJSIP's
+`onInstantMessageStatus` reports a final response — see
+[message-history.md](message-history.md).
 
 ## Tests (`tests/test_sip_message_foundation.cpp`)
 
@@ -252,34 +261,36 @@ ctest --test-dir build_tests -R test_sip_message_foundation --output-on-failure
 ```
 
 All 11 test functions pass locally, alongside the full existing suite
-(40/40 total — see [project-status.md](project-status.md)).
+(41/41 total as of Task W093 — see [project-status.md](project-status.md)).
 
 ## What remains diagnostic-only / limitations
 
 - MSRP is untouched and permanently disabled — nothing in this task enables,
   negotiates, or opens an MSRP session.
-- `SipAccount::sendMessage()` is fire-and-forget: it reports success once
-  pjsua2 accepts the request for submission, not once a `200 OK` (or any
-  other final response) is received. `Account::onInstantMessageStatus` (the
-  pjsua2 callback that reports the final SIP transaction result) is not
-  wired up, so the compose panel's "Sent" status reflects successful
-  *submission*, not confirmed delivery.
-- No `Account::onInstantMessage` callback is registered, so there is no
-  dedicated "new message received" application-level event/notification —
-  inbound messages are only visible by way of the existing diagnostics feed
-  (which already updates live), not a toast/badge/unread-count.
+- `SipAccount::sendMessage()` is still fire-and-forget at the point it
+  returns (reports success once pjsua2 accepts the request for submission,
+  not once a final response is received). **As of Task W093**,
+  `Account::onInstantMessageStatus` is wired up and upgrades the Message
+  History entry's status to `Sent`/`Failed` once/if a final response
+  arrives — see [message-history.md](message-history.md).
+- **As of Task W093**, a dedicated `Account::onInstantMessage` callback is
+  registered and feeds a proper Message History list — see
+  [message-history.md](message-history.md).
 - IMDN requests only add headers; no IMDN generation, retry, or offline
   queuing exists (explicitly out of scope per the task).
 - No message persistence — like `MessagingEventStore`, everything lives only
   for the process lifetime.
-- Single flat history (the existing diagnostics table) — no per-conversation
-  threading.
+- Single flat history (now the dedicated Message History table, Task W093)
+  — no per-conversation threading.
 
 ## What is NOT implemented by this task
 
 - MSRP sessions of any kind.
 - Automatic IMDN `delivered`/`displayed` generation in response to a
   received request (only the *request* headers are added when sending).
-- Delivery/read confirmation surfaced back into the compose UI.
+- Delivery/read confirmation surfaced back into the compose UI (Task W093
+  added final-SIP-response confirmation — `Sent`/`Failed` — in the Message
+  History status column; that is not the same as an IMDN delivery/display
+  receipt, which still doesn't exist).
 - Multiple simultaneous conversations / contact-scoped history.
 - Message retry or offline queuing.
