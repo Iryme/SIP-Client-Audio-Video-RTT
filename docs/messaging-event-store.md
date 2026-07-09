@@ -2,6 +2,12 @@
 
 **Task W091** — Added in branch `feature/w091-messaging-event-store`, built on
 top of [Task W090's Messaging Diagnostics foundation](messaging-diagnostics.md).
+**Task W092** — [SIP MESSAGE Foundation](sip-message.md) (branch
+`feature/w092-sip-message-foundation`) sends outbound messages by logging a
+synthetic trace into the same `SipTraceLogger → MessagingDiagnosticsStore`
+pipeline this store already listens to — no changes were needed here.
+Outbound and inbound SIP MESSAGE events both map into `MessagingEvent`
+exactly as before.
 
 ## Overview
 
@@ -175,8 +181,10 @@ total across the project — see [project-status.md](project-status.md)).
 
 - No new parsing — CPIM/IMDN/is-composing/SDP-MSRP parsing is exactly what
   Task W090 already provides.
-- No real MSRP transport, and no sending/composing of SIP MESSAGE, CPIM,
-  IMDN, or is-composing bodies.
+- No real MSRP transport. Sending/composing SIP MESSAGE (plain/HTML/CPIM,
+  optional IMDN request) is now implemented — see [sip-message.md](sip-message.md)
+  (Task W092) — but this store itself remains an observer; it does not send
+  anything. IMDN/is-composing document generation is still not implemented.
 - No persistence across app restarts — like `MessagingDiagnosticsStore`,
   `MessagingEventStore`'s in-memory list only lives for the process lifetime.
 - No bundle-export integration (`DiagnosticsBundleExporter`) — Messaging

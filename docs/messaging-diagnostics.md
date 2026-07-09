@@ -5,6 +5,11 @@
 UI/export layer now reads from the transport-independent `MessagingEventStore`
 instead of talking to `MessagingDiagnosticsStore` directly. See
 [messaging-event-store.md](messaging-event-store.md) for the new model.
+**Task W092** — Extended in branch `feature/w092-sip-message-foundation`: the
+same page gained a "Send SIP MESSAGE" composer, so this feed is no longer
+purely passive — it also displays messages this client itself sends. MSRP
+remains completely untouched/disabled. See [sip-message.md](sip-message.md)
+for the send/receive foundation.
 
 ## Overview
 
@@ -13,9 +18,19 @@ MESSAGE requests/responses, CPIM-wrapped bodies, IMDN disposition notifications,
 RFC 3994 is-composing indications, and MSRP-related SDP attributes (`m=message`,
 `a=path`, `a=accept-types`, `a=setup`, `a=connection`). It captures, parses,
 logs, and displays this traffic — it does **not** implement real MSRP sessions,
-does not send/receive instant messages itself, and MSRP is never started
-implicitly. Everything here is strictly diagnostic, mirroring the existing
-[SIP Ladder / SIP Diagnostics](sip-diagnostics.md) feature.
+and MSRP is never started implicitly. Everything here is strictly diagnostic,
+mirroring the existing [SIP Ladder / SIP Diagnostics](sip-diagnostics.md)
+feature.
+
+(As of Task W092, this client *can* send/receive basic SIP MESSAGE — see
+[sip-message.md](sip-message.md). That capability is layered on top of this
+diagnostics pipeline without modifying it: composing a message produces a
+synthetic trace that flows through the exact same
+`SipTraceLogger → MessagingDiagnosticsStore → MessagingEventStore` path
+described below, and receiving one requires no new code at all since
+`PjsipTraceModule` already taps every raw SIP message. MSRP itself remains
+exactly as described in this document: detection/diagnostics only, never a
+real session.)
 
 ## Architecture
 
@@ -150,6 +165,12 @@ SDP-MSRP detail from `MessagingDiagnosticsStore` (by id, not re-parsed) and
 opens `MessagingMessageDetailsDialog` (`src/gui/MessagingMessageDetailsDialog.h/.cpp`),
 mirroring `SipMessageDetailsDialog`.
 
+Above the feed, a "Send SIP MESSAGE" group (Task W092) lets the user compose
+and send a SIP MESSAGE (recipient, Content-Type, body, Enable SIP MESSAGE /
+Enable CPIM / Request IMDN checkboxes, Send button, inline status label).
+Sent and received messages both appear as rows in the same table below —
+see [sip-message.md](sip-message.md) for the full send/receive design.
+
 All parsing happens synchronously inside the Qt slot invoked when
 `SipTraceLogger` emits `messageLogged` (already marshaled to the GUI thread by
 `PjsipTraceModule`) — pure string/XML parsing on small bodies, no network or
@@ -181,21 +202,22 @@ this mirrors the existing tolerant, best-effort style of `SipRawMessageParser`.
 | `tests/test_sdp_msrp_diagnostics_parser.cpp` | TCP/MSRP and TCP/TLS/MSRP media blocks, session-id extraction, non-MSRP SDP rejection |
 | `tests/test_messaging_diagnostics_store.cpp` | Relevance filtering, CPIM→IMDN nesting, is-composing, INVITE+MSRP-SDP relevance, clear/export |
 | `tests/test_messaging_event_store.cpp` | See [messaging-event-store.md](messaging-event-store.md) |
+| `tests/test_sip_message_foundation.cpp` | See [sip-message.md](sip-message.md) |
 
 Run (see [build-windows.md](build-windows.md) for full environment setup):
 
 ```powershell
 cmake -S . -B build_tests -G "NMake Makefiles" -DQt6_DIR=<path-to-Qt6-cmake> -DBUILD_TESTS=ON
-cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_messaging_diagnostics_store test_messaging_event_store
-ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store|test_messaging_event_store" --output-on-failure
+cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_messaging_diagnostics_store test_messaging_event_store test_sip_message_foundation
+ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store|test_messaging_event_store|test_sip_message_foundation" --output-on-failure
 ```
 
-All 6 suites (W090 + W091) pass locally.
+All 7 suites (W090 + W091 + W092) pass locally.
 
 ## Known Limitations
 
 - No real MSRP session is ever started — MSRP diagnostics are detection-only, by design (see [msrp-diagnostics.md](msrp-diagnostics.md)).
-- No SIP MESSAGE is sent by the client itself; this task only observes traffic already captured for the SIP Ladder. Sending/composing messages is a future task.
+- As of Task W092 this client can send/receive basic SIP MESSAGE (plain/HTML/CPIM body, optional IMDN request) — see [sip-message.md](sip-message.md) for the send/receive foundation and its own limitations (no delivery confirmation, no IMDN generation, no MSRP).
 - IMDN `original-recipient` / `final-recipient` are not part of the core RFC 5438 `<imdn>` schema (they originate from RFC 8098 email-style disposition notifications); this parser extracts them opportunistically if present but they will usually be absent in a strict RFC 5438 IMDN body.
 - CPIM nesting is one level deep: a CPIM body whose inner `Content-Type` is itself `message/cpim` is not recursively unwrapped.
 - `bodyPreview` is a UI truncation convenience, not a redaction pass; the only redaction applied to message content is the existing `SipTraceLogger::redactCredentials()` (Authorization/Proxy-Authorization headers), which runs before a trace ever reaches this feature.

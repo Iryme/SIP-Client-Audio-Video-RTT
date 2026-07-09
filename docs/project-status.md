@@ -1,8 +1,8 @@
 # Project Status
 
 Last updated: 2026-07-09
-Current task count: 45 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W091 complete)
-Active branch: `feature/w091-messaging-event-store`
+Current task count: 46 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W092 complete)
+Active branch: `feature/w092-sip-message-foundation`
 
 ---
 
@@ -82,6 +82,7 @@ Active branch: `feature/w091-messaging-event-store`
 | 43 | Manual PIDF-LO Generator + SIP Location Update — manual lat/lon/unc UI, PIDF-LO preview, SipCall::sendLocationUpdate() via SIP UPDATE, SipManager::sendEmergencyLocationUpdate() | feature/project-handoff-002 | COMPLETE — 26/26 CTest PASS (existing) + test_emergency_location_update 8 tests |
 | W090 | Messaging and MSRP Diagnostics Foundation — MessagingDiagnosticsStore, CpimParser, ImdnParser, IsComposingParser, SdpMsrpDiagnosticsParser, Messaging Diagnostics nav page, SIP Ladder MESSAGE badges | feature/w090-msrp-lmpe-diagnostics | COMPLETE — read-only diagnostics only, no real MSRP session; 5 new test suites pass |
 | W091 | Messaging Event Model + Safe Message Store — MessagingEvent (transport-independent), MessagingEventStore (bounded, mutex-protected), UI rewired to event store, max-events-retained config | feature/w091-messaging-event-store | COMPLETE — read-only, no new parsing, no real MSRP session; 1 new test suite (7 tests) pass |
+| W092 | SIP MESSAGE Foundation — SipMessageComposer, CpimBuilder, SipAccount::sendMessage (pjsua2 Buddy::sendInstantMessage), SipManager::sendSipMessage, compose UI in Messaging Diagnostics page, enableSipMessage/enableCpim/requestImdnByDefault settings | feature/w092-sip-message-foundation | COMPLETE — basic send/receive only, MSRP still fully disabled, no delivery confirmation/IMDN generation; 1 new test suite (11 tests) pass |
 
 ---
 
@@ -125,8 +126,10 @@ Active branch: `feature/w091-messaging-event-store`
 | MessagingDiagnosticsStore | COMPLETE | Filters SipTraceLogger traces for MESSAGE/CPIM/IMDN/is-composing/MSRP-SDP, builds MessagingTraceEntry, export Text/JSON |
 | CpimParser / ImdnParser / IsComposingParser | COMPLETE | RFC 3862 / RFC 5438 / RFC 3994 minimal parsers, pure Qt/text, unit tested |
 | SdpMsrpDiagnosticsParser | COMPLETE | Detects m=message, a=path/accept-types/setup/connection, session-id — detection only, no MSRP session |
-| MessagingDiagnosticsPage | COMPLETE | Read-only "Messaging" nav page — table, filters, Clear/Export Text/Export JSON; sourced from MessagingEventStore (Task W091) |
+| MessagingDiagnosticsPage | COMPLETE | "Messaging" nav page — diagnostics table (filters, Clear/Export Text/Export JSON, sourced from MessagingEventStore, Task W091) plus a Send SIP MESSAGE composer (Task W092) |
 | MessagingEvent / MessagingEventStore | COMPLETE | Task W091 — transport-independent messaging model, bounded/mutex-protected store, maps MessagingTraceEntry (Task W090) without re-parsing; see [messaging-event-store.md](messaging-event-store.md) |
+| SipMessageComposer / CpimBuilder | COMPLETE | Task W092 — pure Qt composer for outbound SIP MESSAGE (plain/HTML/CPIM, IMDN-request headers), no PJSIP/network dependency; see [sip-message.md](sip-message.md) |
+| SipAccount::sendMessage / SipManager::sendSipMessage | COMPLETE | Task W092 — sends via a transient non-subscribing pjsua2 Buddy (Buddy::sendInstantMessage), fire-and-forget, non-blocking; MSRP untouched |
 | RttSession | COMPLETE | 5-state SM, sendText, onCallMediaStateChanged |
 | RttPanel | COMPLETE | TX delta, RX accumulation, BS, CR→transcript |
 | FindPJSIP.cmake | COMPLETE | PJSIP discovery, PJSIP::pjsua2 imported target |
@@ -154,9 +157,10 @@ Active branch: `feature/w091-messaging-event-store`
 | EmergencyMultipartBuilder | COMPLETE | Declarative MIME part builder. PIDF-LO part with Content-ID header. No PJSIP. |
 | test_emergency_protocol_validation | COMPLETE | 12 subtests — negative/positive protocol validation. No PJSIP. |
 | live_emergency_call_probe | COMPLETE | CLI live probe. Full chain to PJSIP. Live validated (Task 41) — INVITE sent, 404 from Kamailio (PSAP absent, expected). |
-| LMPE messaging | NOT STARTED | Messaging Diagnostics foundation (Task W090/W091) observes SIP MESSAGE traffic but does not implement LMPE encode/decode |
+| LMPE messaging | NOT STARTED | Messaging Diagnostics foundation (Task W090/W091) and basic SIP MESSAGE send/receive (Task W092) exist but LMPE encode/decode is not implemented |
 | SIP MESSAGE / CPIM / IMDN / is-composing diagnostics | COMPLETE | Task W090 — read-only, see [messaging-diagnostics.md](messaging-diagnostics.md) |
 | Transport-independent messaging event model | COMPLETE | Task W091 — see [messaging-event-store.md](messaging-event-store.md) |
+| SIP MESSAGE Foundation (send/receive) | COMPLETE | Task W092 — plain/HTML/CPIM body, optional IMDN-request headers; no delivery confirmation, no IMDN generation, MSRP untouched; see [sip-message.md](sip-message.md) |
 | MSRP diagnostics (SDP detection) | COMPLETE | Task W090 — detection only, no real MSRP session, see [msrp-diagnostics.md](msrp-diagnostics.md) |
 | MSRP session (real transport) | NOT STARTED | Explicitly out of scope for Task W090 |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |
