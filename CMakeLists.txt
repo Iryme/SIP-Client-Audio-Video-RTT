@@ -126,6 +126,7 @@ set(SOURCES
     src/sip/MessagingEventStore.cpp
     src/sip/CpimBuilder.cpp
     src/sip/SipMessageComposer.cpp
+    src/sip/MessageHistoryStore.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -228,6 +229,8 @@ set(HEADERS
     src/sip/MessagingEventStore.h
     src/sip/CpimBuilder.h
     src/sip/SipMessageComposer.h
+    src/sip/MessageHistoryEntry.h
+    src/sip/MessageHistoryStore.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h

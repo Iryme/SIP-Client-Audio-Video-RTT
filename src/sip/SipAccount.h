@@ -46,8 +46,12 @@ public:
     // returns as soon as the request is submitted to the transaction layer;
     // it does not wait for a response. Never touches MSRP. Returns false
     // (with `error` set) if PJSIP is unavailable or no account is active.
+    // correlationId is echoed back (unchanged) on instantMessageStatusReceived
+    // once/if a final SIP response arrives, so the caller can correlate it
+    // with e.g. a MessageHistoryStore entry without any lookup table here.
     bool sendMessage(const QString &toUri, const QString &contentType, const QString &body,
-                     const QList<QPair<QString, QString>> &extraHeaders, QString &error);
+                     const QList<QPair<QString, QString>> &extraHeaders,
+                     qint64 correlationId, QString &error);
 
     // Removes and returns the pre-created pj::Call* registered in onIncomingCall
     // to prevent pjsua2's auto-reject. Caller takes ownership and must delete it
@@ -67,6 +71,23 @@ signals:
     // PJSIP-only detail for binding an incoming INVITE to SipCall without
     // exposing pjsua2 headers outside SipAccount/SipCall/SipManager.
     void incomingPjsipCallReceived(const QString &remoteUri, int callId);
+
+    // Emitted from the dedicated pjsua2 onInstantMessage callback (Task
+    // W093) for an incoming SIP MESSAGE. contactUri is empty when the
+    // request had no Contact header. profileId is this account's own
+    // profileId (the association is unambiguous — this signal is only ever
+    // emitted by the account that received the message). In stub mode this
+    // signal is never emitted.
+    void instantMessageReceived(const QString &fromUri, const QString &toUri,
+                                const QString &contactUri, const QString &contentType,
+                                const QString &body, const QString &callId,
+                                const QString &profileId);
+
+    // Emitted once/if a final SIP response arrives for a message previously
+    // submitted via sendMessage(). success is true for 2xx. In stub mode
+    // this signal is never emitted (sendMessage always fails synchronously).
+    void instantMessageStatusReceived(qint64 correlationId, bool success,
+                                      int statusCode, const QString &reason);
 
 private:
     struct Impl;

@@ -290,6 +290,72 @@ struct SipAccount::Impl
                 m_impl->notify(state, text, code, expiry);
         }
 
+        // Task W093: dedicated incoming-SIP-MESSAGE callback. This is purely
+        // additive to the existing raw-trace capture (PjsipTraceModule, Task
+        // W090) — it feeds a separate signal (instantMessageReceived) that
+        // SipManager routes only into MessageHistoryStore, never back into
+        // SipTraceLogger/MessagingEventStore, so the same wire message is
+        // never logged twice into the same store.
+        void onInstantMessage(pj::OnInstantMessageParam &prm) override
+        {
+            if (!m_impl || !m_impl->owner)
+                return;
+
+            QString callId;
+            try {
+                if (prm.rdata.pjRxData) {
+                    auto *rd = static_cast<pjsip_rx_data *>(prm.rdata.pjRxData);
+                    if (rd && rd->msg_info.cid)
+                        callId = QString::fromLatin1(rd->msg_info.cid->id.ptr,
+                                                     static_cast<int>(rd->msg_info.cid->id.slen));
+                }
+            } catch (...) {}
+
+            QPointer<SipAccount> self = m_impl->owner;
+            const QString fromUri     = QString::fromStdString(prm.fromUri);
+            const QString toUri       = QString::fromStdString(prm.toUri);
+            const QString contactUri  = QString::fromStdString(prm.contactUri);
+            const QString contentType = QString::fromStdString(prm.contentType);
+            const QString body        = QString::fromStdString(prm.msgBody);
+            const QString profileId   = self ? self->profileId() : QString();
+
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP incoming MESSAGE: from=%1 to=%2 contentType=%3 bodyBytes=%4")
+                    .arg(fromUri, toUri, contentType).arg(body.toUtf8().size()));
+
+            QMetaObject::invokeMethod(self,
+                [self, fromUri, toUri, contactUri, contentType, body, callId, profileId]() {
+                    if (self)
+                        emit self->instantMessageReceived(fromUri, toUri, contactUri, contentType,
+                                                           body, callId, profileId);
+                }, Qt::QueuedConnection);
+        }
+
+        void onInstantMessageStatus(pj::OnInstantMessageStatusParam &prm) override
+        {
+            if (!m_impl || !m_impl->owner)
+                return;
+
+            // The correlation id was passed as sendMessage()'s userData Token
+            // (a plain integer round-tripped through void*, no heap
+            // allocation/ownership involved — see SipAccount::sendMessage).
+            const qint64 correlationId =
+                static_cast<qint64>(reinterpret_cast<intptr_t>(prm.userData));
+            const bool success = prm.code >= 200 && prm.code < 300;
+            const int code = static_cast<int>(prm.code);
+            const QString reason = QString::fromStdString(prm.reason);
+
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("PJSIP SIP MESSAGE status: correlationId=%1 code=%2 reason=\"%3\"")
+                    .arg(correlationId).arg(code).arg(reason));
+
+            QPointer<SipAccount> self = m_impl->owner;
+            QMetaObject::invokeMethod(self, [self, correlationId, success, code, reason]() {
+                if (self)
+                    emit self->instantMessageStatusReceived(correlationId, success, code, reason);
+            }, Qt::QueuedConnection);
+        }
+
     private:
         Impl *m_impl;
     };
@@ -553,7 +619,8 @@ void *SipAccount::pjAccountHandle() const
 }
 
 bool SipAccount::sendMessage(const QString &toUri, const QString &contentType, const QString &body,
-                             const QList<QPair<QString, QString>> &extraHeaders, QString &error)
+                             const QList<QPair<QString, QString>> &extraHeaders,
+                             qint64 correlationId, QString &error)
 {
 #ifdef HAVE_PJSIP
     if (!m_impl->account) {
@@ -577,6 +644,9 @@ bool SipAccount::sendMessage(const QString &toUri, const QString &contentType, c
         pj::SendInstantMessageParam prm;
         prm.contentType = contentType.toStdString();
         prm.content     = body.toStdString();
+        // Round-tripped through onInstantMessageStatus's userData — a plain
+        // integer id, not a heap pointer, so there is nothing to free.
+        prm.userData = reinterpret_cast<void *>(static_cast<intptr_t>(correlationId));
         for (const auto &hdr : extraHeaders) {
             pj::SipHeader sh;
             sh.hName  = hdr.first.toStdString();
@@ -586,8 +656,8 @@ bool SipAccount::sendMessage(const QString &toUri, const QString &contentType, c
 
         buddy.sendInstantMessage(prm);
         Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("PJSIP SIP MESSAGE submitted: to=%1 contentType=%2 bodyBytes=%3")
-                .arg(toUri, contentType).arg(body.toUtf8().size()));
+            QStringLiteral("PJSIP SIP MESSAGE submitted: to=%1 contentType=%2 bodyBytes=%3 correlationId=%4")
+                .arg(toUri, contentType).arg(body.toUtf8().size()).arg(correlationId));
         return true;
     } catch (const pj::Error &e) {
         error = QString::fromStdString(e.reason);
@@ -600,6 +670,7 @@ bool SipAccount::sendMessage(const QString &toUri, const QString &contentType, c
     Q_UNUSED(contentType)
     Q_UNUSED(body)
     Q_UNUSED(extraHeaders)
+    Q_UNUSED(correlationId)
     error = QStringLiteral("PJSIP is unavailable; SIP MESSAGE was not sent");
     return false;
 #endif
