@@ -9,12 +9,11 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTextStream>
-#include <QVBoxLayout>
 #include <QFile>
 
 #include "gui/MessagingMessageDetailsDialog.h"
-#include "sip/MessagingContentKind.h"
 #include "sip/MessagingDiagnosticsStore.h"
+#include "sip/MessagingEventStore.h"
 
 namespace {
 QString normalizedKey(const QString &value)
@@ -38,8 +37,8 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
 
     auto *note = new QLabel(
         tr("Read-only diagnostics for SIP MESSAGE, CPIM, IMDN, is-composing and MSRP/SDP "
-           "attributes. No MSRP session is ever started from this view — detection and "
-           "logging only."),
+           "attributes, backed by the transport-independent messaging event store. No MSRP "
+           "session is ever started from this view — detection and logging only."),
         this);
     note->setWordWrap(true);
     note->setStyleSheet("color: #b7c4d6;");
@@ -53,13 +52,13 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     toolbar->addWidget(m_callIdFilter, 1);
 
     m_kindFilter = new QComboBox(this);
-    m_kindFilter->addItem(tr("All content kinds"), QString());
-    m_kindFilter->addItem(tr("text/plain"), QStringLiteral("text/plain"));
-    m_kindFilter->addItem(tr("text/html"), QStringLiteral("text/html"));
-    m_kindFilter->addItem(tr("CPIM"), QStringLiteral("message/cpim"));
-    m_kindFilter->addItem(tr("IMDN"), QStringLiteral("message/imdn+xml"));
-    m_kindFilter->addItem(tr("is-composing"), QStringLiteral("application/im-iscomposing+xml"));
-    m_kindFilter->addItem(tr("SDP (MSRP)"), QStringLiteral("application/sdp"));
+    m_kindFilter->addItem(tr("All payload types"), QString());
+    m_kindFilter->addItem(tr("plain"), QStringLiteral("plain"));
+    m_kindFilter->addItem(tr("html"), QStringLiteral("html"));
+    m_kindFilter->addItem(tr("cpim"), QStringLiteral("cpim"));
+    m_kindFilter->addItem(tr("imdn"), QStringLiteral("imdn"));
+    m_kindFilter->addItem(tr("is-composing"), QStringLiteral("is-composing"));
+    m_kindFilter->addItem(tr("sdp"), QStringLiteral("sdp"));
     toolbar->addWidget(m_kindFilter);
 
     m_directionFilter = new QComboBox(this);
@@ -76,10 +75,10 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     toolbar->addWidget(m_exportJsonBtn);
     root->addLayout(toolbar);
 
-    m_table = new QTableWidget(0, 8, this);
+    m_table = new QTableWidget(0, 9, this);
     m_table->setHorizontalHeaderLabels({
-        tr("Time"), tr("Dir"), tr("Method/Status"), tr("From"),
-        tr("To"), tr("Call-ID"), tr("Content-Type"), tr("Preview")
+        tr("Time"), tr("Dir"), tr("Transport"), tr("From"),
+        tr("To"), tr("Call-ID"), tr("Content-Type"), tr("Preview"), tr("Parse")
     });
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->verticalHeader()->setVisible(false);
@@ -97,49 +96,49 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     connect(m_exportJsonBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onExportJson);
     connect(m_table, &QTableWidget::cellDoubleClicked, this, &MessagingDiagnosticsPage::onRowActivated);
 
-    connect(&MessagingDiagnosticsStore::instance(), &MessagingDiagnosticsStore::entryLogged,
-            this, &MessagingDiagnosticsPage::onEntryLogged);
-    connect(&MessagingDiagnosticsStore::instance(), &MessagingDiagnosticsStore::cleared,
+    // Data comes exclusively from MessagingEventStore (Task W091), which
+    // maps entries from MessagingDiagnosticsStore (Task W090) — this page
+    // does not talk to MessagingDiagnosticsStore for its row data, only to
+    // resolve structured CPIM/IMDN/is-composing/SDP-MSRP detail on demand
+    // (see onRowActivated).
+    connect(&MessagingEventStore::instance(), &MessagingEventStore::eventAppended,
+            this, &MessagingDiagnosticsPage::onEventAppended);
+    connect(&MessagingEventStore::instance(), &MessagingEventStore::cleared,
             this, &MessagingDiagnosticsPage::onCleared);
 
-    for (const MessagingTraceEntry &entry : MessagingDiagnosticsStore::instance().entries())
-        m_entries.append(entry);
-
+    m_events = MessagingEventStore::instance().snapshot();
     rebuildTable();
 }
 
-void MessagingDiagnosticsPage::onEntryLogged(const MessagingTraceEntry &entry)
+void MessagingDiagnosticsPage::onEventAppended(const MessagingEvent &event)
 {
-    m_entries.append(entry);
-    if (passesFilters(entry))
-        addRow(entry, m_entries.size() - 1);
+    m_events.append(event);
+    if (passesFilters(event))
+        addRow(event);
 }
 
 void MessagingDiagnosticsPage::onCleared()
 {
-    m_entries.clear();
+    m_events.clear();
     m_table->setRowCount(0);
 }
 
-bool MessagingDiagnosticsPage::passesFilters(const MessagingTraceEntry &entry) const
+bool MessagingDiagnosticsPage::passesFilters(const MessagingEvent &event) const
 {
     const QString callIdFilter = normalizedKey(m_callIdFilter->text());
-    if (!callIdFilter.isEmpty() && !normalizedKey(entry.callId).contains(callIdFilter))
+    if (!callIdFilter.isEmpty() && !normalizedKey(event.callId).contains(callIdFilter))
         return false;
 
     const QString kindFilter = m_kindFilter->currentData().toString();
     if (!kindFilter.isEmpty()
-        && MessagingContentKindDetector::toString(entry.contentKind).compare(
+        && MessagingEvent::payloadTypeToString(event.payloadType).compare(
                kindFilter, Qt::CaseInsensitive) != 0)
         return false;
 
     const QString directionFilter = m_directionFilter->currentData().toString();
-    if (!directionFilter.isEmpty()) {
-        const QString entryDirection = entry.direction == SipMessageTrace::Direction::Outbound
-            ? QStringLiteral("outbound") : QStringLiteral("inbound");
-        if (entryDirection != directionFilter)
-            return false;
-    }
+    if (!directionFilter.isEmpty()
+        && MessagingEvent::directionToString(event.direction) != directionFilter)
+        return false;
 
     return true;
 }
@@ -152,13 +151,13 @@ void MessagingDiagnosticsPage::applyFilters()
 void MessagingDiagnosticsPage::rebuildTable()
 {
     m_table->setRowCount(0);
-    for (int i = 0; i < m_entries.size(); ++i) {
-        if (passesFilters(m_entries.at(i)))
-            addRow(m_entries.at(i), i);
+    for (const MessagingEvent &event : m_events) {
+        if (passesFilters(event))
+            addRow(event);
     }
 }
 
-void MessagingDiagnosticsPage::addRow(const MessagingTraceEntry &entry, int entryIndex)
+void MessagingDiagnosticsPage::addRow(const MessagingEvent &event)
 {
     const int row = m_table->rowCount();
     m_table->insertRow(row);
@@ -169,19 +168,31 @@ void MessagingDiagnosticsPage::addRow(const MessagingTraceEntry &entry, int entr
         m_table->setItem(row, col, item);
     };
 
-    setCell(0, entry.timestamp.toString(QStringLiteral("hh:mm:ss.zzz")));
-    setCell(1, entry.direction == SipMessageTrace::Direction::Outbound ? tr("Out") : tr("In"));
-    setCell(2, entry.summary());
-    setCell(3, entry.fromUri);
-    setCell(4, entry.toUri);
-    setCell(5, entry.callId);
-    setCell(6, entry.contentType.isEmpty()
-        ? MessagingContentKindDetector::toString(entry.contentKind)
-        : entry.contentType);
-    setCell(7, entry.bodyPreview);
+    setCell(0, event.timestamp.toString(QStringLiteral("hh:mm:ss.zzz")));
+    setCell(1, event.direction == MessagingEvent::Direction::Outbound ? tr("Out")
+             : event.direction == MessagingEvent::Direction::Inbound ? tr("In") : tr("?"));
+    setCell(2, MessagingEvent::transportToString(event.transport));
+    setCell(3, event.from);
+    setCell(4, event.to);
+    setCell(5, event.callId);
+    setCell(6, event.contentType.isEmpty()
+        ? MessagingEvent::payloadTypeToString(event.payloadType)
+        : event.contentType);
+    setCell(7, event.bodyPreview);
 
-    // Stash the entry index so onRowActivated can retrieve full data.
-    m_table->item(row, 0)->setData(Qt::UserRole, entryIndex);
+    // Parse warnings are surfaced as a compact cell (with full text in the
+    // tooltip) rather than a blocking dialog/message box, so a malformed
+    // body never interrupts the UI thread or the live feed.
+    const QString parseStatus = MessagingEvent::parseStatusToString(event.parseStatus);
+    const QString warningCount = event.parseWarnings.isEmpty()
+        ? QString() : QStringLiteral(" (%1)").arg(event.parseWarnings.size());
+    setCell(8, parseStatus + warningCount);
+    if (!event.parseWarnings.isEmpty())
+        m_table->item(row, 8)->setToolTip(event.parseWarnings.join(QStringLiteral("\n")));
+
+    // Stash the event id so onRowActivated can resolve the structured
+    // CPIM/IMDN/is-composing/SDP-MSRP detail from MessagingDiagnosticsStore.
+    m_table->item(row, 0)->setData(Qt::UserRole, static_cast<qlonglong>(event.id));
 }
 
 void MessagingDiagnosticsPage::onRowActivated(int row, int /*column*/)
@@ -193,17 +204,26 @@ void MessagingDiagnosticsPage::onRowActivated(int row, int /*column*/)
     if (!item)
         return;
 
-    const int index = item->data(Qt::UserRole).toInt();
-    if (index < 0 || index >= m_entries.size())
+    // MessagingEvent ids are assigned sequentially starting at 1 and stay
+    // aligned with MessagingDiagnosticsStore's own (never independently
+    // evicted) entry list — both stores are cleared together, from the same
+    // Clear action. See MessagingEventStore::mapFromTraceEntry / clear().
+    const qint64 id = item->data(Qt::UserRole).toLongLong();
+    const int index = static_cast<int>(id) - 1;
+    const auto &traceEntries = MessagingDiagnosticsStore::instance().entries();
+    if (index < 0 || index >= traceEntries.size())
         return;
 
     auto *dlg = new MessagingMessageDetailsDialog(this);
-    dlg->setEntry(m_entries.at(index));
+    dlg->setEntry(traceEntries.at(index));
     dlg->open();
 }
 
 void MessagingDiagnosticsPage::onClear()
 {
+    // Single source of truth: clearing MessagingDiagnosticsStore cascades to
+    // MessagingEventStore (connected in its constructor), which in turn
+    // notifies this page via the "cleared" signal.
     MessagingDiagnosticsStore::instance().clear();
 }
 
@@ -218,7 +238,7 @@ void MessagingDiagnosticsPage::onExportText()
     QFile f(path);
     if (!f.open(QFile::WriteOnly | QFile::Text))
         return;
-    QTextStream(&f) << MessagingDiagnosticsStore::instance().exportToText();
+    QTextStream(&f) << MessagingEventStore::instance().exportToText();
 }
 
 void MessagingDiagnosticsPage::onExportJson()
@@ -232,5 +252,5 @@ void MessagingDiagnosticsPage::onExportJson()
     QFile f(path);
     if (!f.open(QFile::WriteOnly | QFile::Text))
         return;
-    QTextStream(&f) << MessagingDiagnosticsStore::instance().exportToJson();
+    QTextStream(&f) << MessagingEventStore::instance().exportToJson();
 }

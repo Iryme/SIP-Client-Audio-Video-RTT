@@ -62,4 +62,7 @@ private:
     QSpinBox      *m_lmpeFontSize{nullptr};
     QCheckBox     *m_lmpeBold{nullptr};
     QCheckBox     *m_lmpeHighContrast{nullptr};
+
+    // Messaging Diagnostics — max MessagingEvent rows retained in memory
+    QSpinBox *m_messagingMaxEvents{nullptr};
 };

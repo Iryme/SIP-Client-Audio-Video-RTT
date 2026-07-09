@@ -6,6 +6,7 @@
 #include "gui/panels/SidebarPanel.h"
 #include "gui/panels/VideoSettingsPanel.h"
 #include "gui/theme/ThemeManager.h"
+#include "sip/MessagingEventStore.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -181,6 +182,22 @@ SettingsPanel::SettingsPanel(QWidget *parent)
 
         textLayout->addWidget(rttGroup);
         textLayout->addWidget(lmpeGroup);
+
+        auto *messagingGroup = new QGroupBox(tr("Messaging Diagnostics"), textWidget);
+        auto *messagingForm = new QFormLayout(messagingGroup);
+        m_messagingMaxEvents = new QSpinBox(messagingGroup);
+        m_messagingMaxEvents->setRange(50, 20000);
+        m_messagingMaxEvents->setSingleStep(50);
+        messagingForm->addRow(tr("Max events retained:"), m_messagingMaxEvents);
+        auto *messagingDesc = new QLabel(
+            tr("Diagnostic-only limit for how many Messaging Diagnostics rows are kept in "
+               "memory; oldest rows are dropped first once the limit is exceeded."),
+            messagingGroup);
+        messagingDesc->setWordWrap(true);
+        messagingDesc->setStyleSheet("color: #8899aa; font-size: 11px;");
+        messagingForm->addRow(messagingDesc);
+        textLayout->addWidget(messagingGroup);
+
         textLayout->addStretch();
 
         m_tabs->addTab(textWidget, tr("Text / Accessibility"));
@@ -230,6 +247,8 @@ void SettingsPanel::load()
     m_persistMedia->setChecked(s.value(QStringLiteral("connection/persistMedia"), true).toBool());
     applyDebugToggle(m_debugSIP->isChecked());
     loadTextAppearance();
+    if (m_messagingMaxEvents)
+        m_messagingMaxEvents->setValue(AppSettings::loadMaxMessagingEventsRetained());
 
     // Sync theme combo to whatever is currently active
     if (m_themeCombo) {
@@ -295,6 +314,7 @@ void SettingsPanel::onLoadDefaults()
     if (m_lmpeFontSize) m_lmpeFontSize->setValue(12);
     if (m_lmpeBold) m_lmpeBold->setChecked(false);
     if (m_lmpeHighContrast) m_lmpeHighContrast->setChecked(false);
+    if (m_messagingMaxEvents) m_messagingMaxEvents->setValue(1000);
     applyDebugToggle(false);
 }
 
@@ -309,6 +329,10 @@ void SettingsPanel::onSave()
     s.setValue(QStringLiteral("connection/rawSip"), m_rawSIP->isChecked());
     s.setValue(QStringLiteral("connection/persistMedia"), m_persistMedia->isChecked());
     saveTextAppearance();
+    if (m_messagingMaxEvents) {
+        AppSettings::saveMaxMessagingEventsRetained(m_messagingMaxEvents->value());
+        MessagingEventStore::instance().setMaxEventsRetained(m_messagingMaxEvents->value());
+    }
     s.sync();
     applyDebugToggle(m_debugSIP->isChecked());
 }
