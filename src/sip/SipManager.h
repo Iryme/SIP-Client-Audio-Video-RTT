@@ -209,6 +209,17 @@ private slots:
     void onActiveCallStateChanged(CallState state, const QString &statusText, int statusCode);
     void refreshRtpStats();
 
+    // Task W093: routes the account's dedicated incoming-message callback
+    // into MessageHistoryStore only (never back into SipTraceLogger — the
+    // existing raw-trace pipeline already captures the same wire message
+    // independently for the SIP Ladder / Messaging Diagnostics).
+    void onAccountInstantMessageReceived(const QString &fromUri, const QString &toUri,
+                                         const QString &contactUri, const QString &contentType,
+                                         const QString &body, const QString &callId,
+                                         const QString &profileId);
+    void onAccountInstantMessageStatusReceived(qint64 correlationId, bool success,
+                                               int statusCode, const QString &reason);
+
 private:
     SipManager();
     ~SipManager() override;

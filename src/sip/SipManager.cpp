@@ -16,6 +16,7 @@
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
 #include "sip/SipTraceLogger.h"
+#include "sip/MessageHistoryStore.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -357,6 +358,10 @@ bool SipManager::registerActiveProfile()
             this, &SipManager::onAccountRegistrationStateChanged);
     connect(m_account, &SipAccount::registrationExpiryReceived,
             this, &SipManager::onAccountRegistrationExpiryReceived);
+    connect(m_account, &SipAccount::instantMessageReceived,
+            this, &SipManager::onAccountInstantMessageReceived);
+    connect(m_account, &SipAccount::instantMessageStatusReceived,
+            this, &SipManager::onAccountInstantMessageStatusReceived);
 #ifdef HAVE_PJSIP
     connect(m_account, &SipAccount::incomingPjsipCallReceived,
             this, [this](const QString &remoteUri, int callId) {
@@ -1217,7 +1222,10 @@ bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
 
     // Emit the outbound trace unconditionally (mirrors makeCall's INVITE
     // trace) so the attempt is visible in the SIP Ladder / Messaging
-    // Diagnostics regardless of whether the underlying send succeeds.
+    // Diagnostics regardless of whether the underlying send succeeds. This
+    // feeds MessagingEventStore exactly as before (Task W092) — the
+    // Message History entry appended below is a separate store, so the
+    // same message is never logged twice into the same list.
     {
         SipMessageTrace trace;
         trace.direction   = SipMessageTrace::Direction::Outbound;
@@ -1231,14 +1239,51 @@ bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
         SipTraceLogger::instance().logMessage(trace);
     }
 
+    const qint64 historyId = MessageHistoryStore::instance().appendOutbound(msg);
+
     if (!m_account) {
         error = QStringLiteral("No active SIP account; register first");
         Logger::instance().warn(LogCategory::Sip,
             QStringLiteral("sendSipMessage rejected: no active account"));
+        MessageHistoryStore::instance().updateOutboundStatus(
+            historyId, MessageHistoryEntry::OutboundStatus::Failed);
         return false;
     }
 
-    return m_account->sendMessage(msg.toUri, msg.contentType, msg.body, msg.extraHeaders, error);
+    const bool ok = m_account->sendMessage(msg.toUri, msg.contentType, msg.body,
+                                           msg.extraHeaders, historyId, error);
+    // "Submitted" (not "Sent"/"delivered"): pjsua2 has only accepted the
+    // request for transmission at this point. If the account later reports
+    // a final SIP response via onInstantMessageStatus, this status is
+    // upgraded to Sent/Failed in onAccountInstantMessageStatusReceived. In
+    // stub mode (or if PJSIP never confirms), it permanently stays at
+    // Submitted or Failed — never silently reported as delivered.
+    MessageHistoryStore::instance().updateOutboundStatus(
+        historyId, ok ? MessageHistoryEntry::OutboundStatus::Submitted
+                       : MessageHistoryEntry::OutboundStatus::Failed);
+    return ok;
+}
+
+void SipManager::onAccountInstantMessageReceived(const QString &fromUri, const QString &toUri,
+                                                 const QString &contactUri, const QString &contentType,
+                                                 const QString &body, const QString &callId,
+                                                 const QString &profileId)
+{
+    // Deliberately does NOT touch SipTraceLogger/MessagingEventStore — the
+    // same inbound MESSAGE is already captured independently by
+    // PjsipTraceModule's raw-trace tap (Task W090), which is the sole
+    // source for the SIP Ladder / Messaging Diagnostics feed. Routing this
+    // callback into MessageHistoryStore only is what avoids the duplicate.
+    MessageHistoryStore::instance().appendInbound(fromUri, toUri, contactUri, contentType,
+                                                  body, callId, profileId);
+}
+
+void SipManager::onAccountInstantMessageStatusReceived(qint64 correlationId, bool success,
+                                                        int /*statusCode*/, const QString & /*reason*/)
+{
+    MessageHistoryStore::instance().updateOutboundStatus(
+        correlationId, success ? MessageHistoryEntry::OutboundStatus::Sent
+                               : MessageHistoryEntry::OutboundStatus::Failed);
 }
 
 bool SipManager::answerCall()
