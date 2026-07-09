@@ -552,6 +552,59 @@ void *SipAccount::pjAccountHandle() const
 #endif
 }
 
+bool SipAccount::sendMessage(const QString &toUri, const QString &contentType, const QString &body,
+                             const QList<QPair<QString, QString>> &extraHeaders, QString &error)
+{
+#ifdef HAVE_PJSIP
+    if (!m_impl->account) {
+        error = QStringLiteral("No active SIP account");
+        return false;
+    }
+
+    try {
+        // A transient, non-subscribing Buddy is pjsua2's only out-of-dialog
+        // IM sender (Account itself has no sendInstantMessage). subscribe =
+        // false means no presence/dialog-event SUBSCRIBE is ever started —
+        // this object exists only to route+authenticate one MESSAGE request.
+        pj::BuddyConfig cfg;
+        cfg.uri = toUri.toStdString();
+        cfg.subscribe = false;
+        cfg.subscribe_dlg_event = false;
+
+        pj::Buddy buddy;
+        buddy.create(*m_impl->account, cfg);
+
+        pj::SendInstantMessageParam prm;
+        prm.contentType = contentType.toStdString();
+        prm.content     = body.toStdString();
+        for (const auto &hdr : extraHeaders) {
+            pj::SipHeader sh;
+            sh.hName  = hdr.first.toStdString();
+            sh.hValue = hdr.second.toStdString();
+            prm.txOption.headers.push_back(sh);
+        }
+
+        buddy.sendInstantMessage(prm);
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP SIP MESSAGE submitted: to=%1 contentType=%2 bodyBytes=%3")
+                .arg(toUri, contentType).arg(body.toUtf8().size()));
+        return true;
+    } catch (const pj::Error &e) {
+        error = QString::fromStdString(e.reason);
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("PJSIP SIP MESSAGE send failed: to=%1 error=%2").arg(toUri, error));
+        return false;
+    }
+#else
+    Q_UNUSED(toUri)
+    Q_UNUSED(contentType)
+    Q_UNUSED(body)
+    Q_UNUSED(extraHeaders)
+    error = QStringLiteral("PJSIP is unavailable; SIP MESSAGE was not sent");
+    return false;
+#endif
+}
+
 void SipAccount::postRegistrationResult(RegistrationState state,
                                         const QString &statusText,
                                         int statusCode,

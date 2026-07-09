@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QList>
 #include <QObject>
+#include <QPair>
 #include <QString>
 #include <QMetaType>
 
@@ -38,6 +40,14 @@ public:
     // Returns the internal pj::Account as a void* for use by SipCall in PJSIP mode.
     // Returns nullptr in stub mode. Cast to pj::Account* inside HAVE_PJSIP guards.
     void *pjAccountHandle() const;
+
+    // Sends a SIP MESSAGE out-of-dialog via a transient, non-subscribing
+    // pjsua2 Buddy (no presence/dialog-event side effects). Fire-and-forget:
+    // returns as soon as the request is submitted to the transaction layer;
+    // it does not wait for a response. Never touches MSRP. Returns false
+    // (with `error` set) if PJSIP is unavailable or no account is active.
+    bool sendMessage(const QString &toUri, const QString &contentType, const QString &body,
+                     const QList<QPair<QString, QString>> &extraHeaders, QString &error);
 
     // Removes and returns the pre-created pj::Call* registered in onIncomingCall
     // to prevent pjsua2's auto-reject. Caller takes ownership and must delete it

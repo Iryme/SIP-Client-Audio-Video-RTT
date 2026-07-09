@@ -72,6 +72,17 @@ public:
     static int  loadMaxMessagingEventsRetained()        { return settings().value(QStringLiteral("messaging/maxEventsRetained"), 1000).toInt(); }
     static void saveMaxMessagingEventsRetained(int max) { settings().setValue(QStringLiteral("messaging/maxEventsRetained"), max); }
 
+    // SIP MESSAGE Foundation (Task W092) — conservative defaults: sending is
+    // off until explicitly enabled from the UI, CPIM wrapping is off, and
+    // IMDN is not requested by default. None of these affect MSRP, which
+    // remains permanently disabled regardless of these settings.
+    static bool enableSipMessage()            { return settings().value(QStringLiteral("messaging/enableSipMessage"), false).toBool(); }
+    static void setEnableSipMessage(bool on)  { settings().setValue(QStringLiteral("messaging/enableSipMessage"), on); }
+    static bool enableCpim()                  { return settings().value(QStringLiteral("messaging/enableCpim"), false).toBool(); }
+    static void setEnableCpim(bool on)        { settings().setValue(QStringLiteral("messaging/enableCpim"), on); }
+    static bool requestImdnByDefault()        { return settings().value(QStringLiteral("messaging/requestImdnByDefault"), false).toBool(); }
+    static void setRequestImdnByDefault(bool on) { settings().setValue(QStringLiteral("messaging/requestImdnByDefault"), on); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {

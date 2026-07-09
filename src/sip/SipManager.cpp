@@ -1208,6 +1208,39 @@ bool SipManager::makeEmergencyCall(const QString &remoteUri, const SipCallOption
     return m_activeCall->makeCallWithOptions(remoteUri, options);
 }
 
+bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
+{
+    if (!msg.valid) {
+        error = msg.error.isEmpty() ? QStringLiteral("Message was not composed") : msg.error;
+        return false;
+    }
+
+    // Emit the outbound trace unconditionally (mirrors makeCall's INVITE
+    // trace) so the attempt is visible in the SIP Ladder / Messaging
+    // Diagnostics regardless of whether the underlying send succeeds.
+    {
+        SipMessageTrace trace;
+        trace.direction   = SipMessageTrace::Direction::Outbound;
+        trace.method      = QStringLiteral("MESSAGE");
+        trace.fromUri     = msg.fromUri;
+        trace.toUri       = msg.toUri;
+        trace.callId      = msg.callId;
+        trace.cSeq        = msg.cSeq;
+        trace.contentType = msg.contentType;
+        trace.rawSip      = msg.rawSip;
+        SipTraceLogger::instance().logMessage(trace);
+    }
+
+    if (!m_account) {
+        error = QStringLiteral("No active SIP account; register first");
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendSipMessage rejected: no active account"));
+        return false;
+    }
+
+    return m_account->sendMessage(msg.toUri, msg.contentType, msg.body, msg.extraHeaders, error);
+}
+
 bool SipManager::answerCall()
 {
     if (!m_activeCall || m_activeCall->state() != CallState::IncomingRinging) {

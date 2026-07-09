@@ -11,6 +11,7 @@
 #include "sip/RegistrationStateMachine.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
+#include "sip/SipMessageComposer.h"
 #include "rtt/RttSession.h"
 #include "media/RtpStats.h"
 
@@ -87,6 +88,14 @@ public:
     // opts.emergencyCall must be true; active call must be in Active state.
     // Returns false if no active call, call is not Active, or PJSIP is unavailable.
     bool sendEmergencyLocationUpdate(const SipCallOptions &opts);
+
+    // Sends an already-composed SIP MESSAGE (see SipMessageComposer). Logs a
+    // synthetic outbound SipMessageTrace unconditionally (same pattern as
+    // makeCall's INVITE trace) so the attempt is always visible in the SIP
+    // Ladder / Messaging Diagnostics even if the underlying PJSIP send
+    // fails. Non-blocking. Returns false (with `error` set) if msg is
+    // invalid, no account is active, or PJSIP is unavailable.
+    bool sendSipMessage(const ComposedSipMessage &msg, QString &error);
 
     // Access the RTT session for the current call (never null).
     RttSession *rttSession();
