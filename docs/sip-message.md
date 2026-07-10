@@ -10,6 +10,13 @@ path described here: outbound status now confirms `Sent`/`Failed` via
 `onInstantMessageStatus` (previously "submitted only", see that task's
 Limitations at the time), and inbound messages get a proper conversational
 history feed in addition to the diagnostics table.
+**Task W095** — Extended in branch `feature/w095-deflate-rcs-diagnostics`:
+an inbound SIP MESSAGE carrying `Content-Encoding: deflate` (observed in
+real Linphone iOS interop testing) is now decoded before the
+`MessagingDiagnosticsStore` pipeline attempts to parse its body — see
+[content-encoding-diagnostics.md](content-encoding-diagnostics.md). Purely a
+diagnostics-pipeline change: the send path described in this document never
+emits `Content-Encoding` and is unaffected.
 
 ## Overview
 
@@ -282,6 +289,9 @@ All 11 test functions pass locally, alongside the full existing suite
   for the process lifetime.
 - Single flat history (now the dedicated Message History table, Task W093)
   — no per-conversation threading.
+- **Task W095**: `SipMessageComposer` never sends a compressed body — this
+  client only ever *decodes* `Content-Encoding: deflate` on receipt, it
+  does not compress anything it sends.
 
 ## What is NOT implemented by this task
 

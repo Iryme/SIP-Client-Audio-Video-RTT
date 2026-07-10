@@ -4,6 +4,11 @@
 on top of [Messaging Diagnostics (W090)](messaging-diagnostics.md),
 [Messaging Event Store (W091)](messaging-event-store.md), and
 [SIP MESSAGE Foundation (W092)](sip-message.md).
+**Task W095** — Extended in branch `feature/w095-deflate-rcs-diagnostics`:
+bumped `schemaVersion` 1 → 2, adding Content-Encoding decode diagnostics and
+an optional `rcsFileTransfer` object to every event — see
+[content-encoding-diagnostics.md](content-encoding-diagnostics.md) and
+[rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md).
 
 ## Overview
 
@@ -45,33 +50,62 @@ parsing is duplicated anywhere in this task.
 
 ```
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": "windows-client",
   "exportedAt": "<ISO-8601 UTC timestamp of the export itself>",
   "events": [ { ...one object per MessagingTraceEntry... } ]
 }
 ```
 
+### schemaVersion 1 → 2 migration (Task W095)
+
+`schemaVersion` was bumped from `1` to `2`. **No v1 field was removed or
+renamed** — every field documented below as "requirement 2/3/4" is
+unchanged. v2 only *adds*:
+- `parseStatus` (alias of `status`, same value — see the literal
+  `parseStatus` field the task asked for, kept alongside `status` rather
+  than replacing it) and `parseWarnings` (array, previously only on
+  `MessagingEventStore`'s own export, not this one).
+- `contentEncoding` / `decodeStatus` / `decodeVariant` /
+  `compressedBodyLength` / `decodedBodyLength` / `decodeError` (see
+  [content-encoding-diagnostics.md](content-encoding-diagnostics.md)).
+- An optional `rcsFileTransfer` object, present only when
+  `payloadType == "rcs-ft-http"` (see
+  [rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md)).
+
+A v1-only consumer that ignores unrecognized JSON keys continues to work
+unmodified against a v2 export; a consumer that wants the new decode/RCS
+diagnostics needs to be updated to read the v2-only fields.
+
 ### Common / per-event fields (Task W094 requirement 2)
 
 | Requirement's field name | JSON key | Source |
 |---|---|---|
-| schemaVersion | `schemaVersion` (root) | `InteropTraceExporter::kSchemaVersion` (currently `1`) |
+| schemaVersion | `schemaVersion` (root) | `InteropTraceExporter::kSchemaVersion` (currently `2` — see migration note above) |
 | source | `source` (root) | literal `"windows-client"` |
 | exportedAt | `exportedAt` (root) | export wall-clock time, UTC, ISO 8601 with milliseconds |
 | eventId | `eventId` | 1-based position in the exported list (same convention `MessagingEventStore` already uses for its own ids) |
 | timestamp | `timestamp` | `MessagingTraceEntry::timestamp`, ISO 8601 with milliseconds |
 | direction | `direction` | `"inbound"` / `"outbound"` (via `MessagingEvent::directionToString`) |
 | status | `status` | see "On the meaning of `status`" below |
+| parseStatus | `parseStatus` (v2) | literal alias of `status`, same value — added because Task W095 (and W092 before it) asked for a field literally named `parseStatus` |
+| parseWarnings | `parseWarnings` (v2) | array of human-readable warning strings, e.g. `"deflate decode failed"` |
 | transport | `transport` | `"sip-message"` / `"msrp"` / `"unknown"` (via `MessagingEvent::transportToString`) |
-| payloadType | `payloadType` | `"plain"` / `"html"` / `"cpim"` / `"imdn"` / `"is-composing"` / `"sdp"` / `"unknown"` |
+| payloadType | `payloadType` | `"plain"` / `"html"` / `"cpim"` / `"imdn"` / `"is-composing"` / `"sdp"` / `"rcs-ft-http"` (v2) / `"unknown"` |
 | Call-ID | `callId` | `MessagingTraceEntry::callId` |
 | CSeq | `cseq` | `MessagingTraceEntry::cSeq` |
 | From | `from` | `MessagingTraceEntry::fromUri` |
 | To | `to` | `MessagingTraceEntry::toUri` |
 | Content-Type | `contentType` | `MessagingTraceEntry::contentType` (outer Content-Type header) |
-| bodyPreview | `bodyPreview` | Same capped, single-line preview the diagnostics table already shows |
-| rawSipRedacted | `rawSipRedacted` | `MessagingTraceEntry::rawSip` — already credential-redacted by `SipTraceLogger` upstream; this exporter performs no redaction of its own |
+| bodyPreview | `bodyPreview` | Same capped, single-line preview the diagnostics table already shows — the **decoded** body when Content-Encoding was present, never raw compressed bytes |
+| contentEncoding | `contentEncoding` (v2) | Raw `Content-Encoding` header value, verbatim; empty when absent |
+| decodedBodyPreview | `decodedBodyPreview` (v2) | Same as `bodyPreview` — kept as its own field name per the task's literal field list |
+| decodeStatus | `decodeStatus` (v2) | `"not-needed"` / `"decoded"` / `"failed"` / `"unsupported"` / `"limit-exceeded"` — see [content-encoding-diagnostics.md](content-encoding-diagnostics.md) |
+| decodeVariant | `decodeVariant` (v2) | `"zlib"` / `"raw-deflate"` / `"gzip"` / `"none"` |
+| compressedBodyLength | `compressedBodyLength` (v2) | Size (bytes) of the raw body handed to the decoder |
+| decodedBodyLength | `decodedBodyLength` (v2) | Size (bytes) of the decoded output, when `decodeStatus == "decoded"` |
+| decodeError | `decodeError` (v2) | Human-readable failure reason; **key omitted entirely** (not even an empty string) when there is nothing to report |
+| rawSipRedacted | `rawSipRedacted` | `MessagingTraceEntry::rawSip` — already credential-redacted by `SipTraceLogger` upstream; this exporter performs no redaction of its own. **Unchanged by Task W095** — still the original wire bytes, compressed body included |
 
 **Naming convention chosen**: all JSON keys use `camelCase` (`callId`, not
 `Call-ID`), matching the style already established by
@@ -126,6 +160,28 @@ stored as `QString` in `IsComposingInfo` (the parser does not validate they
 are numeric; RFC 3994 allows implementations to be lenient here), so this
 export does not silently coerce/round-trip them through a numeric type.
 
+### RCS FT HTTP fields (Task W095)
+
+Included only when `payloadType == "rcs-ft-http"` (`RcsFtHttpInfo::present == true`):
+
+```
+"rcsFileTransfer": {
+  "fileInfoType": "file",
+  "fileName": "photo.jpg",
+  "fileSize": 204800,
+  "contentType": "image/jpeg",
+  "dataUrlRedacted": "https://files.example.test/dl/…+3a1f9c02",
+  "expiresAt": "2030-01-01T00:00:00.000Z",
+  "thumbnailPresent": true
+}
+```
+
+**`dataUrlRedacted` is always the redacted form** — query parameters/tokens
+stripped, only the first path segment kept verbatim, the rest folded into a
+short fingerprint (`UrlRedactor`). The full un-redacted URL is never
+exported. See [rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md) for
+the full parser and redaction policy.
+
 ### MSRP/SDP fields (requirement 4)
 
 Included only when `SdpMsrpInfo::present == true` (an `m=message` SDP line
@@ -171,7 +227,7 @@ extended with this export's additional common fields:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": "windows-client",
   "exportedAt": "2026-07-09T21:00:00.000Z",
   "events": [
@@ -180,6 +236,8 @@ extended with this export's additional common fields:
       "timestamp": "2026-07-09T20:59:59.500Z",
       "direction": "inbound",
       "status": "ok",
+      "parseStatus": "ok",
+      "parseWarnings": [],
       "transport": "sip-message",
       "payloadType": "cpim",
       "callId": "a84b4c76e66710",
@@ -188,6 +246,12 @@ extended with this export's additional common fields:
       "to": "sip:bob@example.com",
       "contentType": "message/cpim",
       "bodyPreview": "Wheee!",
+      "contentEncoding": "",
+      "decodedBodyPreview": "Wheee!",
+      "decodeStatus": "not-needed",
+      "decodeVariant": "none",
+      "compressedBodyLength": 0,
+      "decodedBodyLength": 0,
       "messageId": "",
       "cpim": {
         "from": "MR SANDERS <im:piglet@example.com>",
@@ -206,7 +270,10 @@ The full, machine-generated sample (also covering IMDN, is-composing, and
 SDP MSRP events) lives at
 [`docs/samples/windows-trace-export-sample.json`](samples/windows-trace-export-sample.json)
 and is validated by `tests/test_windows_trace_json_export.cpp`
-(`sampleExportIsValidJson`, `requiredFieldsPresent`).
+(`sampleExportIsValidJson`, `requiredFieldsPresent`). It predates the v2
+schema bump (Task W095) and was not regenerated — it is still valid v2
+output (every v1 field it shows is unchanged), just without the new v2-only
+fields illustrated in the inline sample above.
 
 ## Compatibility with `compare-client-server-trace.py`
 
@@ -240,6 +307,9 @@ Pure Qt, no PJSIP dependency.
 | `rawSipRedacted` | Authorization header value never appears in `rawSipRedacted`; `[REDACTED]` marker present |
 | `sampleExportIsValidJson` | Output parses via `QJsonDocument::fromJson` with no error; root fields present |
 | `requiredFieldsPresent` | All Task W094 requirement-2 event fields present as JSON keys |
+| `exportContentEncodingDecodedFields` (Task W095) | `contentEncoding`/`decodeStatus`/`decodeVariant`/`compressedBodyLength`/`decodedBodyLength`/`decodedBodyPreview` for a successfully decoded deflate IMDN body |
+| `exportContentEncodingFailedFields` (Task W095) | `decodeStatus == "failed"`, `decodeError` present, `parseStatus == "partial"`, `"deflate decode failed"` in `parseWarnings`, no `imdn` object emitted |
+| `exportRcsFileTransferFields` (Task W095) | `rcsFileTransfer` object fields, `dataUrlRedacted` never contains the source token |
 
 Run:
 
@@ -249,8 +319,8 @@ cmake --build build_tests --target test_windows_trace_json_export
 ctest --test-dir build_tests -R test_windows_trace_json_export --output-on-failure
 ```
 
-All 8 test functions pass locally, alongside the full existing suite
-(42/42 total — see [project-status.md](project-status.md)).
+All 11 test functions pass locally, alongside the full existing suite
+(46/46 total — see [project-status.md](project-status.md)).
 
 ## What remains diagnostic-only
 
@@ -271,3 +341,6 @@ All 8 test functions pass locally, alongside the full existing suite
 - No schema migration tooling — `schemaVersion` is present but nothing
   currently reads/reacts to it on the client side (forward-looking field
   only, per the requirement).
+- **Task W095**: the RCS FT HTTP transfer URL is never fetched by this
+  exporter or anything upstream of it — only the redacted form is ever
+  written to the export file.

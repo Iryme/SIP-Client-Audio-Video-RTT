@@ -18,6 +18,12 @@ added an "Export Interop JSON" button producing a server-comparable schema
 (SIP-Server-RTT `compare-client-server-trace.py`). Purely an additional
 export format — no changes to capture/parsing. See
 [windows-trace-json-export.md](windows-trace-json-export.md).
+**Task W095** — Extended in branch `feature/w095-deflate-rcs-diagnostics`:
+hardened `Content-Encoding: deflate` decoding (zlib + raw-deflate + gzip,
+decompression-bomb-safe, binary-safe body extraction) and added a read-only
+diagnostic parser for `application/vnd.gsma.rcs-ft-http+xml` (RCS file
+transfer descriptors). See [content-encoding-diagnostics.md](content-encoding-diagnostics.md)
+and [rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md).
 
 ## Overview
 
@@ -54,11 +60,14 @@ PjsipTraceModule (existing raw SIP capture — unchanged)
           ▼
 MessagingDiagnosticsStore::onSipMessageLogged()
           │  isMessagingRelevant() filters to MESSAGE / CPIM / IMDN /
-          │  is-composing / SDP m=message traffic only
-          │  buildEntry() parses structured content
+          │  is-composing / RCS-FT-HTTP / SDP m=message traffic only
+          │  buildEntry() extracts body bytes (SipBodyExtractor), decodes
+          │  Content-Encoding if present (DeflateDecoder), then parses
+          │  structured content from the decoded/plain body
           ▼
-   MessagingTraceEntry             (base trace fields + parsed CPIM/IMDN/
-                                     is-composing/MSRP-SDP structs)
+   MessagingTraceEntry             (base trace fields + Content-Encoding
+                                     decode metadata + parsed CPIM/IMDN/
+                                     is-composing/RCS-FT-HTTP/MSRP-SDP structs)
           │  emits entryLogged(MessagingTraceEntry)
           ▼
 MessagingEventStore::onDiagnosticsEntryLogged()   (Task W091 — maps into the
@@ -89,7 +98,8 @@ and re-INVITEs carrying MSRP SDP offers) below the transaction layer.
 
 A `SipMessageTrace` is treated as messaging-related if any of:
 - `method` is `MESSAGE` (case-insensitive; recovered from CSeq for responses, same as the SIP Ladder).
-- `Content-Type` is `message/cpim`, `message/imdn+xml`, or `application/im-iscomposing+xml`.
+- `Content-Type` is `message/cpim`, `message/imdn+xml`, `application/im-iscomposing+xml`,
+  or `application/vnd.gsma.rcs-ft-http+xml` (Task W095).
 - The body contains an `m=message` SDP line (e.g. an INVITE/re-INVITE offering MSRP).
 
 All other SIP traffic (REGISTER, INVITE without `m=message`, BYE, ACK, …)
@@ -103,18 +113,35 @@ One row of the Messaging Diagnostics feed:
 |---|---|
 | `timestamp`, `direction`, `method`, `statusCode`, `statusText` | Same semantics as `SipMessageTrace` |
 | `fromUri`, `toUri`, `callId`, `cSeq`, `contentType` | Copied from the underlying SIP headers |
-| `bodyPreview` | Safe, single-line, whitespace-collapsed, length-capped (160 chars) preview for the UI/export table — a display convenience, not a security redaction |
-| `rawSip` | Full raw SIP text; Authorization/Proxy-Authorization values are **already redacted** by `SipTraceLogger` before the entry is built |
+| `bodyPreview` | Safe, single-line, whitespace-collapsed, length-capped (160 chars) preview of the **decoded** body for the UI/export table — a display convenience, not a security redaction. Empty if Content-Encoding decoding failed (never shows raw compressed/binary bytes) |
+| `rawSip` | Full raw SIP text; Authorization/Proxy-Authorization values are **already redacted** by `SipTraceLogger` before the entry is built. **Unchanged by Task W095** — still the original wire bytes, compressed body included |
 | `contentKind` | `MessagingContentKind` detected from `Content-Type` |
-| `cpim`, `imdn`, `isComposing`, `sdpMsrp` | Structured info, present only when detected (see below) |
+| `contentEncoding`, `decodeStatus`, `decodeVariant`, `compressedBodyLength`, `decodedBodyLength`, `decodeError`, `decodedBodyPreview` | Content-Encoding decode diagnostics (Task W095) — see [content-encoding-diagnostics.md](content-encoding-diagnostics.md) |
+| `cpim`, `imdn`, `isComposing`, `sdpMsrp`, `rcsFtHttp` | Structured info, present only when detected (see below) |
 
 ### Content-Type detection (`src/sip/MessagingContentKind.h/.cpp`)
 
 `MessagingContentKindDetector::detect()` classifies a `Content-Type` header
 into: `PlainText` (`text/plain`), `Html` (`text/html`), `Cpim` (`message/cpim`),
 `Imdn` (`message/imdn+xml`), `IsComposing` (`application/im-iscomposing+xml`),
-`Sdp` (`application/sdp`), or `Unknown`. Pure string matching on the base
-media type (parameters like `;charset=` are stripped first).
+`Sdp` (`application/sdp`), `RcsFtHttp` (`application/vnd.gsma.rcs-ft-http+xml`,
+Task W095), or `Unknown`. Pure string matching on the base media type
+(parameters like `;charset=` are stripped first).
+
+### Content-Encoding decoding and RCS FT HTTP (Task W095)
+
+Before any of the parsers below ever see a body, `buildEntry()` extracts the
+exact body bytes (`SipBodyExtractor`, Content-Length accurate, binary-safe)
+and, if `Content-Encoding: deflate` is present, decodes them
+(`DeflateDecoder`, zlib/raw-deflate/gzip, decompression-bomb-safe) before
+converting anything to text. See [content-encoding-diagnostics.md](content-encoding-diagnostics.md)
+for the full pipeline and safety-limit design.
+
+`application/vnd.gsma.rcs-ft-http+xml` bodies (RCS file-transfer
+descriptors) are parsed read-only by `RcsFtHttpParser` into `entry.rcsFtHttp`
+— file name/size/Content-Type/expiration/thumbnail presence. The URL is
+never fetched; see [rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md)
+for the parser and the URL-redaction policy (`UrlRedactor`).
 
 ### CPIM (`src/sip/CpimParser.h/.cpp`, RFC 3862)
 
@@ -151,8 +178,9 @@ Singleton, same shape as `SipTraceLogger`:
 - `entries()` — read-only ordered list.
 - `clear()` — empties the list, emits `cleared`.
 - `exportToText()` / `exportToJson()` — include base fields, detected
-  `contentKind`, and all structured CPIM/IMDN/is-composing/MSRP sections that
-  were detected; `rawSip` is included and is already credential-redacted.
+  `contentKind`, Content-Encoding decode diagnostics (Task W095), and all
+  structured CPIM/IMDN/is-composing/RCS-FT-HTTP/MSRP sections that were
+  detected; `rawSip` is included and is already credential-redacted.
 - `isMessagingRelevant()` / `buildEntry()` are `static` so they can be (and
   are) unit tested directly without going through the signal chain.
 
@@ -162,8 +190,11 @@ Singleton, same shape as `SipTraceLogger`:
 does not crowd call control). Read-only `QTableWidget` feed sourced from
 `MessagingEventStore` (Task W091; see [messaging-event-store.md](messaging-event-store.md))
 with columns Time / Direction / Transport / From / To / Call-ID /
-Content-Type / Preview / Parse, filters (Call-ID substring, payload type,
-direction), and Clear / Export Text / Export JSON / Export Interop JSON
+Content-Type / Preview / Parse / Encoding (Task W095 — Content-Encoding,
+decode status/variant, compressed/decoded sizes, empty for the vast
+majority of events with no Content-Encoding), filters (Call-ID substring,
+payload type — including `rcs-ft-http` — direction), and Clear / Export
+Text / Export JSON / Export Interop JSON
 (Task W094 — server-comparable schema, see
 [windows-trace-json-export.md](windows-trace-json-export.md)) buttons acting on the
 event store. Parse warnings are shown inline in the "Parse" cell (with the
@@ -210,21 +241,25 @@ this mirrors the existing tolerant, best-effort style of `SipRawMessageParser`.
 | `tests/test_imdn_parser.cpp` | delivered/displayed/failed dispositions, message-id, original/final recipient |
 | `tests/test_is_composing_parser.cpp` | active/idle/gone states, refresh, timeout |
 | `tests/test_sdp_msrp_diagnostics_parser.cpp` | TCP/MSRP and TCP/TLS/MSRP media blocks, session-id extraction, non-MSRP SDP rejection |
-| `tests/test_messaging_diagnostics_store.cpp` | Relevance filtering, CPIM→IMDN nesting, is-composing, INVITE+MSRP-SDP relevance, clear/export |
-| `tests/test_messaging_event_store.cpp` | See [messaging-event-store.md](messaging-event-store.md) |
+| `tests/test_deflate_decoder.cpp` | zlib/raw-deflate/gzip decode, invalid/truncated input, input/output/ratio safety limits, NUL-byte round trip (Task W095) |
+| `tests/test_sip_body_extractor.cpp` | Content-Length byte-accurate extraction, NUL-byte preservation, missing-Content-Length fallback (Task W095) |
+| `tests/test_rcs_ft_http_parser.cpp` | Complete/partial RCS FT HTTP descriptors, non-XML/empty input (Task W095) |
+| `tests/test_url_redactor.cpp` | Query/token stripping, deterministic fingerprinting, malformed-input handling (Task W095) |
+| `tests/test_messaging_diagnostics_store.cpp` | Relevance filtering, CPIM→IMDN nesting, is-composing, INVITE+MSRP-SDP relevance, clear/export, deflate decode (zlib/raw/invalid), RCS FT HTTP parsing, NUL-byte body (Task W095) |
+| `tests/test_messaging_event_store.cpp` | See [messaging-event-store.md](messaging-event-store.md); Task W095 adds decode-failure warning + RCS payload mapping coverage |
 | `tests/test_sip_message_foundation.cpp` | See [sip-message.md](sip-message.md) |
 | `tests/test_message_history.cpp` | See [message-history.md](message-history.md) |
-| `tests/test_windows_trace_json_export.cpp` | See [windows-trace-json-export.md](windows-trace-json-export.md) |
+| `tests/test_windows_trace_json_export.cpp` | See [windows-trace-json-export.md](windows-trace-json-export.md); Task W095 adds decode-field and `rcsFileTransfer` export coverage |
 
 Run (see [build-windows.md](build-windows.md) for full environment setup):
 
 ```powershell
 cmake -S . -B build_tests -G "NMake Makefiles" -DQt6_DIR=<path-to-Qt6-cmake> -DBUILD_TESTS=ON
-cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_messaging_diagnostics_store test_messaging_event_store test_sip_message_foundation test_message_history test_windows_trace_json_export
-ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store|test_messaging_event_store|test_sip_message_foundation|test_message_history|test_windows_trace_json_export" --output-on-failure
+cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_composing_parser test_sdp_msrp_diagnostics_parser test_deflate_decoder test_sip_body_extractor test_rcs_ft_http_parser test_url_redactor test_messaging_diagnostics_store test_messaging_event_store test_sip_message_foundation test_message_history test_windows_trace_json_export
+ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_deflate_decoder|test_sip_body_extractor|test_rcs_ft_http_parser|test_url_redactor|test_messaging_diagnostics_store|test_messaging_event_store|test_sip_message_foundation|test_message_history|test_windows_trace_json_export" --output-on-failure
 ```
 
-All 9 suites (W090 + W091 + W092 + W093 + W094) pass locally.
+All 13 suites (W090 + W091 + W092 + W093 + W094 + W095) pass locally.
 
 ## Known Limitations
 
@@ -235,3 +270,5 @@ All 9 suites (W090 + W091 + W092 + W093 + W094) pass locally.
 - `bodyPreview` is a UI truncation convenience, not a redaction pass; the only redaction applied to message content is the existing `SipTraceLogger::redactCredentials()` (Authorization/Proxy-Authorization headers), which runs before a trace ever reaches this feature.
 - No persistence — like the SIP Ladder, entries live only for the process lifetime and are exported on demand.
 - LMPE (ETSI TS 103 698) itself remains **NOT STARTED**; this task is a diagnostics foundation only and does not implement LMPE encoding/decoding (see [lmpe.md](lmpe.md)).
+- **Task W095**: only `Content-Encoding: deflate` is decoded; other values are reported as `unsupported`, never guessed at. Adler-32/CRC32 trailers are not verified. See [content-encoding-diagnostics.md](content-encoding-diagnostics.md#what-is-diagnostic-only--what-is-not-implemented) for the full list.
+- **Task W095**: RCS FT HTTP is metadata-only — the referenced URL is never fetched, the file is never downloaded/opened, and no thumbnail is ever auto-displayed. See [rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md).
