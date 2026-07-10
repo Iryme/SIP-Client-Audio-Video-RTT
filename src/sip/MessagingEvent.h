@@ -14,7 +14,7 @@ struct MessagingEvent
 {
     enum class Direction { Inbound, Outbound, Unknown };
     enum class Transport { SipMessage, Msrp, Unknown };
-    enum class PayloadType { Plain, Html, Cpim, Imdn, IsComposing, Sdp, Unknown };
+    enum class PayloadType { Plain, Html, Cpim, Imdn, IsComposing, Sdp, RcsFtHttp, Unknown };
     enum class ParseStatus { Ok, Partial, Error };
 
     static QString directionToString(Direction d)
@@ -44,6 +44,7 @@ struct MessagingEvent
         case PayloadType::Imdn:        return QStringLiteral("imdn");
         case PayloadType::IsComposing: return QStringLiteral("is-composing");
         case PayloadType::Sdp:         return QStringLiteral("sdp");
+        case PayloadType::RcsFtHttp:   return QStringLiteral("rcs-ft-http");
         default:                       return QStringLiteral("unknown");
         }
     }
@@ -73,6 +74,24 @@ struct MessagingEvent
 
     ParseStatus parseStatus{ParseStatus::Ok};
     QStringList parseWarnings;
+
+    // Content-Encoding diagnostics (Task W095).
+    QString contentEncoding;
+    QString decodeStatus;  // not-needed/decoded/failed/unsupported/limit-exceeded
+    QString decodeVariant; // zlib/raw-deflate/gzip/none
+    qint64  compressedBodyLength{0};
+    qint64  decodedBodyLength{0};
+    QString decodeError; // only set when relevant
+
+    // RCS FT HTTP diagnostics (Task W095) — populated only when
+    // payloadType == RcsFtHttp; diagnostic-only, the URL is never resolved.
+    QString fileInfoType;
+    QString fileName;
+    qint64  fileSize{-1};
+    QString fileContentType;
+    QString dataUrlRedacted;
+    QString expiresAt;
+    bool    thumbnailPresent{false};
 };
 
 Q_DECLARE_METATYPE(MessagingEvent)

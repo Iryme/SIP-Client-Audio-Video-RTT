@@ -7,10 +7,14 @@
 #include <QTextStream>
 
 #include "sip/CpimParser.h"
+#include "sip/DeflateDecoder.h"
 #include "sip/ImdnParser.h"
 #include "sip/IsComposingParser.h"
+#include "sip/RcsFtHttpParser.h"
 #include "sip/SdpMsrpDiagnosticsParser.h"
+#include "sip/SipBodyExtractor.h"
 #include "sip/SipTraceLogger.h"
+#include "sip/UrlRedactor.h"
 
 namespace {
 
@@ -21,19 +25,11 @@ QString normalizeLineEndings(QString text)
     return text;
 }
 
-QString extractBody(const QString &rawSip)
-{
-    const QString normalized = normalizeLineEndings(rawSip);
-    const int sep = normalized.indexOf(QStringLiteral("\n\n"));
-    if (sep < 0)
-        return QString();
-    return normalized.mid(sep + 2).trimmed();
-}
-
 // Safe, compact single-line preview for the UI/export — collapses
 // whitespace/newlines and truncates. This is a display convenience, not a
 // security redaction (credential redaction happens upstream in
 // SipTraceLogger::redactCredentials before the trace ever reaches here).
+// Only ever called on already-decoded text — never on raw compressed bytes.
 QString makeBodyPreview(const QString &body, int maxLen = 160)
 {
     QString collapsed = body;
@@ -49,7 +45,8 @@ bool looksLikeMessagingContentType(const QString &contentType)
     const MessagingContentKind kind = MessagingContentKindDetector::detect(contentType);
     return kind == MessagingContentKind::Cpim
         || kind == MessagingContentKind::Imdn
-        || kind == MessagingContentKind::IsComposing;
+        || kind == MessagingContentKind::IsComposing
+        || kind == MessagingContentKind::RcsFtHttp;
 }
 
 bool bodyHasSdpMessageMedia(const QString &body)
@@ -59,6 +56,13 @@ bool bodyHasSdpMessageMedia(const QString &body)
             return true;
     }
     return false;
+}
+
+// Content-Encoding token comparison is case-insensitive per RFC 2616/7231
+// and may carry surrounding whitespace from raw header capture.
+bool isDeflateEncoding(const QString &contentEncoding)
+{
+    return contentEncoding.trimmed().compare(QStringLiteral("deflate"), Qt::CaseInsensitive) == 0;
 }
 
 } // namespace
@@ -84,7 +88,12 @@ bool MessagingDiagnosticsStore::isMessagingRelevant(const SipMessageTrace &trace
     if (looksLikeMessagingContentType(trace.contentType))
         return true;
 
-    const QString body = extractBody(trace.rawSip);
+    // SDP m=message detection only needs to look at plain-text SDP bodies
+    // (SDP is never deflate-compressed in practice); the byte-accurate
+    // extractor is still used so this never re-derives a body via CRLF
+    // normalization over the *whole* raw SIP text.
+    const SipBodyExtractor::Result extraction = SipBodyExtractor::extract(trace.rawSip);
+    const QString body = normalizeLineEndings(QString::fromUtf8(extraction.rawBodyBytes)).trimmed();
     if (bodyHasSdpMessageMedia(body))
         return true;
 
@@ -104,17 +113,67 @@ MessagingTraceEntry MessagingDiagnosticsStore::buildEntry(const SipMessageTrace 
     entry.callId      = trace.callId;
     entry.cSeq        = trace.cSeq;
     entry.contentType = trace.contentType;
-    entry.rawSip      = trace.rawSip;
+    entry.rawSip      = trace.rawSip; // unchanged — already redacted upstream, see header comment
+    entry.contentEncoding = trace.contentEncoding;
+    entry.contentKind = MessagingContentKindDetector::detect(trace.contentType);
 
-    const QString body = extractBody(trace.rawSip);
-    entry.bodyPreview  = makeBodyPreview(body);
-    entry.contentKind  = MessagingContentKindDetector::detect(trace.contentType);
+    // Step 1: extract the exact body bytes (Content-Length accurate, never
+    // CRLF-normalized/trimmed/UTF-8-assumed) — this is the only view of the
+    // body ever handed to the deflate decoder.
+    const SipBodyExtractor::Result extraction = SipBodyExtractor::extract(trace.rawSip);
+    const QByteArray rawBodyBytes = extraction.rawBodyBytes;
 
-    QString semanticBody = body;
+    // Step 2: decode Content-Encoding, if any. `effectiveBodyBytes` is what
+    // every downstream text/XML parser (CPIM/IMDN/is-composing/RCS) sees —
+    // for an undeclared encoding it's simply rawBodyBytes; for a
+    // successfully decoded encoding it's the decompressed bytes; for a
+    // failed/unsupported/limit-exceeded encoding it is intentionally left
+    // empty so nothing ever attempts to XML-parse compressed/binary bytes.
+    QByteArray effectiveBodyBytes = rawBodyBytes;
+
+    if (!trace.contentEncoding.trimmed().isEmpty()) {
+        entry.contentEncoding = trace.contentEncoding;
+        entry.compressedBodyLength = rawBodyBytes.size();
+
+        if (isDeflateEncoding(trace.contentEncoding)) {
+            const DeflateDecoder::Result decoded = DeflateDecoder::decode(rawBodyBytes);
+            if (decoded.ok) {
+                entry.decodeStatus = ContentDecodeStatus::Decoded;
+                entry.decodeVariant = decoded.variant;
+                entry.decodedBodyLength = decoded.outputSize;
+                effectiveBodyBytes = decoded.data;
+            } else {
+                using EC = DeflateDecoder::ErrorCode;
+                entry.decodeStatus = (decoded.errorCode == EC::InputTooLarge
+                                       || decoded.errorCode == EC::OutputTooLarge
+                                       || decoded.errorCode == EC::RatioExceeded)
+                    ? ContentDecodeStatus::LimitExceeded
+                    : ContentDecodeStatus::Failed;
+                entry.decodeError = decoded.errorMessage.isEmpty()
+                    ? QStringLiteral("deflate decode failed")
+                    : decoded.errorMessage;
+                effectiveBodyBytes.clear();
+            }
+        } else {
+            entry.decodeStatus = ContentDecodeStatus::Unsupported;
+            entry.decodeError = QStringLiteral("unsupported Content-Encoding: %1").arg(trace.contentEncoding);
+            effectiveBodyBytes.clear();
+        }
+    }
+
+    // Step 3: only now does anything become a QString — and only the
+    // already-decoded/plain bytes are converted (UTF-8, the conventional
+    // charset for SIP messaging bodies), never the raw compressed bytes.
+    const QString textBody = normalizeLineEndings(QString::fromUtf8(effectiveBodyBytes)).trimmed();
+
+    entry.bodyPreview = textBody.isEmpty() ? QString() : makeBodyPreview(textBody);
+    entry.decodedBodyPreview = entry.bodyPreview;
+
+    QString semanticBody = textBody;
     MessagingContentKind semanticKind = entry.contentKind;
 
     if (entry.contentKind == MessagingContentKind::Cpim) {
-        entry.cpim = CpimParser::parse(body);
+        entry.cpim = CpimParser::parse(textBody);
         if (entry.cpim.present && !entry.cpim.contentType.isEmpty()) {
             semanticKind = MessagingContentKindDetector::detect(entry.cpim.contentType);
             semanticBody = entry.cpim.wrappedBody;
@@ -125,9 +184,11 @@ MessagingTraceEntry MessagingDiagnosticsStore::buildEntry(const SipMessageTrace 
         entry.imdn = ImdnParser::parse(semanticBody);
     else if (semanticKind == MessagingContentKind::IsComposing)
         entry.isComposing = IsComposingParser::parse(semanticBody);
+    else if (semanticKind == MessagingContentKind::RcsFtHttp)
+        entry.rcsFtHttp = RcsFtHttpParser::parse(semanticBody);
 
-    if (bodyHasSdpMessageMedia(body))
-        entry.sdpMsrp = SdpMsrpDiagnosticsParser::parse(body);
+    if (bodyHasSdpMessageMedia(textBody))
+        entry.sdpMsrp = SdpMsrpDiagnosticsParser::parse(textBody);
 
     return entry;
 }
@@ -173,6 +234,16 @@ QString MessagingDiagnosticsStore::exportToText() const
         ts << QStringLiteral("  Kind: ") << MessagingContentKindDetector::toString(e.contentKind);
         ts << '\n';
 
+        if (!e.contentEncoding.isEmpty()) {
+            ts << QStringLiteral("  Content-Encoding: ") << e.contentEncoding
+               << QStringLiteral("  Decode status: ") << contentDecodeStatusToString(e.decodeStatus)
+               << QStringLiteral("  Decode variant: ") << DeflateDecoder::variantToString(e.decodeVariant)
+               << QStringLiteral("  Compressed size: ") << e.compressedBodyLength
+               << QStringLiteral("  Decoded size: ") << e.decodedBodyLength << '\n';
+            if (!e.decodeError.isEmpty())
+                ts << QStringLiteral("  Decode error: ") << e.decodeError << '\n';
+        }
+
         if (!e.bodyPreview.isEmpty())
             ts << QStringLiteral("  Body preview: ") << e.bodyPreview << '\n';
 
@@ -202,6 +273,15 @@ QString MessagingDiagnosticsStore::exportToText() const
                << QStringLiteral("  setup: ") << e.sdpMsrp.setup
                << QStringLiteral("  connection: ") << e.sdpMsrp.connection
                << QStringLiteral("  session-id: ") << e.sdpMsrp.sessionId << '\n';
+        }
+        if (e.rcsFtHttp.present) {
+            ts << QStringLiteral("  RCS FT HTTP file-info type: ") << e.rcsFtHttp.fileInfoType
+               << QStringLiteral("  file-name: ") << e.rcsFtHttp.fileName
+               << QStringLiteral("  file-size: ") << e.rcsFtHttp.fileSize
+               << QStringLiteral("  content-type: ") << e.rcsFtHttp.contentType
+               << QStringLiteral("  expires: ") << e.rcsFtHttp.expiresAt
+               << QStringLiteral("  thumbnail: ") << (e.rcsFtHttp.thumbnailPresent ? QStringLiteral("yes") : QStringLiteral("no"))
+               << QStringLiteral("  URL (redacted): ") << UrlRedactor::redact(e.rcsFtHttp.dataUrl) << '\n';
         }
 
         if (!e.rawSip.isEmpty()) {
@@ -235,6 +315,17 @@ QString MessagingDiagnosticsStore::exportToJson() const
         obj[QStringLiteral("contentType")] = e.contentType;
         obj[QStringLiteral("contentKind")] = MessagingContentKindDetector::toString(e.contentKind);
         obj[QStringLiteral("bodyPreview")] = e.bodyPreview;
+
+        // Content-Encoding diagnostics (Task W095) — decodedBodyPreview is
+        // never populated from raw compressed bytes; see buildEntry().
+        obj[QStringLiteral("contentEncoding")]      = e.contentEncoding;
+        obj[QStringLiteral("decodedBodyPreview")]   = e.decodedBodyPreview;
+        obj[QStringLiteral("decodeStatus")]         = contentDecodeStatusToString(e.decodeStatus);
+        obj[QStringLiteral("decodeVariant")]        = DeflateDecoder::variantToString(e.decodeVariant);
+        obj[QStringLiteral("compressedBodyLength")] = e.compressedBodyLength;
+        obj[QStringLiteral("decodedBodyLength")]    = e.decodedBodyLength;
+        if (!e.decodeError.isEmpty())
+            obj[QStringLiteral("decodeError")] = e.decodeError;
 
         if (e.cpim.present) {
             QJsonObject cpim;
@@ -270,6 +361,17 @@ QString MessagingDiagnosticsStore::exportToJson() const
             msrp[QStringLiteral("connection")]        = e.sdpMsrp.connection;
             msrp[QStringLiteral("sessionId")]         = e.sdpMsrp.sessionId;
             obj[QStringLiteral("msrp")] = msrp;
+        }
+        if (e.rcsFtHttp.present) {
+            QJsonObject rcs;
+            rcs[QStringLiteral("fileInfoType")]    = e.rcsFtHttp.fileInfoType;
+            rcs[QStringLiteral("fileName")]        = e.rcsFtHttp.fileName;
+            rcs[QStringLiteral("fileSize")]        = e.rcsFtHttp.fileSize;
+            rcs[QStringLiteral("contentType")]     = e.rcsFtHttp.contentType;
+            rcs[QStringLiteral("dataUrlRedacted")] = UrlRedactor::redact(e.rcsFtHttp.dataUrl);
+            rcs[QStringLiteral("expiresAt")]       = e.rcsFtHttp.expiresAt;
+            rcs[QStringLiteral("thumbnailPresent")] = e.rcsFtHttp.thumbnailPresent;
+            obj[QStringLiteral("rcsFileTransfer")] = rcs;
         }
 
         // rawSip is already redacted (Authorization/Proxy-Authorization

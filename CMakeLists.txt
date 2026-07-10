@@ -122,6 +122,10 @@ set(SOURCES
     src/sip/ImdnParser.cpp
     src/sip/IsComposingParser.cpp
     src/sip/SdpMsrpDiagnosticsParser.cpp
+    src/sip/SipBodyExtractor.cpp
+    src/sip/DeflateDecoder.cpp
+    src/sip/UrlRedactor.cpp
+    src/sip/RcsFtHttpParser.cpp
     src/sip/MessagingDiagnosticsStore.cpp
     src/sip/MessagingEventStore.cpp
     src/sip/CpimBuilder.cpp
@@ -224,6 +228,11 @@ set(HEADERS
     src/sip/IsComposingParser.h
     src/sip/SdpMsrpInfo.h
     src/sip/SdpMsrpDiagnosticsParser.h
+    src/sip/SipBodyExtractor.h
+    src/sip/DeflateDecoder.h
+    src/sip/UrlRedactor.h
+    src/sip/RcsFtHttpInfo.h
+    src/sip/RcsFtHttpParser.h
     src/sip/MessagingTraceEntry.h
     src/sip/MessagingDiagnosticsStore.h
     src/sip/MessagingEvent.h

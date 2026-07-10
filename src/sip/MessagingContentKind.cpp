@@ -22,6 +22,8 @@ MessagingContentKind MessagingContentKindDetector::detect(const QString &content
         return MessagingContentKind::IsComposing;
     if (base == QLatin1String("application/sdp"))
         return MessagingContentKind::Sdp;
+    if (base == QLatin1String("application/vnd.gsma.rcs-ft-http+xml"))
+        return MessagingContentKind::RcsFtHttp;
 
     return MessagingContentKind::Unknown;
 }
@@ -35,6 +37,7 @@ QString MessagingContentKindDetector::toString(MessagingContentKind kind)
     case MessagingContentKind::Imdn:        return QStringLiteral("message/imdn+xml");
     case MessagingContentKind::IsComposing: return QStringLiteral("application/im-iscomposing+xml");
     case MessagingContentKind::Sdp:         return QStringLiteral("application/sdp");
+    case MessagingContentKind::RcsFtHttp:   return QStringLiteral("application/vnd.gsma.rcs-ft-http+xml");
     case MessagingContentKind::Unknown:     break;
     }
     return QStringLiteral("unknown");

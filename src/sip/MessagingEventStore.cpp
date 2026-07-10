@@ -8,6 +8,7 @@
 
 #include "core/AppSettings.h"
 #include "sip/MessagingDiagnosticsStore.h"
+#include "sip/UrlRedactor.h"
 
 namespace {
 
@@ -27,6 +28,7 @@ MessagingEvent::PayloadType mapPayloadType(MessagingContentKind kind)
     case MessagingContentKind::Imdn:        return MessagingEvent::PayloadType::Imdn;
     case MessagingContentKind::IsComposing: return MessagingEvent::PayloadType::IsComposing;
     case MessagingContentKind::Sdp:         return MessagingEvent::PayloadType::Sdp;
+    case MessagingContentKind::RcsFtHttp:   return MessagingEvent::PayloadType::RcsFtHttp;
     case MessagingContentKind::Unknown:     break;
     }
     return MessagingEvent::PayloadType::Unknown;
@@ -71,6 +73,23 @@ MessagingEvent MessagingEventStore::mapFromTraceEntry(const MessagingTraceEntry 
     event.rawSipRedacted = entry.rawSip;
     event.payloadType    = mapPayloadType(entry.contentKind);
 
+    event.contentEncoding      = entry.contentEncoding;
+    event.decodeStatus         = contentDecodeStatusToString(entry.decodeStatus);
+    event.decodeVariant        = DeflateDecoder::variantToString(entry.decodeVariant);
+    event.compressedBodyLength = entry.compressedBodyLength;
+    event.decodedBodyLength    = entry.decodedBodyLength;
+    event.decodeError          = entry.decodeError;
+
+    if (entry.rcsFtHttp.present) {
+        event.fileInfoType    = entry.rcsFtHttp.fileInfoType;
+        event.fileName        = entry.rcsFtHttp.fileName;
+        event.fileSize        = entry.rcsFtHttp.fileSize;
+        event.fileContentType = entry.rcsFtHttp.contentType;
+        event.dataUrlRedacted = UrlRedactor::redact(entry.rcsFtHttp.dataUrl);
+        event.expiresAt       = entry.rcsFtHttp.expiresAt;
+        event.thumbnailPresent = entry.rcsFtHttp.thumbnailPresent;
+    }
+
     // Transport: a SIP MESSAGE request/response is transported directly over
     // SIP; an SDP offer/answer carrying an "m=message" MSRP media line is
     // diagnosing an (unopened) MSRP negotiation. Neither path starts a real
@@ -84,28 +103,59 @@ MessagingEvent MessagingEventStore::mapFromTraceEntry(const MessagingTraceEntry 
 
     event.parseStatus = MessagingEvent::ParseStatus::Ok;
 
+    // A Content-Encoding decode failure/limit/unsupported case always takes
+    // priority over the content-kind checks below: when the body couldn't
+    // be decoded, buildEntry() never attempted to XML-parse it, so every
+    // structured parser below will correctly report "not present" — this
+    // branch gives that a precise, decode-specific warning instead of the
+    // generic "no disposition could be parsed" message.
+    if (entry.decodeStatus == ContentDecodeStatus::Failed
+        || entry.decodeStatus == ContentDecodeStatus::LimitExceeded) {
+        event.parseStatus = MessagingEvent::ParseStatus::Partial;
+        event.parseWarnings << QStringLiteral("deflate decode failed");
+    } else if (entry.decodeStatus == ContentDecodeStatus::Unsupported) {
+        event.parseStatus = MessagingEvent::ParseStatus::Partial;
+        event.parseWarnings << QStringLiteral(
+            "Content-Encoding \"%1\" is not supported — body left undecoded.").arg(entry.contentEncoding);
+    }
+
     // Surface parsing gaps as warnings instead of silently dropping them, so
     // the UI can flag partially-understood content without blocking on it.
     switch (entry.contentKind) {
     case MessagingContentKind::Cpim:
-        if (!entry.cpim.present) {
+        if (!entry.cpim.present && entry.decodeStatus != ContentDecodeStatus::Failed
+            && entry.decodeStatus != ContentDecodeStatus::LimitExceeded
+            && entry.decodeStatus != ContentDecodeStatus::Unsupported) {
             event.parseStatus = MessagingEvent::ParseStatus::Partial;
             event.parseWarnings << QStringLiteral(
                 "Content-Type declared message/cpim but no CPIM header block could be parsed.");
         }
         break;
     case MessagingContentKind::Imdn:
-        if (!entry.imdn.present) {
+        if (!entry.imdn.present && entry.decodeStatus != ContentDecodeStatus::Failed
+            && entry.decodeStatus != ContentDecodeStatus::LimitExceeded
+            && entry.decodeStatus != ContentDecodeStatus::Unsupported) {
             event.parseStatus = MessagingEvent::ParseStatus::Partial;
             event.parseWarnings << QStringLiteral(
                 "Content-Type declared message/imdn+xml but no IMDN disposition could be parsed.");
         }
         break;
     case MessagingContentKind::IsComposing:
-        if (!entry.isComposing.present) {
+        if (!entry.isComposing.present && entry.decodeStatus != ContentDecodeStatus::Failed
+            && entry.decodeStatus != ContentDecodeStatus::LimitExceeded
+            && entry.decodeStatus != ContentDecodeStatus::Unsupported) {
             event.parseStatus = MessagingEvent::ParseStatus::Partial;
             event.parseWarnings << QStringLiteral(
                 "Content-Type declared application/im-iscomposing+xml but no state could be parsed.");
+        }
+        break;
+    case MessagingContentKind::RcsFtHttp:
+        if (!entry.rcsFtHttp.present && entry.decodeStatus != ContentDecodeStatus::Failed
+            && entry.decodeStatus != ContentDecodeStatus::LimitExceeded
+            && entry.decodeStatus != ContentDecodeStatus::Unsupported) {
+            event.parseStatus = MessagingEvent::ParseStatus::Partial;
+            event.parseWarnings << QStringLiteral(
+                "Content-Type declared application/vnd.gsma.rcs-ft-http+xml but no file-info could be parsed.");
         }
         break;
     default:
@@ -221,8 +271,23 @@ QString MessagingEventStore::exportToText() const
             ts << QStringLiteral("  Content-Type: ") << e.contentType;
         ts << '\n';
 
+        if (!e.contentEncoding.isEmpty())
+            ts << QStringLiteral("  Content-Encoding: ") << e.contentEncoding
+               << QStringLiteral(" decodeStatus=") << e.decodeStatus
+               << QStringLiteral(" decodeVariant=") << e.decodeVariant
+               << QStringLiteral(" compressed=") << e.compressedBodyLength
+               << QStringLiteral(" decoded=") << e.decodedBodyLength << '\n';
+
         if (!e.bodyPreview.isEmpty())
             ts << QStringLiteral("  Body preview: ") << e.bodyPreview << '\n';
+
+        if (e.payloadType == MessagingEvent::PayloadType::RcsFtHttp) {
+            ts << QStringLiteral("  RCS file: ") << e.fileName
+               << QStringLiteral("  type: ") << e.fileContentType
+               << QStringLiteral("  size: ") << e.fileSize
+               << QStringLiteral("  expires: ") << e.expiresAt
+               << QStringLiteral("  URL: ") << e.dataUrlRedacted << '\n';
+        }
 
         for (const QString &warning : e.parseWarnings)
             ts << QStringLiteral("  Parse warning: ") << warning << '\n';
@@ -257,6 +322,26 @@ QString MessagingEventStore::exportToJson() const
         obj[QStringLiteral("contentType")] = e.contentType;
         obj[QStringLiteral("bodyPreview")] = e.bodyPreview;
         obj[QStringLiteral("parseStatus")] = MessagingEvent::parseStatusToString(e.parseStatus);
+
+        obj[QStringLiteral("contentEncoding")]      = e.contentEncoding;
+        obj[QStringLiteral("decodeStatus")]         = e.decodeStatus;
+        obj[QStringLiteral("decodeVariant")]        = e.decodeVariant;
+        obj[QStringLiteral("compressedBodyLength")] = e.compressedBodyLength;
+        obj[QStringLiteral("decodedBodyLength")]    = e.decodedBodyLength;
+        if (!e.decodeError.isEmpty())
+            obj[QStringLiteral("decodeError")] = e.decodeError;
+
+        if (e.payloadType == MessagingEvent::PayloadType::RcsFtHttp) {
+            QJsonObject rcs;
+            rcs[QStringLiteral("fileInfoType")]     = e.fileInfoType;
+            rcs[QStringLiteral("fileName")]         = e.fileName;
+            rcs[QStringLiteral("fileSize")]         = e.fileSize;
+            rcs[QStringLiteral("contentType")]      = e.fileContentType;
+            rcs[QStringLiteral("dataUrlRedacted")]  = e.dataUrlRedacted;
+            rcs[QStringLiteral("expiresAt")]        = e.expiresAt;
+            rcs[QStringLiteral("thumbnailPresent")] = e.thumbnailPresent;
+            obj[QStringLiteral("rcsFileTransfer")] = rcs;
+        }
 
         QJsonArray warnings;
         for (const QString &warning : e.parseWarnings)

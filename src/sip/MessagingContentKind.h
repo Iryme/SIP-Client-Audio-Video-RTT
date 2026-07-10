@@ -12,6 +12,7 @@ enum class MessagingContentKind
     Imdn,        // message/imdn+xml
     IsComposing, // application/im-iscomposing+xml
     Sdp,         // application/sdp
+    RcsFtHttp,   // application/vnd.gsma.rcs-ft-http+xml
     Unknown
 };
 
