@@ -10,7 +10,10 @@
 #include <QTextStream>
 #include <QVBoxLayout>
 
+#include "sip/DeflateDecoder.h"
 #include "sip/MessagingContentKind.h"
+#include "sip/SipBodyExtractor.h"
+#include "sip/UrlRedactor.h"
 
 namespace {
 
@@ -21,13 +24,16 @@ QString normalizeLineEndings(QString text)
     return text;
 }
 
-QString extractBody(const QString &rawSip)
+// Body shown to the operator: for a successfully decoded (or never-encoded)
+// entry this is the decoded/plain text; a failed/unsupported/limit-exceeded
+// Content-Encoding never falls back to showing the raw compressed bytes —
+// see the "Content-Encoding" section built below for that case instead.
+QString extractDisplayBody(const MessagingTraceEntry &entry)
 {
-    const QString normalized = normalizeLineEndings(rawSip);
-    const int sep = normalized.indexOf(QStringLiteral("\n\n"));
-    if (sep < 0)
+    if (!entry.contentEncoding.isEmpty() && entry.decodeStatus != ContentDecodeStatus::Decoded)
         return QString();
-    return normalized.mid(sep + 2).trimmed();
+    const SipBodyExtractor::Result extraction = SipBodyExtractor::extract(entry.rawSip);
+    return normalizeLineEndings(QString::fromUtf8(extraction.rawBodyBytes)).trimmed();
 }
 
 } // namespace
@@ -160,7 +166,7 @@ void MessagingMessageDetailsDialog::setEntry(const MessagingTraceEntry &entry)
     const QString structured = formatStructuredSections(entry);
     m_structured->setPlainText(structured);
 
-    const QString body = extractBody(entry.rawSip);
+    const QString body = extractDisplayBody(entry);
     m_body->setPlainText(body.isEmpty() ? tr("No body present") : body);
 
     if (entry.rawSip.isEmpty()) {
@@ -190,6 +196,30 @@ QString MessagingMessageDetailsDialog::formatStructuredSections(const MessagingT
 {
     QString out;
     QTextStream ts(&out);
+
+    if (!entry.contentEncoding.isEmpty()) {
+        ts << "Content-Encoding\n";
+        ts << "  Encoding: " << entry.contentEncoding << '\n';
+        ts << "  Decode status: " << contentDecodeStatusToString(entry.decodeStatus) << '\n';
+        ts << "  Decode variant: " << DeflateDecoder::variantToString(entry.decodeVariant) << '\n';
+        ts << "  Compressed size: " << entry.compressedBodyLength << " bytes\n";
+        ts << "  Decoded size: " << entry.decodedBodyLength << " bytes\n";
+        if (!entry.decodeError.isEmpty())
+            ts << "  Error: " << entry.decodeError << '\n';
+        ts << '\n';
+    }
+
+    if (entry.rcsFtHttp.present) {
+        ts << "RCS FT HTTP (read-only — file is never downloaded or opened by this client)\n";
+        ts << "  file-info type: " << (entry.rcsFtHttp.fileInfoType.isEmpty() ? QStringLiteral("Not available") : entry.rcsFtHttp.fileInfoType) << '\n';
+        ts << "  File name: " << (entry.rcsFtHttp.fileName.isEmpty() ? QStringLiteral("Not available") : entry.rcsFtHttp.fileName) << '\n';
+        ts << "  Content-Type: " << (entry.rcsFtHttp.contentType.isEmpty() ? QStringLiteral("Not available") : entry.rcsFtHttp.contentType) << '\n';
+        ts << "  File size: " << (entry.rcsFtHttp.fileSize >= 0 ? QString::number(entry.rcsFtHttp.fileSize) + QStringLiteral(" bytes") : QStringLiteral("Not available")) << '\n';
+        ts << "  Expires: " << (entry.rcsFtHttp.expiresAt.isEmpty() ? QStringLiteral("Not available") : entry.rcsFtHttp.expiresAt) << '\n';
+        ts << "  Thumbnail present: " << (entry.rcsFtHttp.thumbnailPresent ? QStringLiteral("yes") : QStringLiteral("no")) << '\n';
+        ts << "  URL (redacted): " << UrlRedactor::redact(entry.rcsFtHttp.dataUrl) << '\n';
+        ts << '\n';
+    }
 
     if (entry.cpim.present) {
         ts << "CPIM\n";

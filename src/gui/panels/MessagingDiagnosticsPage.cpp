@@ -180,6 +180,7 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     m_kindFilter->addItem(tr("imdn"), QStringLiteral("imdn"));
     m_kindFilter->addItem(tr("is-composing"), QStringLiteral("is-composing"));
     m_kindFilter->addItem(tr("sdp"), QStringLiteral("sdp"));
+    m_kindFilter->addItem(tr("rcs-ft-http"), QStringLiteral("rcs-ft-http"));
     toolbar->addWidget(m_kindFilter);
 
     m_directionFilter = new QComboBox(this);
@@ -201,10 +202,10 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     toolbar->addWidget(m_exportInteropJsonBtn);
     root->addLayout(toolbar);
 
-    m_table = new QTableWidget(0, 9, this);
+    m_table = new QTableWidget(0, 10, this);
     m_table->setHorizontalHeaderLabels({
         tr("Time"), tr("Dir"), tr("Transport"), tr("From"),
-        tr("To"), tr("Call-ID"), tr("Content-Type"), tr("Preview"), tr("Parse")
+        tr("To"), tr("Call-ID"), tr("Content-Type"), tr("Preview"), tr("Parse"), tr("Encoding")
     });
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->verticalHeader()->setVisible(false);
@@ -318,6 +319,24 @@ void MessagingDiagnosticsPage::addRow(const MessagingEvent &event)
     setCell(8, parseStatus + warningCount);
     if (!event.parseWarnings.isEmpty())
         m_table->item(row, 8)->setToolTip(event.parseWarnings.join(QStringLiteral("\n")));
+
+    // Content-Encoding diagnostics (Task W095) — compact "deflate: decoded
+    // (zlib, 42 -> 128 B)" style summary, empty for the (overwhelming
+    // majority of) events with no Content-Encoding at all.
+    if (event.contentEncoding.isEmpty()) {
+        setCell(9, QString());
+    } else {
+        QString summary = QStringLiteral("%1: %2").arg(event.contentEncoding, event.decodeStatus);
+        if (event.decodeStatus == QStringLiteral("decoded")) {
+            summary += QStringLiteral(" (%1, %2 -> %3 B)")
+                           .arg(event.decodeVariant)
+                           .arg(event.compressedBodyLength)
+                           .arg(event.decodedBodyLength);
+        }
+        setCell(9, summary);
+        if (!event.decodeError.isEmpty())
+            m_table->item(row, 9)->setToolTip(event.decodeError);
+    }
 
     // Stash the event id so onRowActivated can resolve the structured
     // CPIM/IMDN/is-composing/SDP-MSRP detail from MessagingDiagnosticsStore.
