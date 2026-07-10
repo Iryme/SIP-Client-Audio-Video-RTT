@@ -3,6 +3,13 @@
 **Task W093** — Added in branch `feature/w093-incoming-message-history`, built
 on top of [SIP MESSAGE Foundation (W092)](sip-message.md) and
 [Messaging Event Store (W091)](messaging-event-store.md).
+**Task W096** — Extended in branch `feature/w096-imdn-foundation`: adds
+`messageId`/`correlatedMessageId`/`isImdnReport`/`deliveryState` and IMDN
+notification-tracking fields to `MessageHistoryEntry`, plus
+`MessageHistoryStore::correlateDelivery()`/`markImdnSent()`/`entryById()` and
+a dedicated `appendInboundImdn()` for inbound IMDN reports. See
+[imdn.md](imdn.md) for the full IMDN generation/correlation design — this
+document's architecture/dedup sections below are otherwise unchanged.
 
 ## Overview
 

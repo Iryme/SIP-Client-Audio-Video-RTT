@@ -156,8 +156,12 @@ IMDN / is-composing from the CPIM-wrapped body if applicable.
 
 `QXmlStreamReader`-based (no `QtXml` module dependency — `QXmlStreamReader`
 ships in Qt Core). Detects disposition from `<delivered/>`, `<displayed/>`,
-`<failed/>`, or `<error/>` elements, and extracts `<message-id>`,
-`<original-recipient>`, and `<final-recipient>` when present.
+`<failed/>`, `<error/>`, `<forbidden/>`, or `<processed/>` elements (the
+last two added by [Task W096](imdn.md)), and extracts `<message-id>`,
+`<original-recipient>`, and `<final-recipient>` when present. Task W096
+also adds `ImdnGenerator` (generation of outbound reports) and live
+delivery/read tracking — see [imdn.md](imdn.md); this diagnostics-only
+parser itself is otherwise unchanged.
 
 ### is-composing (`src/sip/IsComposingParser.h/.cpp`, RFC 3994)
 

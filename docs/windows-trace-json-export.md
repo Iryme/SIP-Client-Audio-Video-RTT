@@ -9,6 +9,10 @@ bumped `schemaVersion` 1 → 2, adding Content-Encoding decode diagnostics and
 an optional `rcsFileTransfer` object to every event — see
 [content-encoding-diagnostics.md](content-encoding-diagnostics.md) and
 [rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md).
+**Task W096** — Extended in branch `feature/w096-imdn-foundation`: adds
+`generatedImdn`/`receivedImdn`/`correlatedMessageId`/`deliveryState` to
+every event — purely additive, `schemaVersion` stays `2`. See
+[imdn.md](imdn.md).
 
 ## Overview
 
@@ -106,6 +110,10 @@ diagnostics needs to be updated to read the v2-only fields.
 | decodedBodyLength | `decodedBodyLength` (v2) | Size (bytes) of the decoded output, when `decodeStatus == "decoded"` |
 | decodeError | `decodeError` (v2) | Human-readable failure reason; **key omitted entirely** (not even an empty string) when there is nothing to report |
 | rawSipRedacted | `rawSipRedacted` | `MessagingTraceEntry::rawSip` — already credential-redacted by `SipTraceLogger` upstream; this exporter performs no redaction of its own. **Unchanged by Task W095** — still the original wire bytes, compressed body included |
+| generatedImdn | `generatedImdn` (v2, additive) | `true` when this event's body is an outbound IMDN report (Task W096) |
+| receivedImdn | `receivedImdn` (v2, additive) | `true` when this event's body is an inbound IMDN report (Task W096) |
+| correlatedMessageId | `correlatedMessageId` (v2, additive) | `ImdnInfo::messageId` — the original message this report is about; empty when this event is not an IMDN report |
+| deliveryState | `deliveryState` (v2, additive) | `"delivered"` / `"displayed"` / `"failed"` / `"error"` / `"forbidden"` / `"processed"` / `"none"` — `ImdnInfo::dispositionToString(...)`, empty-string when not an IMDN report |
 
 **Naming convention chosen**: all JSON keys use `camelCase` (`callId`, not
 `Call-ID`), matching the style already established by

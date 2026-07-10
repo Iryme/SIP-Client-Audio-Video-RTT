@@ -17,6 +17,14 @@ trace-capture pipeline, which is what keeps the same inbound message from
 being logged twice into two different places within this store. See
 [message-history.md](message-history.md#why-a-separate-store-from-messagingeventstore)
 for the full reasoning.
+**Task W096** — [IMDN Foundation](imdn.md) (branch
+`feature/w096-imdn-foundation`) adds `generatedImdn`/`receivedImdn`/
+`correlatedMessageId`/`deliveryState` to `MessagingEvent`, populated in
+`mapFromTraceEntry()` purely from the already-parsed
+`MessagingTraceEntry::imdn` (`ImdnInfo`, Task W090's `ImdnParser`) — no new
+parsing added here. This is a diagnostics-only surfacing of IMDN reports
+seen on the wire; it is independent of the live delivery/read tracking that
+W096 adds to `MessageHistoryStore` (see [imdn.md](imdn.md)).
 
 ## Overview
 

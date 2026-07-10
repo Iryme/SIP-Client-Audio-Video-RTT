@@ -17,6 +17,14 @@ real Linphone iOS interop testing) is now decoded before the
 [content-encoding-diagnostics.md](content-encoding-diagnostics.md). Purely a
 diagnostics-pipeline change: the send path described in this document never
 emits `Content-Encoding` and is unaffected.
+**Task W096** — [IMDN Foundation](imdn.md) (branch
+`feature/w096-imdn-foundation`) adds `ComposedSipMessage::messageId`
+(structural copy of the `Message-ID` header already generated when
+`requestImdn` is set) and a new `SipMessageComposer::composeImdnReport()`
+builder for outbound `message/imdn+xml` reports, reusing this document's
+send path (`SipManager::sendSipMessage()`) unchanged. `SipAccount`'s
+`onInstantMessage` callback now also extracts the `Message-ID` and
+`Disposition-Notification` header values for the live receive path.
 
 ## Overview
 
