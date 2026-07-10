@@ -166,7 +166,12 @@ parser itself is otherwise unchanged.
 ### is-composing (`src/sip/IsComposingParser.h/.cpp`, RFC 3994)
 
 `QXmlStreamReader`-based. Detects `<state>` (`active`/`idle`/`gone`) and
-extracts `<refresh>` and the non-standard `<timeout>` element when present.
+extracts `<refresh>`, `<contenttype>` (Task W097), and the non-standard
+`<timeout>` element when present. Task W097 also adds `IsComposingGenerator`
+(generation of outbound active/idle/gone notifications) and a local
+`TypingIndicatorController` typing state machine — see
+[is-composing.md](is-composing.md); this diagnostics-only parser itself is
+otherwise unchanged.
 
 ### SDP MSRP diagnostics (`src/sip/SdpMsrpDiagnosticsParser.h/.cpp`)
 

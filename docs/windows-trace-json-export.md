@@ -13,6 +13,10 @@ an optional `rcsFileTransfer` object to every event — see
 `generatedImdn`/`receivedImdn`/`correlatedMessageId`/`deliveryState` to
 every event — purely additive, `schemaVersion` stays `2`. See
 [imdn.md](imdn.md).
+**Task W097** — Extended in branch `feature/w097-is-composing`: adds
+`generatedIsComposing`/`receivedIsComposing`/`typingState`/`typingRefresh`/
+`typingTimeout` to every event — purely additive, `schemaVersion` stays
+`2`. See [is-composing.md](is-composing.md).
 
 ## Overview
 
@@ -114,6 +118,11 @@ diagnostics needs to be updated to read the v2-only fields.
 | receivedImdn | `receivedImdn` (v2, additive) | `true` when this event's body is an inbound IMDN report (Task W096) |
 | correlatedMessageId | `correlatedMessageId` (v2, additive) | `ImdnInfo::messageId` — the original message this report is about; empty when this event is not an IMDN report |
 | deliveryState | `deliveryState` (v2, additive) | `"delivered"` / `"displayed"` / `"failed"` / `"error"` / `"forbidden"` / `"processed"` / `"none"` — `ImdnInfo::dispositionToString(...)`, empty-string when not an IMDN report |
+| generatedIsComposing | `generatedIsComposing` (v2, additive) | `true` when this event's body is an outbound is-composing notification (Task W097) |
+| receivedIsComposing | `receivedIsComposing` (v2, additive) | `true` when this event's body is an inbound is-composing notification (Task W097) |
+| typingState | `typingState` (v2, additive) | `"active"` / `"idle"` / `"gone"` / `"unknown"` — `IsComposingInfo::stateToString(...)`, empty-string when not an is-composing notification |
+| typingRefresh | `typingRefresh` (v2, additive) | RFC 3994 `<refresh>` value, verbatim |
+| typingTimeout | `typingTimeout` (v2, additive) | non-standard `<timeout>` value, verbatim |
 
 **Naming convention chosen**: all JSON keys use `camelCase` (`callId`, not
 `Call-ID`), matching the style already established by

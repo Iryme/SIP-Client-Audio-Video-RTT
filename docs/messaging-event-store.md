@@ -25,6 +25,12 @@ for the full reasoning.
 parsing added here. This is a diagnostics-only surfacing of IMDN reports
 seen on the wire; it is independent of the live delivery/read tracking that
 W096 adds to `MessageHistoryStore` (see [imdn.md](imdn.md)).
+**Task W097** — [Active is-composing](is-composing.md) (branch
+`feature/w097-is-composing`) similarly adds `generatedIsComposing`/
+`receivedIsComposing`/`typingState`/`typingRefresh`/`typingTimeout` to
+`MessagingEvent`, populated purely from the already-parsed
+`MessagingTraceEntry::isComposing` (Task W090's `IsComposingParser`) — no
+new parsing here either.
 
 ## Overview
 

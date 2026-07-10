@@ -25,6 +25,12 @@ builder for outbound `message/imdn+xml` reports, reusing this document's
 send path (`SipManager::sendSipMessage()`) unchanged. `SipAccount`'s
 `onInstantMessage` callback now also extracts the `Message-ID` and
 `Disposition-Notification` header values for the live receive path.
+**Task W097** — [Active is-composing](is-composing.md) (branch
+`feature/w097-is-composing`) adds `SipMessageComposer::composeIsComposing()`
+for outbound RFC 3994 typing notifications, again reusing this document's
+send path unchanged, plus a local `TypingIndicatorController` state machine
+driving when active/idle/gone notifications are sent from the compose
+editor.
 
 ## Overview
 
