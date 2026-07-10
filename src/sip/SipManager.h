@@ -11,6 +11,7 @@
 #include "sip/RegistrationStateMachine.h"
 #include "sip/RegistrationRetryPolicy.h"
 #include "sip/RegistrationRefreshConfig.h"
+#include "sip/ImdnInfo.h"
 #include "sip/SipMessageComposer.h"
 #include "rtt/RttSession.h"
 #include "media/RtpStats.h"
@@ -96,6 +97,14 @@ public:
     // fails. Non-blocking. Returns false (with `error` set) if msg is
     // invalid, no account is active, or PJSIP is unavailable.
     bool sendSipMessage(const ComposedSipMessage &msg, QString &error);
+
+    // Task W096: sends a Displayed IMDN report for a previously-received
+    // inbound Message History entry (manual "mark as read" UI action, used
+    // when AppSettings::autoSendDisplayedImdn is OFF). No-op (returns
+    // false) if the entry is not found, has no Message-ID, did not request
+    // a display notification, or a Displayed report was already sent for
+    // it.
+    bool sendDisplayedImdnForEntry(qint64 inboundEntryId, QString &error);
 
     // Access the RTT session for the current call (never null).
     RttSession *rttSession();
@@ -216,7 +225,8 @@ private slots:
     void onAccountInstantMessageReceived(const QString &fromUri, const QString &toUri,
                                          const QString &contactUri, const QString &contentType,
                                          const QString &body, const QString &callId,
-                                         const QString &profileId);
+                                         const QString &profileId, const QString &messageId,
+                                         const QString &dispositionNotification);
     void onAccountInstantMessageStatusReceived(qint64 correlationId, bool success,
                                                int statusCode, const QString &reason);
 
@@ -242,6 +252,13 @@ private:
     // Reads VideoQualityManager settings and applies codec priority, bitrate,
     // and format to PJSIP before each outgoing call. No-op without HAVE_PJSIP.
     void applyVideoSettingsForCall();
+
+    // Task W096: builds and sends an IMDN report (delivered/displayed) back
+    // to toUri, referencing originalMessageId, and marks it sent on the
+    // given inbound Message History entry. Shared by the auto-Delivered
+    // path, the auto-Displayed path, and the manual "mark as read" action.
+    bool sendImdnReport(const QString &toUri, const QString &originalMessageId,
+                        ImdnInfo::Disposition disposition, qint64 inboundEntryId, QString &error);
 
 #ifdef HAVE_PJSIP
 public:

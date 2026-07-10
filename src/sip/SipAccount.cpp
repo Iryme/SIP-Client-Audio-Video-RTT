@@ -296,18 +296,42 @@ struct SipAccount::Impl
         // SipManager routes only into MessageHistoryStore, never back into
         // SipTraceLogger/MessagingEventStore, so the same wire message is
         // never logged twice into the same store.
+        // Task W096: reads a non-standard (generic) SIP header by name
+        // directly from the parsed message struct — the same pattern
+        // already used above for PJSIP_H_FROM, just via
+        // pjsip_msg_find_hdr_by_name since Message-ID/Disposition-
+        // Notification have no dedicated pjsip_hdr subtype.
+        static QString findGenericHeader(const pjsip_msg *msg, const char *name)
+        {
+            if (!msg)
+                return QString();
+            pj_str_t hname = pj_str(const_cast<char *>(name));
+            auto *hdr = static_cast<pjsip_generic_string_hdr *>(
+                pjsip_msg_find_hdr_by_name(msg, &hname, nullptr));
+            if (!hdr)
+                return QString();
+            return QString::fromUtf8(hdr->hvalue.ptr, static_cast<int>(hdr->hvalue.slen));
+        }
+
         void onInstantMessage(pj::OnInstantMessageParam &prm) override
         {
             if (!m_impl || !m_impl->owner)
                 return;
 
             QString callId;
+            QString messageId;
+            QString dispositionNotification;
             try {
                 if (prm.rdata.pjRxData) {
                     auto *rd = static_cast<pjsip_rx_data *>(prm.rdata.pjRxData);
                     if (rd && rd->msg_info.cid)
                         callId = QString::fromLatin1(rd->msg_info.cid->id.ptr,
                                                      static_cast<int>(rd->msg_info.cid->id.slen));
+                    if (rd && rd->msg_info.msg) {
+                        messageId = findGenericHeader(rd->msg_info.msg, "Message-ID");
+                        dispositionNotification =
+                            findGenericHeader(rd->msg_info.msg, "Disposition-Notification");
+                    }
                 }
             } catch (...) {}
 
@@ -324,10 +348,12 @@ struct SipAccount::Impl
                     .arg(fromUri, toUri, contentType).arg(body.toUtf8().size()));
 
             QMetaObject::invokeMethod(self,
-                [self, fromUri, toUri, contactUri, contentType, body, callId, profileId]() {
+                [self, fromUri, toUri, contactUri, contentType, body, callId, profileId,
+                 messageId, dispositionNotification]() {
                     if (self)
                         emit self->instantMessageReceived(fromUri, toUri, contactUri, contentType,
-                                                           body, callId, profileId);
+                                                           body, callId, profileId, messageId,
+                                                           dispositionNotification);
                 }, Qt::QueuedConnection);
         }
 

@@ -17,6 +17,9 @@
 #include "sip/RegistrationRefreshConfig.h"
 #include "sip/SipTraceLogger.h"
 #include "sip/MessageHistoryStore.h"
+#include "sip/MessagingContentKind.h"
+#include "sip/ImdnParser.h"
+#include "core/AppSettings.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -1267,15 +1270,105 @@ bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
 void SipManager::onAccountInstantMessageReceived(const QString &fromUri, const QString &toUri,
                                                  const QString &contactUri, const QString &contentType,
                                                  const QString &body, const QString &callId,
-                                                 const QString &profileId)
+                                                 const QString &profileId, const QString &messageId,
+                                                 const QString &dispositionNotification)
 {
     // Deliberately does NOT touch SipTraceLogger/MessagingEventStore — the
     // same inbound MESSAGE is already captured independently by
     // PjsipTraceModule's raw-trace tap (Task W090), which is the sole
     // source for the SIP Ladder / Messaging Diagnostics feed. Routing this
     // callback into MessageHistoryStore only is what avoids the duplicate.
-    MessageHistoryStore::instance().appendInbound(fromUri, toUri, contactUri, contentType,
-                                                  body, callId, profileId);
+
+    // Task W096: an incoming message/imdn+xml body is itself an IMDN
+    // report — parse it, log it as its own history row, and correlate its
+    // disposition against the *outbound* entry it refers to. It never
+    // triggers a further IMDN of its own (RFC 5438 reports are not
+    // acknowledged).
+    if (MessagingContentKindDetector::detect(contentType) == MessagingContentKind::Imdn) {
+        const ImdnInfo info = ImdnParser::parse(body);
+        MessageHistoryStore::instance().appendInboundImdn(
+            fromUri, toUri, contactUri, body, callId, profileId, info.messageId);
+        if (info.present && !info.messageId.isEmpty()) {
+            MessageHistoryEntry::DeliveryState state = MessageHistoryEntry::DeliveryState::None;
+            switch (info.disposition) {
+            case ImdnInfo::Disposition::Delivered: state = MessageHistoryEntry::DeliveryState::Delivered; break;
+            case ImdnInfo::Disposition::Displayed: state = MessageHistoryEntry::DeliveryState::Displayed; break;
+            case ImdnInfo::Disposition::Failed:
+            case ImdnInfo::Disposition::Forbidden:
+                state = MessageHistoryEntry::DeliveryState::Failed; break;
+            case ImdnInfo::Disposition::Error:     state = MessageHistoryEntry::DeliveryState::Error; break;
+            default: break;
+            }
+            if (state != MessageHistoryEntry::DeliveryState::None)
+                MessageHistoryStore::instance().correlateDelivery(info.messageId, state);
+        }
+        return;
+    }
+
+    const qint64 entryId = MessageHistoryStore::instance().appendInbound(
+        fromUri, toUri, contactUri, contentType, body, callId, profileId,
+        messageId, dispositionNotification);
+
+    if (messageId.trimmed().isEmpty())
+        return;
+
+    const bool wantsDelivered =
+        dispositionNotification.contains(QStringLiteral("positive-delivery"), Qt::CaseInsensitive);
+    const bool wantsDisplayed =
+        dispositionNotification.contains(QStringLiteral("positive-display"), Qt::CaseInsensitive);
+
+    if (wantsDelivered && AppSettings::autoSendDeliveredImdn()) {
+        QString error;
+        sendImdnReport(fromUri, messageId, ImdnInfo::Disposition::Delivered, entryId, error);
+    }
+    if (wantsDisplayed && AppSettings::autoSendDisplayedImdn()) {
+        QString error;
+        sendImdnReport(fromUri, messageId, ImdnInfo::Disposition::Displayed, entryId, error);
+    }
+}
+
+bool SipManager::sendImdnReport(const QString &toUri, const QString &originalMessageId,
+                                ImdnInfo::Disposition disposition, qint64 inboundEntryId,
+                                QString &error)
+{
+    SipMessageComposer::ImdnReportOptions opts;
+    opts.toUri = toUri;
+    const SipProfile cp = SipProfileManager::instance().activeProfile();
+    opts.fromUri = cp.isNull() ? QString() : cp.effectiveSipUri();
+    opts.originalMessageId = originalMessageId;
+    opts.disposition = disposition;
+
+    const ComposedSipMessage composed = SipMessageComposer::composeImdnReport(opts);
+    if (!composed.valid) {
+        error = composed.error;
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("IMDN report not sent: %1").arg(error));
+        return false;
+    }
+
+    const bool ok = sendSipMessage(composed, error);
+    if (ok)
+        MessageHistoryStore::instance().markImdnSent(inboundEntryId, disposition);
+    return ok;
+}
+
+bool SipManager::sendDisplayedImdnForEntry(qint64 inboundEntryId, QString &error)
+{
+    const MessageHistoryEntry entry = MessageHistoryStore::instance().entryById(inboundEntryId);
+    if (entry.id == 0 || entry.direction != MessageHistoryEntry::Direction::Inbound) {
+        error = QStringLiteral("Message History entry not found");
+        return false;
+    }
+    if (entry.messageId.trimmed().isEmpty()) {
+        error = QStringLiteral("Message had no Message-ID; cannot correlate a Displayed report");
+        return false;
+    }
+    if (entry.displayedImdnSent) {
+        error = QStringLiteral("Displayed report already sent for this message");
+        return false;
+    }
+    return sendImdnReport(entry.peerUri, entry.messageId, ImdnInfo::Disposition::Displayed,
+                          entry.id, error);
 }
 
 void SipManager::onAccountInstantMessageStatusReceived(qint64 correlationId, bool success,

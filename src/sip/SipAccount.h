@@ -76,12 +76,15 @@ signals:
     // W093) for an incoming SIP MESSAGE. contactUri is empty when the
     // request had no Contact header. profileId is this account's own
     // profileId (the association is unambiguous — this signal is only ever
-    // emitted by the account that received the message). In stub mode this
-    // signal is never emitted.
+    // emitted by the account that received the message). messageId and
+    // dispositionNotification (Task W096) are the raw Message-ID /
+    // Disposition-Notification header values, empty when the sender did not
+    // include them. In stub mode this signal is never emitted.
     void instantMessageReceived(const QString &fromUri, const QString &toUri,
                                 const QString &contactUri, const QString &contentType,
                                 const QString &body, const QString &callId,
-                                const QString &profileId);
+                                const QString &profileId, const QString &messageId,
+                                const QString &dispositionNotification);
 
     // Emitted once/if a final SIP response arrives for a message previously
     // submitted via sendMessage(). success is true for 2xx. In stub mode

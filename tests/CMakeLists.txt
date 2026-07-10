@@ -39,6 +39,16 @@ set(CALL_SOURCES
     # further link dependency (only uses ComposedSipMessage's fields, not
     # SipMessageComposer's own .cpp).
     ${CMAKE_SOURCE_DIR}/src/sip/MessageHistoryStore.cpp
+    # Task W096: SipManager::onAccountInstantMessageReceived/sendImdnReport
+    # now call MessagingContentKindDetector::detect, ImdnParser::parse, and
+    # SipMessageComposer::composeImdnReport directly (previously
+    # SipManager.cpp only referenced ComposedSipMessage's fields).
+    ${CMAKE_SOURCE_DIR}/src/sip/MessagingContentKind.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/ImdnParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/ImdnGenerator.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipMessageComposer.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CpimBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -91,6 +101,7 @@ set(SIP_MESSAGE_FOUNDATION_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/CpimBuilder.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipMessageComposer.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/ImdnGenerator.cpp
 )
 
 # Message History sources (Task W093). Pure Qt, no PJSIP types; independent
@@ -666,6 +677,7 @@ add_test(NAME test_cpim_parser COMMAND test_cpim_parser)
 qt_add_executable(test_imdn_parser
     test_imdn_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/ImdnParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/ImdnGenerator.cpp
 )
 
 target_include_directories(test_imdn_parser PRIVATE

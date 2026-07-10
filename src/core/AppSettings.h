@@ -83,6 +83,18 @@ public:
     static bool requestImdnByDefault()        { return settings().value(QStringLiteral("messaging/requestImdnByDefault"), false).toBool(); }
     static void setRequestImdnByDefault(bool on) { settings().setValue(QStringLiteral("messaging/requestImdnByDefault"), on); }
 
+    // IMDN Foundation (Task W096). Auto Send Delivered defaults ON (a
+    // "delivered" report is a transport-level acknowledgement with no
+    // privacy implication — it does not disclose whether/when the user
+    // actually read the message). Auto Send Displayed defaults OFF (it
+    // discloses that the user has read the message, so it requires explicit
+    // opt-in; when off the user marks messages as read manually). Neither
+    // setting affects MSRP, which remains permanently disabled.
+    static bool autoSendDeliveredImdn()          { return settings().value(QStringLiteral("messaging/autoSendDeliveredImdn"), true).toBool(); }
+    static void setAutoSendDeliveredImdn(bool on) { settings().setValue(QStringLiteral("messaging/autoSendDeliveredImdn"), on); }
+    static bool autoSendDisplayedImdn()          { return settings().value(QStringLiteral("messaging/autoSendDisplayedImdn"), false).toBool(); }
+    static void setAutoSendDisplayedImdn(bool on) { settings().setValue(QStringLiteral("messaging/autoSendDisplayedImdn"), on); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {
