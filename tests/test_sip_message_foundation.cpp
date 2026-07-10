@@ -32,6 +32,12 @@ private slots:
     void rejectsInvalidDestination();
     void rejectsEmptyBody();
     void outboundMessageMapsToMessagingEvent();
+
+    // Task W096: IMDN report composition + diagnostics mapping.
+    void composeImdnReportBuildsDeliveredBody();
+    void composeImdnReportBuildsDisplayedBody();
+    void composeImdnReportRejectsEmptyOriginalMessageId();
+    void generatedImdnMapsToMessagingEventDeliveryState();
 };
 
 void TestSipMessageFoundation::init()
@@ -232,6 +238,78 @@ void TestSipMessageFoundation::outboundMessageMapsToMessagingEvent()
     QCOMPARE(e.callId, msg.callId);
     QCOMPARE(e.bodyPreview, QStringLiteral("Ping"));
     QCOMPARE(e.parseStatus, MessagingEvent::ParseStatus::Ok);
+}
+
+void TestSipMessageFoundation::composeImdnReportBuildsDeliveredBody()
+{
+    SipMessageComposer::ImdnReportOptions opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.fromUri = QStringLiteral("sip:bob@example.com");
+    opts.originalMessageId = QStringLiteral("orig-msg-1");
+    opts.disposition = ImdnInfo::Disposition::Delivered;
+
+    const ComposedSipMessage msg = SipMessageComposer::composeImdnReport(opts);
+    QVERIFY(msg.valid);
+    QVERIFY(msg.isImdnReport);
+    QCOMPARE(msg.correlatedMessageId, QStringLiteral("orig-msg-1"));
+    QCOMPARE(msg.contentType, QStringLiteral("message/imdn+xml"));
+    QVERIFY(msg.body.contains(QStringLiteral("<delivered/>")));
+    QVERIFY(msg.body.contains(QStringLiteral("orig-msg-1")));
+    QVERIFY(msg.rawSip.contains(QStringLiteral("message/imdn+xml")));
+}
+
+void TestSipMessageFoundation::composeImdnReportBuildsDisplayedBody()
+{
+    SipMessageComposer::ImdnReportOptions opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.fromUri = QStringLiteral("sip:bob@example.com");
+    opts.originalMessageId = QStringLiteral("orig-msg-2");
+    opts.disposition = ImdnInfo::Disposition::Displayed;
+
+    const ComposedSipMessage msg = SipMessageComposer::composeImdnReport(opts);
+    QVERIFY(msg.valid);
+    QVERIFY(msg.body.contains(QStringLiteral("<displayed/>")));
+}
+
+void TestSipMessageFoundation::composeImdnReportRejectsEmptyOriginalMessageId()
+{
+    SipMessageComposer::ImdnReportOptions opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.disposition = ImdnInfo::Disposition::Delivered;
+    // opts.originalMessageId left empty
+
+    const ComposedSipMessage msg = SipMessageComposer::composeImdnReport(opts);
+    QVERIFY(!msg.valid);
+    QVERIFY(!msg.error.isEmpty());
+}
+
+void TestSipMessageFoundation::generatedImdnMapsToMessagingEventDeliveryState()
+{
+    SipMessageComposer::ImdnReportOptions opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.fromUri = QStringLiteral("sip:bob@example.com");
+    opts.originalMessageId = QStringLiteral("orig-msg-3");
+    opts.disposition = ImdnInfo::Disposition::Delivered;
+    const ComposedSipMessage msg = SipMessageComposer::composeImdnReport(opts);
+    QVERIFY(msg.valid);
+
+    SipMessageTrace trace;
+    trace.direction   = SipMessageTrace::Direction::Outbound;
+    trace.method      = QStringLiteral("MESSAGE");
+    trace.fromUri     = msg.fromUri;
+    trace.toUri       = msg.toUri;
+    trace.callId      = msg.callId;
+    trace.contentType = msg.contentType;
+    trace.rawSip      = msg.rawSip;
+
+    SipTraceLogger::instance().logMessage(trace);
+
+    const MessagingEvent e = MessagingEventStore::instance().snapshot().first();
+    QCOMPARE(e.payloadType, MessagingEvent::PayloadType::Imdn);
+    QVERIFY(e.generatedImdn);
+    QVERIFY(!e.receivedImdn);
+    QCOMPARE(e.correlatedMessageId, QStringLiteral("orig-msg-3"));
+    QCOMPARE(e.deliveryState, QStringLiteral("delivered"));
 }
 
 QTEST_GUILESS_MAIN(TestSipMessageFoundation)

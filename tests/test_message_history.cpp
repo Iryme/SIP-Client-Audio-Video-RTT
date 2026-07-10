@@ -30,6 +30,16 @@ private slots:
     void filteringByContentType();
     void previewLimit();
     void utf8Body();
+
+    // Task W096: IMDN correlation / delivery state.
+    void inboundCapturesMessageIdAndDispositionNotification();
+    void outboundCapturesMessageIdWhenImdnRequested();
+    void correlateDeliveryUpgradesOutboundEntry();
+    void correlateDeliveryDisplayedAfterDelivered();
+    void correlateDeliveryIgnoresUnknownMessageId();
+    void duplicateInboundImdnReportIsDeduped();
+    void markImdnSentSetsFlagsIndependently();
+    void appendInboundImdnStoresCorrelatedMessageId();
 };
 
 void TestMessageHistory::init()
@@ -224,6 +234,127 @@ void TestMessageHistory::utf8Body()
 
     const MessageHistoryEntry e = MessageHistoryStore::instance().snapshot().first();
     QCOMPARE(e.bodyPreview, body);
+}
+
+void TestMessageHistory::inboundCapturesMessageIdAndDispositionNotification()
+{
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:a@x.com"), QStringLiteral("sip:b@x.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("hi"), QStringLiteral("c1"), QString(),
+        QStringLiteral("msg-in-1"), QStringLiteral("positive-delivery, positive-display"));
+
+    const MessageHistoryEntry e = MessageHistoryStore::instance().snapshot().first();
+    QCOMPARE(e.messageId, QStringLiteral("msg-in-1"));
+    QVERIFY(e.deliveryNotificationRequested);
+    QVERIFY(e.displayNotificationRequested);
+    QVERIFY(!e.deliveredImdnSent);
+    QVERIFY(!e.displayedImdnSent);
+}
+
+void TestMessageHistory::outboundCapturesMessageIdWhenImdnRequested()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    opts.requestImdn = true;
+    const ComposedSipMessage msg = SipMessageComposer::compose(opts);
+    QVERIFY(msg.valid);
+    QVERIFY(!msg.messageId.isEmpty());
+
+    MessageHistoryStore::instance().appendOutbound(msg);
+    const MessageHistoryEntry e = MessageHistoryStore::instance().snapshot().first();
+    QCOMPARE(e.messageId, msg.messageId);
+    QCOMPARE(e.deliveryState, MessageHistoryEntry::DeliveryState::None);
+}
+
+void TestMessageHistory::correlateDeliveryUpgradesOutboundEntry()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    opts.requestImdn = true;
+    const ComposedSipMessage msg = SipMessageComposer::compose(opts);
+    const qint64 id = MessageHistoryStore::instance().appendOutbound(msg);
+
+    QSignalSpy spy(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated);
+    MessageHistoryStore::instance().correlateDelivery(msg.messageId,
+        MessageHistoryEntry::DeliveryState::Delivered);
+
+    QCOMPARE(spy.count(), 1);
+    const MessageHistoryEntry e = MessageHistoryStore::instance().entryById(id);
+    QCOMPARE(e.deliveryState, MessageHistoryEntry::DeliveryState::Delivered);
+}
+
+void TestMessageHistory::correlateDeliveryDisplayedAfterDelivered()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    opts.requestImdn = true;
+    const ComposedSipMessage msg = SipMessageComposer::compose(opts);
+    const qint64 id = MessageHistoryStore::instance().appendOutbound(msg);
+
+    MessageHistoryStore::instance().correlateDelivery(msg.messageId,
+        MessageHistoryEntry::DeliveryState::Delivered);
+    MessageHistoryStore::instance().correlateDelivery(msg.messageId,
+        MessageHistoryEntry::DeliveryState::Displayed);
+
+    QCOMPARE(MessageHistoryStore::instance().entryById(id).deliveryState,
+             MessageHistoryEntry::DeliveryState::Displayed);
+}
+
+void TestMessageHistory::correlateDeliveryIgnoresUnknownMessageId()
+{
+    QSignalSpy spy(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated);
+    MessageHistoryStore::instance().correlateDelivery(QStringLiteral("no-such-message-id"),
+        MessageHistoryEntry::DeliveryState::Delivered);
+    QCOMPARE(spy.count(), 0);
+}
+
+void TestMessageHistory::duplicateInboundImdnReportIsDeduped()
+{
+    for (int i = 0; i < 3; ++i) {
+        MessageHistoryStore::instance().appendInboundImdn(
+            QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"),
+            QString(), QStringLiteral("<imdn>same report</imdn>"), QStringLiteral("call-imdn"),
+            QString(), QStringLiteral("orig-msg-dup"));
+    }
+    QCOMPARE(MessageHistoryStore::instance().count(), 1);
+    QVERIFY(MessageHistoryStore::instance().snapshot().first().isImdnReport);
+}
+
+void TestMessageHistory::markImdnSentSetsFlagsIndependently()
+{
+    const qint64 id = MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:a@x.com"), QStringLiteral("sip:b@x.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("hi"), QStringLiteral("c1"), QString(),
+        QStringLiteral("msg-in-2"), QStringLiteral("positive-delivery, positive-display"));
+
+    MessageHistoryStore::instance().markImdnSent(id, ImdnInfo::Disposition::Delivered);
+    MessageHistoryEntry e = MessageHistoryStore::instance().entryById(id);
+    QVERIFY(e.deliveredImdnSent);
+    QVERIFY(!e.displayedImdnSent);
+
+    MessageHistoryStore::instance().markImdnSent(id, ImdnInfo::Disposition::Displayed);
+    e = MessageHistoryStore::instance().entryById(id);
+    QVERIFY(e.deliveredImdnSent);
+    QVERIFY(e.displayedImdnSent);
+}
+
+void TestMessageHistory::appendInboundImdnStoresCorrelatedMessageId()
+{
+    const qint64 id = MessageHistoryStore::instance().appendInboundImdn(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"),
+        QString(), QStringLiteral("<imdn>report</imdn>"), QStringLiteral("call-x"),
+        QString(), QStringLiteral("orig-msg-9"));
+
+    const MessageHistoryEntry e = MessageHistoryStore::instance().entryById(id);
+    QVERIFY(e.isImdnReport);
+    QCOMPARE(e.correlatedMessageId, QStringLiteral("orig-msg-9"));
+    QCOMPARE(e.direction, MessageHistoryEntry::Direction::Inbound);
 }
 
 QTEST_GUILESS_MAIN(TestMessageHistory)
