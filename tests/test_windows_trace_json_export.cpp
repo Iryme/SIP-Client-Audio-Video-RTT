@@ -32,6 +32,7 @@ private slots:
     void rawSipRedacted();
     void sampleExportIsValidJson();
     void requiredFieldsPresent();
+    void exportIncludesDeflateDecodingFields();
 
 private:
     static void logMessage(const SipMessageTrace &t) { SipTraceLogger::instance().logMessage(t); }
@@ -249,6 +250,62 @@ void TestWindowsTraceJsonExport::requiredFieldsPresent()
     };
     for (const QString &field : requiredEventFields)
         QVERIFY2(ev.contains(field), qPrintable(QStringLiteral("missing field: ") + field));
+}
+
+void TestWindowsTraceJsonExport::exportIncludesDeflateDecodingFields()
+{
+    const QString imdnXml =
+        QStringLiteral("<imdn xmlns=\"urn:ietf:params:xml:ns:imdn\">"
+                       "<message-id>deflate-export-1</message-id>"
+                       "<delivery-notification><status><delivered/></status></delivery-notification>"
+                       "</imdn>");
+    const QString compressedBody =
+        QString::fromLatin1(qCompress(imdnXml.toUtf8()).mid(4));
+
+    SipMessageTrace t;
+    t.method          = QStringLiteral("MESSAGE");
+    t.contentType     = QStringLiteral("message/imdn+xml");
+    t.contentEncoding = QStringLiteral("deflate");
+    t.callId          = QStringLiteral("call-deflate-1");
+    t.rawSip          = QStringLiteral("MESSAGE sip:alice@example.com SIP/2.0\r\n"
+                                       "Content-Type: message/imdn+xml\r\n"
+                                       "Content-Encoding: deflate\r\n\r\n") + compressedBody;
+    logMessage(t);
+
+    const QJsonObject ev = firstEvent(InteropTraceExporter::exportToJson());
+    QCOMPARE(ev.value(QStringLiteral("contentEncoding")).toString(), QStringLiteral("deflate"));
+    QCOMPARE(ev.value(QStringLiteral("status")).toString(), QStringLiteral("ok"));
+    QCOMPARE(ev.value(QStringLiteral("parseStatus")).toString(), QStringLiteral("ok"));
+    QVERIFY(ev.value(QStringLiteral("parseWarnings")).toArray().isEmpty());
+    QVERIFY(ev.value(QStringLiteral("decodedBodyPreview")).toString().contains(
+        QStringLiteral("deflate-export-1")));
+    QVERIFY(ev.value(QStringLiteral("imdn")).toObject()
+                .value(QStringLiteral("messageId")).toString() == QStringLiteral("deflate-export-1"));
+
+    // Now the invalid-stream case on a fresh entry.
+    SipTraceLogger::instance().clear();
+    MessagingDiagnosticsStore::instance().clear();
+
+    SipMessageTrace bad;
+    bad.method          = QStringLiteral("MESSAGE");
+    bad.contentType     = QStringLiteral("message/imdn+xml");
+    bad.contentEncoding = QStringLiteral("deflate");
+    bad.callId          = QStringLiteral("call-deflate-2");
+    bad.rawSip          = QStringLiteral("MESSAGE sip:alice@example.com SIP/2.0\r\n"
+                                         "Content-Type: message/imdn+xml\r\n"
+                                         "Content-Encoding: deflate\r\n\r\nnot-a-deflate-stream");
+    logMessage(bad);
+
+    const QJsonObject badEv = firstEvent(InteropTraceExporter::exportToJson());
+    QCOMPARE(badEv.value(QStringLiteral("parseStatus")).toString(), QStringLiteral("partial"));
+    const QJsonArray warnings = badEv.value(QStringLiteral("parseWarnings")).toArray();
+    bool sawDeflateWarning = false;
+    for (const QJsonValue &w : warnings) {
+        if (w.toString() == QStringLiteral("deflate decode failed"))
+            sawDeflateWarning = true;
+    }
+    QVERIFY(sawDeflateWarning);
+    QVERIFY(badEv.value(QStringLiteral("decodedBodyPreview")).toString().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TestWindowsTraceJsonExport)

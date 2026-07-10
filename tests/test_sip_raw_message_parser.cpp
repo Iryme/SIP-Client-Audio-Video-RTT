@@ -12,6 +12,8 @@ private slots:
     void parsesInviteWithSdpBody();
     void parsesStatusLineResponse();
     void parsesMethodFromCSeqWhenNoRequestLine();
+    void parsesContentEncodingHeader();
+    void contentEncodingIsEmptyWhenAbsent();
 };
 
 void TestSipRawMessageParser::parsesInviteWithSdpBody()
@@ -69,6 +71,29 @@ void TestSipRawMessageParser::parsesMethodFromCSeqWhenNoRequestLine()
     QCOMPARE(t.statusCode, 180);
     QCOMPARE(t.statusText, QStringLiteral("Ringing"));
     QCOMPARE(t.method, QStringLiteral("INVITE"));
+}
+
+void TestSipRawMessageParser::parsesContentEncodingHeader()
+{
+    const SipMessageTrace t = SipRawMessageParser::parse(
+        QStringLiteral("MESSAGE sip:alice@example.com SIP/2.0\r\n"
+                       "Content-Type: message/imdn+xml\r\n"
+                       "Content-Encoding: deflate\r\n\r\n"
+                       "\x78\x9c"), // truncated fixture body; header parsing only
+        SipMessageTrace::Direction::Inbound);
+
+    QCOMPARE(t.contentType, QStringLiteral("message/imdn+xml"));
+    QCOMPARE(t.contentEncoding, QStringLiteral("deflate"));
+}
+
+void TestSipRawMessageParser::contentEncodingIsEmptyWhenAbsent()
+{
+    const SipMessageTrace t = SipRawMessageParser::parse(
+        QStringLiteral("MESSAGE sip:alice@example.com SIP/2.0\r\n"
+                       "Content-Type: message/imdn+xml\r\n\r\n<imdn/>"),
+        SipMessageTrace::Direction::Inbound);
+
+    QVERIFY(t.contentEncoding.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TestSipRawMessageParser)
