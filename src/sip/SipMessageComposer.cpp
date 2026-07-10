@@ -4,6 +4,7 @@
 #include <QUuid>
 
 #include "sip/CpimBuilder.h"
+#include "sip/ImdnGenerator.h"
 #include "sip/SipUriNormalizer.h"
 
 namespace {
@@ -72,7 +73,8 @@ ComposedSipMessage SipMessageComposer::compose(const Options &opts)
     }
 
     if (opts.requestImdn) {
-        out.extraHeaders.append({QStringLiteral("Message-ID"), newToken()});
+        out.messageId = newToken();
+        out.extraHeaders.append({QStringLiteral("Message-ID"), out.messageId});
         out.extraHeaders.append({QStringLiteral("Disposition-Notification"),
                                   QStringLiteral("positive-delivery, positive-display")});
     }
@@ -92,6 +94,59 @@ ComposedSipMessage SipMessageComposer::compose(const Options &opts)
     raw += QStringLiteral("Content-Type: %1\n").arg(out.contentType);
     for (const auto &hdr : out.extraHeaders)
         raw += QStringLiteral("%1: %2\n").arg(hdr.first, hdr.second);
+    raw += QStringLiteral("Content-Length: %1\n").arg(out.body.toUtf8().size());
+    raw += QStringLiteral("\n");
+    raw += out.body;
+    out.rawSip = raw;
+
+    out.valid = true;
+    return out;
+}
+
+ComposedSipMessage SipMessageComposer::composeImdnReport(const ImdnReportOptions &opts)
+{
+    ComposedSipMessage out;
+
+    if (opts.originalMessageId.trimmed().isEmpty()) {
+        out.error = QStringLiteral("Cannot build an IMDN report without the original Message-ID");
+        return out;
+    }
+
+    const SipUriNormalizer::Result dest = SipUriNormalizer::normalize(opts.toUri);
+    if (!dest.isValid) {
+        out.error = dest.error.isEmpty()
+            ? QStringLiteral("Invalid or empty destination URI")
+            : dest.error;
+        return out;
+    }
+
+    const QString body = ImdnGenerator::generate(opts.originalMessageId, opts.disposition,
+                                                  opts.fromUri, dest.uri);
+    if (body.isEmpty()) {
+        out.error = QStringLiteral("Unsupported IMDN disposition for a generated report");
+        return out;
+    }
+
+    out.toUri              = dest.uri;
+    out.fromUri             = opts.fromUri;
+    out.callId              = newToken();
+    out.cSeq                = QStringLiteral("1 MESSAGE");
+    out.contentType          = QStringLiteral("message/imdn+xml");
+    out.body                 = body;
+    out.isImdnReport         = true;
+    out.correlatedMessageId  = opts.originalMessageId;
+    // An IMDN report never itself requests a further disposition
+    // notification — messageId stays empty (out.imdnRequested is also left
+    // at its default false).
+
+    QString raw;
+    raw += QStringLiteral("MESSAGE %1 SIP/2.0\n").arg(out.toUri);
+    if (!out.fromUri.isEmpty())
+        raw += QStringLiteral("From: %1\n").arg(out.fromUri);
+    raw += QStringLiteral("To: %1\n").arg(out.toUri);
+    raw += QStringLiteral("Call-ID: %1\n").arg(out.callId);
+    raw += QStringLiteral("CSeq: %1\n").arg(out.cSeq);
+    raw += QStringLiteral("Content-Type: %1\n").arg(out.contentType);
     raw += QStringLiteral("Content-Length: %1\n").arg(out.body.toUtf8().size());
     raw += QStringLiteral("\n");
     raw += out.body;

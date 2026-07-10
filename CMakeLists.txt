@@ -120,6 +120,7 @@ set(SOURCES
     src/sip/MessagingContentKind.cpp
     src/sip/CpimParser.cpp
     src/sip/ImdnParser.cpp
+    src/sip/ImdnGenerator.cpp
     src/sip/IsComposingParser.cpp
     src/sip/SdpMsrpDiagnosticsParser.cpp
     src/sip/SipBodyExtractor.cpp
@@ -224,6 +225,7 @@ set(HEADERS
     src/sip/CpimParser.h
     src/sip/ImdnInfo.h
     src/sip/ImdnParser.h
+    src/sip/ImdnGenerator.h
     src/sip/IsComposingInfo.h
     src/sip/IsComposingParser.h
     src/sip/SdpMsrpInfo.h

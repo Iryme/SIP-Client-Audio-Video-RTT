@@ -47,6 +47,10 @@ ImdnInfo ImdnParser::parse(const QString &body)
                 info.disposition = ImdnInfo::Disposition::Failed;
             else if (nameIs(name, "error"))
                 info.disposition = ImdnInfo::Disposition::Error;
+            else if (nameIs(name, "forbidden"))
+                info.disposition = ImdnInfo::Disposition::Forbidden;
+            else if (nameIs(name, "processed"))
+                info.disposition = ImdnInfo::Disposition::Processed;
         }
     }
 
