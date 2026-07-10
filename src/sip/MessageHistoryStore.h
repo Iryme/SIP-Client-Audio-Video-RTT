@@ -4,6 +4,7 @@
 #include <QMutex>
 #include <QObject>
 
+#include "sip/ImdnInfo.h"
 #include "sip/MessageHistoryEntry.h"
 #include "sip/SipMessageComposer.h"
 
@@ -34,10 +35,24 @@ public:
     // or otherwise duplicated callback invocation for the same message does
     // not produce two history rows. Returns the appended entry's id, or the
     // id of the existing (deduplicated) entry if this call was a duplicate.
+    // messageId/dispositionNotification are the RFC 5438 Message-ID and
+    // Disposition-Notification header values (Task W096), empty when the
+    // sender did not include them.
     qint64 appendInbound(const QString &fromUri, const QString &toUri,
                          const QString &contactUri, const QString &contentType,
                          const QString &body, const QString &callId,
-                         const QString &profileId);
+                         const QString &profileId,
+                         const QString &messageId = QString(),
+                         const QString &dispositionNotification = QString());
+
+    // Appends an inbound IMDN report (message/imdn+xml) as its own history
+    // row (Task W096) — same dedup mechanism as appendInbound. Does NOT
+    // itself update any other entry's deliveryState; call correlateDelivery
+    // separately once the report has been parsed.
+    qint64 appendInboundImdn(const QString &fromUri, const QString &toUri,
+                             const QString &contactUri, const QString &body,
+                             const QString &callId, const QString &profileId,
+                             const QString &correlatedMessageId);
 
     // Appends an outbound entry at send time (status Queued), from an
     // already-composed message. Returns the new entry's id.
@@ -46,6 +61,22 @@ public:
     // Updates an outbound entry's lifecycle status in place (Queued ->
     // Submitted -> Sent/Failed). No-op if id is not found (e.g. evicted).
     void updateOutboundStatus(qint64 id, MessageHistoryEntry::OutboundStatus status);
+
+    // Task W096: finds the most recent outbound (non-IMDN-report) entry
+    // whose messageId matches, and upgrades its deliveryState. No-op
+    // (idempotent) if no such entry is found — e.g. the entry was evicted,
+    // or the correlated Message-ID was never one we generated.
+    void correlateDelivery(const QString &messageId, MessageHistoryEntry::DeliveryState state);
+
+    // Task W096: marks that this client has sent a delivered/displayed IMDN
+    // report for the given inbound entry, so it is never sent twice.
+    void markImdnSent(qint64 inboundEntryId, ImdnInfo::Disposition disposition);
+
+    // Task W096: single-entry lookup, used by the "mark as read" UI action
+    // to check displayNotificationRequested/displayedImdnSent before
+    // sending a Displayed report. Returns a default-constructed (id == 0)
+    // entry if not found.
+    MessageHistoryEntry entryById(qint64 id) const;
 
     void clear();
     int  count() const;

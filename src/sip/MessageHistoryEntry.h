@@ -19,6 +19,14 @@ struct MessageHistoryEntry
     // Unknown for inbound entries.
     enum class OutboundStatus { Unknown, Queued, Submitted, Sent, Failed };
 
+    // IMDN-aware delivery state (Task W096). Outbound entries: starts None,
+    // moves to Delivered/Displayed/Failed/Error only once a correlated IMDN
+    // report is received for this entry's messageId (never inferred from
+    // outboundStatus alone — a 200 OK on the MESSAGE request is not an
+    // IMDN). Inbound entries: stays None (IMDN reports we receive apply to
+    // an *outbound* entry, not to themselves).
+    enum class DeliveryState { None, Delivered, Displayed, Failed, Error };
+
     static QString directionToString(Direction d)
     {
         return d == Direction::Outbound ? QStringLiteral("outbound") : QStringLiteral("inbound");
@@ -35,6 +43,17 @@ struct MessageHistoryEntry
         }
     }
 
+    static QString deliveryStateToString(DeliveryState s)
+    {
+        switch (s) {
+        case DeliveryState::Delivered: return QStringLiteral("delivered");
+        case DeliveryState::Displayed: return QStringLiteral("displayed");
+        case DeliveryState::Failed:    return QStringLiteral("failed");
+        case DeliveryState::Error:     return QStringLiteral("error");
+        default:                       return QStringLiteral("none");
+        }
+    }
+
     qint64        id{0};
     QDateTime     timestamp;
     Direction     direction{Direction::Outbound};
@@ -45,6 +64,30 @@ struct MessageHistoryEntry
     QString       callId;
     QString       contactUri;   // inbound only, when the Contact header was present
     QString       profileId;    // account/profile associated, when it could be determined
+
+    // IMDN Foundation (Task W096) — Message-ID correlation.
+    // Outbound plain message: the Message-ID we generated (only when IMDN
+    // was requested — see SipMessageComposer::compose). Inbound plain
+    // message: the Message-ID header the sender included, if any.
+    QString       messageId;
+    // Set only on entries whose body IS an IMDN report itself (outbound:
+    // one we generated via composeImdnReport; inbound: one we received).
+    // correlatedMessageId is the original message's Message-ID that report
+    // is about.
+    bool          isImdnReport{false};
+    QString       correlatedMessageId;
+
+    // Outbound entries only: richer state once a correlated IMDN report
+    // arrives (see DeliveryState above). Inbound entries: always None.
+    DeliveryState deliveryState{DeliveryState::None};
+
+    // Inbound plain-message entries only: whether the sender's
+    // Disposition-Notification header requested each report, and whether
+    // this client has already sent that report back (never sent twice).
+    bool          deliveryNotificationRequested{false};
+    bool          displayNotificationRequested{false};
+    bool          deliveredImdnSent{false};
+    bool          displayedImdnSent{false};
 };
 
 Q_DECLARE_METATYPE(MessageHistoryEntry)
