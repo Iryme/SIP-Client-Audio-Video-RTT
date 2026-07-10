@@ -64,6 +64,15 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
     if (!entry.decodeError.isEmpty())
         obj[QStringLiteral("decodeError")] = entry.decodeError;
 
+    // IMDN Foundation (Task W096) — additive fields, schemaVersion stays 2
+    // (kSchemaVersion). generatedImdn/receivedImdn/correlatedMessageId/
+    // deliveryState mirror MessagingEventStore::mapFromTraceEntry (Task
+    // W091's classification), computed once above via `ev`, not re-derived.
+    obj[QStringLiteral("generatedImdn")]       = ev.generatedImdn;
+    obj[QStringLiteral("receivedImdn")]        = ev.receivedImdn;
+    obj[QStringLiteral("correlatedMessageId")] = ev.correlatedMessageId;
+    obj[QStringLiteral("deliveryState")]       = ev.deliveryState;
+
     if (entry.imdn.present) {
         // Top-level shortcut, mirrored inside the nested "imdn" object.
         obj[QStringLiteral("messageId")] = entry.imdn.messageId;

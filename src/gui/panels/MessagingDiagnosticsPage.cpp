@@ -84,12 +84,18 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     m_enableSipMessageCheck = new QCheckBox(tr("Enable SIP MESSAGE"), composeGroup);
     m_enableCpimCheck       = new QCheckBox(tr("Enable CPIM"), composeGroup);
     m_requestImdnCheck      = new QCheckBox(tr("Request IMDN"), composeGroup);
+    m_autoSendDeliveredCheck = new QCheckBox(tr("Auto Send Delivered IMDN"), composeGroup);
+    m_autoSendDisplayedCheck = new QCheckBox(tr("Auto Send Displayed IMDN"), composeGroup);
     m_enableSipMessageCheck->setChecked(AppSettings::enableSipMessage());
     m_enableCpimCheck->setChecked(AppSettings::enableCpim());
     m_requestImdnCheck->setChecked(AppSettings::requestImdnByDefault());
+    m_autoSendDeliveredCheck->setChecked(AppSettings::autoSendDeliveredImdn());
+    m_autoSendDisplayedCheck->setChecked(AppSettings::autoSendDisplayedImdn());
     optionsRow->addWidget(m_enableSipMessageCheck);
     optionsRow->addWidget(m_enableCpimCheck);
     optionsRow->addWidget(m_requestImdnCheck);
+    optionsRow->addWidget(m_autoSendDeliveredCheck);
+    optionsRow->addWidget(m_autoSendDisplayedCheck);
     optionsRow->addStretch(1);
     m_sendBtn = new QPushButton(tr("Send"), composeGroup);
     optionsRow->addWidget(m_sendBtn);
@@ -107,6 +113,10 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
             this, &MessagingDiagnosticsPage::onEnableCpimToggled);
     connect(m_requestImdnCheck, &QCheckBox::toggled,
             this, &MessagingDiagnosticsPage::onRequestImdnToggled);
+    connect(m_autoSendDeliveredCheck, &QCheckBox::toggled,
+            this, &MessagingDiagnosticsPage::onAutoSendDeliveredToggled);
+    connect(m_autoSendDisplayedCheck, &QCheckBox::toggled,
+            this, &MessagingDiagnosticsPage::onAutoSendDisplayedToggled);
     connect(m_toUriEdit, &QLineEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
     connect(m_bodyEdit, &QPlainTextEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
     connect(m_sendBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onSendClicked);
@@ -134,6 +144,13 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     historyToolbar->addWidget(m_historyContentTypeFilter);
     historyToolbar->addStretch(1);
 
+    m_markAsReadBtn = new QPushButton(tr("Mark as Read"), historyGroup);
+    m_markAsReadBtn->setToolTip(
+        tr("Send a Displayed IMDN report for the selected inbound message "
+           "(only enabled when the sender requested one and it has not been sent yet)."));
+    m_markAsReadBtn->setEnabled(false);
+    historyToolbar->addWidget(m_markAsReadBtn);
+
     m_clearHistoryBtn = new QPushButton(tr("Clear History"), historyGroup);
     historyToolbar->addWidget(m_clearHistoryBtn);
     historyLayout->addLayout(historyToolbar);
@@ -155,6 +172,9 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     connect(m_historyContentTypeFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MessagingDiagnosticsPage::applyHistoryFilters);
     connect(m_clearHistoryBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onClearHistory);
+    connect(m_markAsReadBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onMarkAsReadClicked);
+    connect(m_historyTable, &QTableWidget::itemSelectionChanged,
+            this, &MessagingDiagnosticsPage::onHistorySelectionChanged);
     connect(&MessageHistoryStore::instance(), &MessageHistoryStore::entryAppended,
             this, &MessagingDiagnosticsPage::onHistoryEntryAppended);
     connect(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated,
@@ -438,6 +458,16 @@ void MessagingDiagnosticsPage::onRequestImdnToggled(bool on)
     AppSettings::setRequestImdnByDefault(on);
 }
 
+void MessagingDiagnosticsPage::onAutoSendDeliveredToggled(bool on)
+{
+    AppSettings::setAutoSendDeliveredImdn(on);
+}
+
+void MessagingDiagnosticsPage::onAutoSendDisplayedToggled(bool on)
+{
+    AppSettings::setAutoSendDisplayedImdn(on);
+}
+
 void MessagingDiagnosticsPage::updateSendEnabled()
 {
     const bool enabled = m_enableSipMessageCheck->isChecked()
@@ -477,10 +507,35 @@ void MessagingDiagnosticsPage::onSendClicked()
 }
 
 namespace {
+// Task W096: icon-decorated status text, e.g. "✓ Submitted", "✓✓ Delivered",
+// "👁 Displayed", "⚠ Failed" — matches the task's UI example. deliveryState
+// (IMDN-derived) takes priority over outboundStatus (transport-level) once
+// a correlated report has arrived.
 QString historyStatusText(const MessageHistoryEntry &entry)
 {
-    if (entry.direction == MessageHistoryEntry::Direction::Inbound)
+    if (entry.direction == MessageHistoryEntry::Direction::Inbound) {
+        if (entry.isImdnReport)
+            return QObject::tr("IMDN report");
+        if (entry.displayNotificationRequested && !entry.displayedImdnSent)
+            return QObject::tr("received (unread)");
         return QObject::tr("received");
+    }
+
+    switch (entry.deliveryState) {
+    case MessageHistoryEntry::DeliveryState::Delivered: return QStringLiteral("✓✓ ") + QObject::tr("Delivered");
+    case MessageHistoryEntry::DeliveryState::Displayed: return QStringLiteral("\U0001F441 ") + QObject::tr("Displayed");
+    case MessageHistoryEntry::DeliveryState::Failed:    return QStringLiteral("⚠ ") + QObject::tr("Failed");
+    case MessageHistoryEntry::DeliveryState::Error:     return QStringLiteral("⚠ ") + QObject::tr("Error");
+    case MessageHistoryEntry::DeliveryState::None:      break;
+    }
+
+    switch (entry.outboundStatus) {
+    case MessageHistoryEntry::OutboundStatus::Queued:    return QStringLiteral("… ") + QObject::tr("Queued");
+    case MessageHistoryEntry::OutboundStatus::Submitted: return QStringLiteral("✓ ") + QObject::tr("Submitted");
+    case MessageHistoryEntry::OutboundStatus::Sent:      return QStringLiteral("✓ ") + QObject::tr("Sent");
+    case MessageHistoryEntry::OutboundStatus::Failed:    return QStringLiteral("⚠ ") + QObject::tr("Failed");
+    default: break;
+    }
     return MessageHistoryEntry::outboundStatusToString(entry.outboundStatus);
 }
 } // namespace
@@ -577,4 +632,41 @@ void MessagingDiagnosticsPage::addHistoryRow(const MessageHistoryEntry &entry)
 void MessagingDiagnosticsPage::onClearHistory()
 {
     MessageHistoryStore::instance().clear();
+}
+
+void MessagingDiagnosticsPage::onHistorySelectionChanged()
+{
+    const QList<QTableWidgetItem *> selected = m_historyTable->selectedItems();
+    if (selected.isEmpty()) {
+        m_markAsReadBtn->setEnabled(false);
+        return;
+    }
+    const qint64 id = m_historyTable->item(selected.first()->row(), 0)->data(Qt::UserRole).toLongLong();
+    const MessageHistoryEntry entry = MessageHistoryStore::instance().entryById(id);
+    const bool eligible = entry.id != 0
+        && entry.direction == MessageHistoryEntry::Direction::Inbound
+        && !entry.isImdnReport
+        && entry.displayNotificationRequested
+        && !entry.displayedImdnSent
+        && !entry.messageId.trimmed().isEmpty();
+    m_markAsReadBtn->setEnabled(eligible);
+}
+
+void MessagingDiagnosticsPage::onMarkAsReadClicked()
+{
+    const QList<QTableWidgetItem *> selected = m_historyTable->selectedItems();
+    if (selected.isEmpty())
+        return;
+    const qint64 id = m_historyTable->item(selected.first()->row(), 0)->data(Qt::UserRole).toLongLong();
+
+    QString error;
+    const bool ok = SipManager::instance().sendDisplayedImdnForEntry(id, error);
+    if (!ok) {
+        m_sendStatusLabel->setText(tr("Displayed IMDN not sent: %1").arg(error));
+        m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #e08080;"));
+    } else {
+        m_sendStatusLabel->setText(tr("Displayed IMDN sent"));
+        m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #7fd08a;"));
+    }
+    onHistorySelectionChanged();
 }

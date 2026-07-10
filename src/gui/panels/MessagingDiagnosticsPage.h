@@ -45,12 +45,16 @@ private slots:
     void onEnableSipMessageToggled(bool on);
     void onEnableCpimToggled(bool on);
     void onRequestImdnToggled(bool on);
+    void onAutoSendDeliveredToggled(bool on);
+    void onAutoSendDisplayedToggled(bool on);
 
     void onHistoryEntryAppended(const MessageHistoryEntry &entry);
     void onHistoryEntryUpdated(const MessageHistoryEntry &entry);
     void onHistoryCleared();
     void applyHistoryFilters();
     void onClearHistory();
+    void onMarkAsReadClicked();
+    void onHistorySelectionChanged();
 
 private:
     void addRow(const MessagingEvent &event);
@@ -77,6 +81,9 @@ private:
     QCheckBox      *m_enableSipMessageCheck{nullptr};
     QCheckBox      *m_enableCpimCheck{nullptr};
     QCheckBox      *m_requestImdnCheck{nullptr};
+    // IMDN Foundation (Task W096) — auto-notification policy toggles.
+    QCheckBox      *m_autoSendDeliveredCheck{nullptr};
+    QCheckBox      *m_autoSendDisplayedCheck{nullptr};
     QPushButton    *m_sendBtn{nullptr};
     QLabel         *m_sendStatusLabel{nullptr};
 
@@ -86,6 +93,10 @@ private:
     QComboBox    *m_historyDirectionFilter{nullptr};
     QComboBox    *m_historyContentTypeFilter{nullptr};
     QPushButton  *m_clearHistoryBtn{nullptr};
+    // Task W096: manual "mark as read" action for the currently selected
+    // inbound row — sends a Displayed IMDN when the sender requested one
+    // and AppSettings::autoSendDisplayedImdn is off.
+    QPushButton  *m_markAsReadBtn{nullptr};
 
     QList<MessagingEvent>      m_events;
     QList<MessageHistoryEntry> m_historyEntries;

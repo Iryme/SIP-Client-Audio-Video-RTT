@@ -92,6 +92,16 @@ struct MessagingEvent
     QString dataUrlRedacted;
     QString expiresAt;
     bool    thumbnailPresent{false};
+
+    // IMDN Foundation (Task W096) — diagnostic surfacing of the trace
+    // pipeline's already-parsed ImdnInfo (MessagingTraceEntry::imdn), no
+    // parsing logic duplicated here. generatedImdn/receivedImdn are true
+    // only when payloadType == Imdn (this event's body IS an IMDN report);
+    // correlatedMessageId/deliveryState describe what that report is about.
+    bool    generatedImdn{false}; // outbound IMDN report
+    bool    receivedImdn{false};  // inbound IMDN report
+    QString correlatedMessageId;  // ImdnInfo::messageId — the original message this report is about
+    QString deliveryState;        // delivered/displayed/failed/error/forbidden/processed/none
 };
 
 Q_DECLARE_METATYPE(MessagingEvent)

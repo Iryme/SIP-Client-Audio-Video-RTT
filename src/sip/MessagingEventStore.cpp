@@ -80,6 +80,15 @@ MessagingEvent MessagingEventStore::mapFromTraceEntry(const MessagingTraceEntry 
     event.decodedBodyLength    = entry.decodedBodyLength;
     event.decodeError          = entry.decodeError;
 
+    // IMDN Foundation (Task W096) — reuses the already-parsed ImdnInfo
+    // (Task W090's ImdnParser, unchanged), no duplicated logic.
+    if (entry.imdn.present) {
+        event.generatedImdn = (event.direction == MessagingEvent::Direction::Outbound);
+        event.receivedImdn  = (event.direction == MessagingEvent::Direction::Inbound);
+        event.correlatedMessageId = entry.imdn.messageId;
+        event.deliveryState = ImdnInfo::dispositionToString(entry.imdn.disposition);
+    }
+
     if (entry.rcsFtHttp.present) {
         event.fileInfoType    = entry.rcsFtHttp.fileInfoType;
         event.fileName        = entry.rcsFtHttp.fileName;
@@ -281,6 +290,10 @@ QString MessagingEventStore::exportToText() const
         if (!e.bodyPreview.isEmpty())
             ts << QStringLiteral("  Body preview: ") << e.bodyPreview << '\n';
 
+        if (e.generatedImdn || e.receivedImdn)
+            ts << QStringLiteral("  IMDN: correlatedMessageId=") << e.correlatedMessageId
+               << QStringLiteral(" deliveryState=") << e.deliveryState << '\n';
+
         if (e.payloadType == MessagingEvent::PayloadType::RcsFtHttp) {
             ts << QStringLiteral("  RCS file: ") << e.fileName
                << QStringLiteral("  type: ") << e.fileContentType
@@ -330,6 +343,11 @@ QString MessagingEventStore::exportToJson() const
         obj[QStringLiteral("decodedBodyLength")]    = e.decodedBodyLength;
         if (!e.decodeError.isEmpty())
             obj[QStringLiteral("decodeError")] = e.decodeError;
+
+        obj[QStringLiteral("generatedImdn")]      = e.generatedImdn;
+        obj[QStringLiteral("receivedImdn")]       = e.receivedImdn;
+        obj[QStringLiteral("correlatedMessageId")] = e.correlatedMessageId;
+        obj[QStringLiteral("deliveryState")]      = e.deliveryState;
 
         if (e.payloadType == MessagingEvent::PayloadType::RcsFtHttp) {
             QJsonObject rcs;

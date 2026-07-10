@@ -30,6 +30,10 @@ namespace InteropTraceExporter {
 // fields are unchanged and still present — a v1-only consumer that ignores
 // unrecognized fields continues to work unmodified; only a consumer that
 // wants the new decode/RCS diagnostics needs to be aware of v2.
+//
+// Task W096 (IMDN Foundation) adds generatedImdn/receivedImdn/
+// correlatedMessageId/deliveryState to every event — purely additive on top
+// of v2 (no existing field removed/renamed), so kSchemaVersion stays 2.
 constexpr int kSchemaVersion = 2;
 
 // Pure function: builds the full JSON document text from an explicit list
