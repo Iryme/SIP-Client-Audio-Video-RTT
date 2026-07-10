@@ -5,6 +5,7 @@
 
 #include "sip/CpimBuilder.h"
 #include "sip/ImdnGenerator.h"
+#include "sip/IsComposingGenerator.h"
 #include "sip/SipUriNormalizer.h"
 
 namespace {
@@ -94,6 +95,49 @@ ComposedSipMessage SipMessageComposer::compose(const Options &opts)
     raw += QStringLiteral("Content-Type: %1\n").arg(out.contentType);
     for (const auto &hdr : out.extraHeaders)
         raw += QStringLiteral("%1: %2\n").arg(hdr.first, hdr.second);
+    raw += QStringLiteral("Content-Length: %1\n").arg(out.body.toUtf8().size());
+    raw += QStringLiteral("\n");
+    raw += out.body;
+    out.rawSip = raw;
+
+    out.valid = true;
+    return out;
+}
+
+ComposedSipMessage SipMessageComposer::composeIsComposing(const IsComposingOptions &opts)
+{
+    ComposedSipMessage out;
+
+    const SipUriNormalizer::Result dest = SipUriNormalizer::normalize(opts.toUri);
+    if (!dest.isValid) {
+        out.error = dest.error.isEmpty()
+            ? QStringLiteral("Invalid or empty destination URI")
+            : dest.error;
+        return out;
+    }
+
+    const QString body = IsComposingGenerator::generate(opts.state, opts.refreshSeconds,
+                                                        opts.contentType);
+    if (body.isEmpty()) {
+        out.error = QStringLiteral("Unsupported is-composing state for a generated notification");
+        return out;
+    }
+
+    out.toUri       = dest.uri;
+    out.fromUri      = opts.fromUri;
+    out.callId       = newToken();
+    out.cSeq         = QStringLiteral("1 MESSAGE");
+    out.contentType  = QStringLiteral("application/im-iscomposing+xml");
+    out.body         = body;
+
+    QString raw;
+    raw += QStringLiteral("MESSAGE %1 SIP/2.0\n").arg(out.toUri);
+    if (!out.fromUri.isEmpty())
+        raw += QStringLiteral("From: %1\n").arg(out.fromUri);
+    raw += QStringLiteral("To: %1\n").arg(out.toUri);
+    raw += QStringLiteral("Call-ID: %1\n").arg(out.callId);
+    raw += QStringLiteral("CSeq: %1\n").arg(out.cSeq);
+    raw += QStringLiteral("Content-Type: %1\n").arg(out.contentType);
     raw += QStringLiteral("Content-Length: %1\n").arg(out.body.toUtf8().size());
     raw += QStringLiteral("\n");
     raw += out.body;

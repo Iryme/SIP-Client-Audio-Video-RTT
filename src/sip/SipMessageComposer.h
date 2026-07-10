@@ -4,6 +4,7 @@
 #include <QString>
 
 #include "sip/ImdnInfo.h"
+#include "sip/IsComposingInfo.h"
 #include "sip/MessagingContentKind.h"
 
 // Result of composing an outbound SIP MESSAGE. Pure data — building a
@@ -75,4 +76,18 @@ public:
         ImdnInfo::Disposition disposition{ImdnInfo::Disposition::None};
     };
     static ComposedSipMessage composeImdnReport(const ImdnReportOptions &opts);
+
+    // Task W097: builds an outbound RFC 3994 is-composing notification —
+    // an application/im-iscomposing+xml body, never CPIM-wrapped. Pure
+    // builder like compose()/composeImdnReport(); sending is a separate
+    // step (SipManager::sendSipMessage).
+    struct IsComposingOptions
+    {
+        QString toUri;
+        QString fromUri;
+        IsComposingInfo::State state{IsComposingInfo::State::Unknown};
+        int refreshSeconds{0};      // 0 omits <refresh>
+        QString contentType;        // empty omits <contenttype>
+    };
+    static ComposedSipMessage composeIsComposing(const IsComposingOptions &opts);
 };

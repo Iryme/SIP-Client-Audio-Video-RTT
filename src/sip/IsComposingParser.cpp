@@ -42,6 +42,8 @@ IsComposingInfo IsComposingParser::parse(const QString &body)
             info.refresh = xml.readElementText();
         } else if (nameIs(name, "timeout")) {
             info.timeout = xml.readElementText();
+        } else if (nameIs(name, "contenttype")) {
+            info.contentType = xml.readElementText();
         }
     }
 

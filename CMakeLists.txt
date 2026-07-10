@@ -122,6 +122,8 @@ set(SOURCES
     src/sip/ImdnParser.cpp
     src/sip/ImdnGenerator.cpp
     src/sip/IsComposingParser.cpp
+    src/sip/IsComposingGenerator.cpp
+    src/sip/TypingIndicatorController.cpp
     src/sip/SdpMsrpDiagnosticsParser.cpp
     src/sip/SipBodyExtractor.cpp
     src/sip/DeflateDecoder.cpp
@@ -228,6 +230,8 @@ set(HEADERS
     src/sip/ImdnGenerator.h
     src/sip/IsComposingInfo.h
     src/sip/IsComposingParser.h
+    src/sip/IsComposingGenerator.h
+    src/sip/TypingIndicatorController.h
     src/sip/SdpMsrpInfo.h
     src/sip/SdpMsrpDiagnosticsParser.h
     src/sip/SipBodyExtractor.h

@@ -1,4 +1,5 @@
 #pragma once
+#include <QMetaType>
 #include <QString>
 
 // RFC 3994 "is-composing" indication diagnostics info.
@@ -8,8 +9,9 @@ struct IsComposingInfo
 
     bool    present{false};
     State   state{State::Unknown};
-    QString timeout;  // non-standard "timeout" element, if present
-    QString refresh;  // RFC 3994 "refresh" element (seconds), if present
+    QString timeout;     // non-standard "timeout" element, if present
+    QString refresh;     // RFC 3994 "refresh" element (seconds), if present
+    QString contentType; // RFC 3994 "contenttype" element, if present (Task W097)
 
     static QString stateToString(State s)
     {
@@ -22,3 +24,5 @@ struct IsComposingInfo
         return QStringLiteral("unknown");
     }
 };
+
+Q_DECLARE_METATYPE(IsComposingInfo::State)
