@@ -12,6 +12,7 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTextStream>
+#include <QTimer>
 #include <QFile>
 
 #include "core/AppSettings.h"
@@ -86,16 +87,22 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     m_requestImdnCheck      = new QCheckBox(tr("Request IMDN"), composeGroup);
     m_autoSendDeliveredCheck = new QCheckBox(tr("Auto Send Delivered IMDN"), composeGroup);
     m_autoSendDisplayedCheck = new QCheckBox(tr("Auto Send Displayed IMDN"), composeGroup);
+    m_enableIsComposingCheck = new QCheckBox(tr("Enable is-composing"), composeGroup);
+    m_autoTypingNotificationsCheck = new QCheckBox(tr("Auto typing notifications"), composeGroup);
     m_enableSipMessageCheck->setChecked(AppSettings::enableSipMessage());
     m_enableCpimCheck->setChecked(AppSettings::enableCpim());
     m_requestImdnCheck->setChecked(AppSettings::requestImdnByDefault());
     m_autoSendDeliveredCheck->setChecked(AppSettings::autoSendDeliveredImdn());
     m_autoSendDisplayedCheck->setChecked(AppSettings::autoSendDisplayedImdn());
+    m_enableIsComposingCheck->setChecked(AppSettings::enableIsComposing());
+    m_autoTypingNotificationsCheck->setChecked(AppSettings::autoTypingNotifications());
     optionsRow->addWidget(m_enableSipMessageCheck);
     optionsRow->addWidget(m_enableCpimCheck);
     optionsRow->addWidget(m_requestImdnCheck);
     optionsRow->addWidget(m_autoSendDeliveredCheck);
     optionsRow->addWidget(m_autoSendDisplayedCheck);
+    optionsRow->addWidget(m_enableIsComposingCheck);
+    optionsRow->addWidget(m_autoTypingNotificationsCheck);
     optionsRow->addStretch(1);
     m_sendBtn = new QPushButton(tr("Send"), composeGroup);
     optionsRow->addWidget(m_sendBtn);
@@ -104,6 +111,15 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     m_sendStatusLabel = new QLabel(composeGroup);
     m_sendStatusLabel->setWordWrap(true);
     composeLayout->addWidget(m_sendStatusLabel);
+
+    // Task W097: local reflection of the peer's typing state for the
+    // current recipient (m_toUriEdit). Cleared automatically after
+    // typingRefreshSeconds with no further notification (see
+    // onTypingIndicatorExpired) — matches the task's "the indicator must
+    // disappear automatically after refresh if no more notifications come".
+    m_typingIndicatorLabel = new QLabel(composeGroup);
+    m_typingIndicatorLabel->setStyleSheet(QStringLiteral("color: #8fb7e0;"));
+    composeLayout->addWidget(m_typingIndicatorLabel);
 
     root->addWidget(composeGroup);
 
@@ -117,9 +133,32 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
             this, &MessagingDiagnosticsPage::onAutoSendDeliveredToggled);
     connect(m_autoSendDisplayedCheck, &QCheckBox::toggled,
             this, &MessagingDiagnosticsPage::onAutoSendDisplayedToggled);
+    connect(m_enableIsComposingCheck, &QCheckBox::toggled,
+            this, &MessagingDiagnosticsPage::onEnableIsComposingToggled);
+    connect(m_autoTypingNotificationsCheck, &QCheckBox::toggled,
+            this, &MessagingDiagnosticsPage::onAutoTypingNotificationsToggled);
     connect(m_toUriEdit, &QLineEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
     connect(m_bodyEdit, &QPlainTextEdit::textChanged, this, &MessagingDiagnosticsPage::updateSendEnabled);
+    connect(m_bodyEdit, &QPlainTextEdit::textChanged,
+            this, &MessagingDiagnosticsPage::onBodyTextChangedForTyping);
     connect(m_sendBtn, &QPushButton::clicked, this, &MessagingDiagnosticsPage::onSendClicked);
+
+    // Active is-composing (Task W097) — pure timer-driven state machine,
+    // decoupled from the actual SIP send (onSendIsComposingRequested does
+    // that), so it stays fully unit-testable without a live SIP stack.
+    m_typingController = new TypingIndicatorController(this);
+    TypingIndicatorController::Config typingCfg;
+    typingCfg.refreshSeconds   = AppSettings::typingRefreshSeconds();
+    typingCfg.idleSeconds      = AppSettings::typingIdleSeconds();
+    typingCfg.goneDelaySeconds = AppSettings::typingGoneDelaySeconds();
+    m_typingController->setConfig(typingCfg);
+    connect(m_typingController, &TypingIndicatorController::sendIsComposingRequested,
+            this, &MessagingDiagnosticsPage::onSendIsComposingRequested);
+
+    m_typingIndicatorExpiryTimer = new QTimer(this);
+    m_typingIndicatorExpiryTimer->setSingleShot(true);
+    connect(m_typingIndicatorExpiryTimer, &QTimer::timeout,
+            this, &MessagingDiagnosticsPage::onTypingIndicatorExpired);
 
     // ---- Message History (Task W093) ---------------------------------------
     auto *historyGroup = new QGroupBox(tr("Message History"), this);
@@ -258,6 +297,14 @@ MessagingDiagnosticsPage::MessagingDiagnosticsPage(QWidget *parent)
     m_events = MessagingEventStore::instance().snapshot();
     rebuildTable();
     updateSendEnabled();
+}
+
+MessagingDiagnosticsPage::~MessagingDiagnosticsPage()
+{
+    // Task W097: stopping the editor ends any in-progress local typing
+    // session — sends "gone" if one was active/idle (no-op otherwise).
+    if (m_typingController)
+        m_typingController->stop();
 }
 
 void MessagingDiagnosticsPage::onEventAppended(const MessagingEvent &event)
@@ -468,6 +515,56 @@ void MessagingDiagnosticsPage::onAutoSendDisplayedToggled(bool on)
     AppSettings::setAutoSendDisplayedImdn(on);
 }
 
+void MessagingDiagnosticsPage::onEnableIsComposingToggled(bool on)
+{
+    AppSettings::setEnableIsComposing(on);
+    if (!on)
+        m_typingController->stop();
+}
+
+void MessagingDiagnosticsPage::onAutoTypingNotificationsToggled(bool on)
+{
+    AppSettings::setAutoTypingNotifications(on);
+    if (!on)
+        m_typingController->stop();
+}
+
+void MessagingDiagnosticsPage::onBodyTextChangedForTyping()
+{
+    m_typingController->onTextChanged(!m_bodyEdit->toPlainText().trimmed().isEmpty());
+}
+
+void MessagingDiagnosticsPage::onSendIsComposingRequested(IsComposingInfo::State state,
+                                                          int refreshSeconds)
+{
+    if (!AppSettings::enableIsComposing() || !AppSettings::autoTypingNotifications())
+        return;
+    if (m_toUriEdit->text().trimmed().isEmpty())
+        return;
+
+    SipMessageComposer::IsComposingOptions opts;
+    opts.toUri = m_toUriEdit->text();
+    const SipProfile activeProfile = SipProfileManager::instance().activeProfile();
+    opts.fromUri = activeProfile.isNull() ? QString() : activeProfile.effectiveSipUri();
+    opts.state = state;
+    opts.refreshSeconds = refreshSeconds;
+    opts.contentType = MessagingContentKindDetector::toString(
+        static_cast<MessagingContentKind>(m_composeContentType->currentData().toInt()));
+
+    const ComposedSipMessage composed = SipMessageComposer::composeIsComposing(opts);
+    if (!composed.valid)
+        return;
+
+    QString error;
+    SipManager::instance().sendSipMessage(composed, error);
+}
+
+void MessagingDiagnosticsPage::onTypingIndicatorExpired()
+{
+    m_typingIndicatorLabel->clear();
+    m_typingIndicatorPeer.clear();
+}
+
 void MessagingDiagnosticsPage::updateSendEnabled()
 {
     const bool enabled = m_enableSipMessageCheck->isChecked()
@@ -499,6 +596,10 @@ void MessagingDiagnosticsPage::onSendClicked()
     if (ok) {
         m_sendStatusLabel->setText(tr("Submitted to %1").arg(composed.toUri));
         m_sendStatusLabel->setStyleSheet(QStringLiteral("color: #7fd08a;"));
+        // Task W097: a sent message ends the local typing session — "gone"
+        // if one was in progress, before clear() fires the (no-op) empty
+        // textChanged.
+        m_typingController->stop();
         m_bodyEdit->clear();
     } else {
         m_sendStatusLabel->setText(tr("Send failed: %1").arg(error));
@@ -516,6 +617,16 @@ QString historyStatusText(const MessageHistoryEntry &entry)
     if (entry.direction == MessageHistoryEntry::Direction::Inbound) {
         if (entry.isImdnReport)
             return QObject::tr("IMDN report");
+        // Task W097: RFC 3994 typing-state notification row.
+        if (entry.isTypingNotification) {
+            if (entry.typingState == QLatin1String("active"))
+                return QStringLiteral("✍️ ") + QObject::tr("typing...");
+            if (entry.typingState == QLatin1String("idle"))
+                return QObject::tr("Idle");
+            if (entry.typingState == QLatin1String("gone"))
+                return QObject::tr("Gone");
+            return QObject::tr("typing notification");
+        }
         if (entry.displayNotificationRequested && !entry.displayedImdnSent)
             return QObject::tr("received (unread)");
         return QObject::tr("received");
@@ -545,6 +656,27 @@ void MessagingDiagnosticsPage::onHistoryEntryAppended(const MessageHistoryEntry 
     m_historyEntries.append(entry);
     if (passesHistoryFilters(entry))
         addHistoryRow(entry);
+
+    // Task W097: reflect the peer's typing state for the currently-entered
+    // recipient only — this page has one flat compose box, not a
+    // per-conversation view, so the indicator scopes to whoever is in the
+    // "To" field right now.
+    if (entry.isTypingNotification
+        && normalizedKey(entry.peerUri) == normalizedKey(m_toUriEdit->text())) {
+        m_typingIndicatorPeer = normalizedKey(entry.peerUri);
+        if (entry.typingState == QLatin1String("active")) {
+            m_typingIndicatorLabel->setText(QStringLiteral("✍️ ") + tr("typing..."));
+            const int refreshSeconds = AppSettings::typingRefreshSeconds();
+            if (refreshSeconds > 0)
+                m_typingIndicatorExpiryTimer->start(refreshSeconds * 1000);
+        } else if (entry.typingState == QLatin1String("idle")) {
+            m_typingIndicatorLabel->setText(tr("Idle"));
+            m_typingIndicatorExpiryTimer->stop();
+        } else { // gone (or unrecognized — treat as cleared)
+            m_typingIndicatorLabel->clear();
+            m_typingIndicatorExpiryTimer->stop();
+        }
+    }
 }
 
 void MessagingDiagnosticsPage::onHistoryEntryUpdated(const MessageHistoryEntry &entry)

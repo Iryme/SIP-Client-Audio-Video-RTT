@@ -102,6 +102,15 @@ struct MessagingEvent
     bool    receivedImdn{false};  // inbound IMDN report
     QString correlatedMessageId;  // ImdnInfo::messageId — the original message this report is about
     QString deliveryState;        // delivered/displayed/failed/error/forbidden/processed/none
+
+    // is-composing (Task W097) — diagnostic surfacing of the trace
+    // pipeline's already-parsed IsComposingInfo
+    // (MessagingTraceEntry::isComposing), no parsing logic duplicated here.
+    bool    generatedIsComposing{false}; // outbound typing notification
+    bool    receivedIsComposing{false};  // inbound typing notification
+    QString typingState;                 // active/idle/gone/unknown
+    QString typingRefresh;               // RFC 3994 <refresh> value, verbatim
+    QString typingTimeout;               // non-standard <timeout> value, verbatim
 };
 
 Q_DECLARE_METATYPE(MessagingEvent)

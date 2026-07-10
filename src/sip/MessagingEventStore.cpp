@@ -89,6 +89,16 @@ MessagingEvent MessagingEventStore::mapFromTraceEntry(const MessagingTraceEntry 
         event.deliveryState = ImdnInfo::dispositionToString(entry.imdn.disposition);
     }
 
+    // is-composing (Task W097) — reuses the already-parsed IsComposingInfo
+    // (Task W090's IsComposingParser, unchanged), no duplicated logic.
+    if (entry.isComposing.present) {
+        event.generatedIsComposing = (event.direction == MessagingEvent::Direction::Outbound);
+        event.receivedIsComposing  = (event.direction == MessagingEvent::Direction::Inbound);
+        event.typingState   = IsComposingInfo::stateToString(entry.isComposing.state);
+        event.typingRefresh = entry.isComposing.refresh;
+        event.typingTimeout = entry.isComposing.timeout;
+    }
+
     if (entry.rcsFtHttp.present) {
         event.fileInfoType    = entry.rcsFtHttp.fileInfoType;
         event.fileName        = entry.rcsFtHttp.fileName;
@@ -294,6 +304,11 @@ QString MessagingEventStore::exportToText() const
             ts << QStringLiteral("  IMDN: correlatedMessageId=") << e.correlatedMessageId
                << QStringLiteral(" deliveryState=") << e.deliveryState << '\n';
 
+        if (e.generatedIsComposing || e.receivedIsComposing)
+            ts << QStringLiteral("  is-composing: typingState=") << e.typingState
+               << QStringLiteral(" refresh=") << e.typingRefresh
+               << QStringLiteral(" timeout=") << e.typingTimeout << '\n';
+
         if (e.payloadType == MessagingEvent::PayloadType::RcsFtHttp) {
             ts << QStringLiteral("  RCS file: ") << e.fileName
                << QStringLiteral("  type: ") << e.fileContentType
@@ -348,6 +363,12 @@ QString MessagingEventStore::exportToJson() const
         obj[QStringLiteral("receivedImdn")]       = e.receivedImdn;
         obj[QStringLiteral("correlatedMessageId")] = e.correlatedMessageId;
         obj[QStringLiteral("deliveryState")]      = e.deliveryState;
+
+        obj[QStringLiteral("generatedIsComposing")] = e.generatedIsComposing;
+        obj[QStringLiteral("receivedIsComposing")]  = e.receivedIsComposing;
+        obj[QStringLiteral("typingState")]          = e.typingState;
+        obj[QStringLiteral("typingRefresh")]        = e.typingRefresh;
+        obj[QStringLiteral("typingTimeout")]        = e.typingTimeout;
 
         if (e.payloadType == MessagingEvent::PayloadType::RcsFtHttp) {
             QJsonObject rcs;

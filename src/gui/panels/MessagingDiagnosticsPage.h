@@ -4,6 +4,7 @@
 
 #include "sip/MessageHistoryEntry.h"
 #include "sip/MessagingEvent.h"
+#include "sip/TypingIndicatorController.h"
 
 class QCheckBox;
 class QComboBox;
@@ -12,6 +13,7 @@ class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
 class QTableWidget;
+class QTimer;
 class MessagingMessageDetailsDialog;
 
 // "Messaging Diagnostics" nav page: SIP MESSAGE / CPIM / IMDN / is-composing
@@ -29,6 +31,7 @@ class MessagingDiagnosticsPage : public QWidget
     Q_OBJECT
 public:
     explicit MessagingDiagnosticsPage(QWidget *parent = nullptr);
+    ~MessagingDiagnosticsPage() override;
 
 private slots:
     void onEventAppended(const MessagingEvent &event);
@@ -47,6 +50,11 @@ private slots:
     void onRequestImdnToggled(bool on);
     void onAutoSendDeliveredToggled(bool on);
     void onAutoSendDisplayedToggled(bool on);
+    void onEnableIsComposingToggled(bool on);
+    void onAutoTypingNotificationsToggled(bool on);
+    void onBodyTextChangedForTyping();
+    void onSendIsComposingRequested(IsComposingInfo::State state, int refreshSeconds);
+    void onTypingIndicatorExpired();
 
     void onHistoryEntryAppended(const MessageHistoryEntry &entry);
     void onHistoryEntryUpdated(const MessageHistoryEntry &entry);
@@ -86,6 +94,13 @@ private:
     QCheckBox      *m_autoSendDisplayedCheck{nullptr};
     QPushButton    *m_sendBtn{nullptr};
     QLabel         *m_sendStatusLabel{nullptr};
+    // Active is-composing (Task W097).
+    QCheckBox      *m_enableIsComposingCheck{nullptr};
+    QCheckBox      *m_autoTypingNotificationsCheck{nullptr};
+    QLabel         *m_typingIndicatorLabel{nullptr};
+    TypingIndicatorController *m_typingController{nullptr};
+    QTimer         *m_typingIndicatorExpiryTimer{nullptr};
+    QString         m_typingIndicatorPeer; // normalized peer the indicator currently reflects
 
     // Message History (Task W093) — separate table/store from the
     // diagnostics feed above; see MessageHistoryStore for why.

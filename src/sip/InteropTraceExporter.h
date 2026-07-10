@@ -34,6 +34,9 @@ namespace InteropTraceExporter {
 // Task W096 (IMDN Foundation) adds generatedImdn/receivedImdn/
 // correlatedMessageId/deliveryState to every event — purely additive on top
 // of v2 (no existing field removed/renamed), so kSchemaVersion stays 2.
+// Task W097 (Active is-composing) similarly adds generatedIsComposing/
+// receivedIsComposing/typingState/typingRefresh/typingTimeout — also
+// purely additive, kSchemaVersion stays 2.
 constexpr int kSchemaVersion = 2;
 
 // Pure function: builds the full JSON document text from an explicit list

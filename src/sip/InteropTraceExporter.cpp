@@ -73,6 +73,13 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
     obj[QStringLiteral("correlatedMessageId")] = ev.correlatedMessageId;
     obj[QStringLiteral("deliveryState")]       = ev.deliveryState;
 
+    // is-composing (Task W097) — additive fields, schemaVersion stays 2.
+    obj[QStringLiteral("generatedIsComposing")] = ev.generatedIsComposing;
+    obj[QStringLiteral("receivedIsComposing")]  = ev.receivedIsComposing;
+    obj[QStringLiteral("typingState")]          = ev.typingState;
+    obj[QStringLiteral("typingRefresh")]        = ev.typingRefresh;
+    obj[QStringLiteral("typingTimeout")]        = ev.typingTimeout;
+
     if (entry.imdn.present) {
         // Top-level shortcut, mirrored inside the nested "imdn" object.
         obj[QStringLiteral("messageId")] = entry.imdn.messageId;
