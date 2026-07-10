@@ -38,6 +38,11 @@ private slots:
     void composeImdnReportBuildsDisplayedBody();
     void composeImdnReportRejectsEmptyOriginalMessageId();
     void generatedImdnMapsToMessagingEventDeliveryState();
+
+    // Task W097: is-composing notification composition + diagnostics mapping.
+    void composeIsComposingBuildsActiveBody();
+    void composeIsComposingRejectsUnknownState();
+    void generatedIsComposingMapsToMessagingEventFields();
 };
 
 void TestSipMessageFoundation::init()
@@ -310,6 +315,63 @@ void TestSipMessageFoundation::generatedImdnMapsToMessagingEventDeliveryState()
     QVERIFY(!e.receivedImdn);
     QCOMPARE(e.correlatedMessageId, QStringLiteral("orig-msg-3"));
     QCOMPARE(e.deliveryState, QStringLiteral("delivered"));
+}
+
+void TestSipMessageFoundation::composeIsComposingBuildsActiveBody()
+{
+    SipMessageComposer::IsComposingOptions opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.fromUri = QStringLiteral("sip:bob@example.com");
+    opts.state = IsComposingInfo::State::Active;
+    opts.refreshSeconds = 60;
+    opts.contentType = QStringLiteral("text/plain");
+
+    const ComposedSipMessage msg = SipMessageComposer::composeIsComposing(opts);
+    QVERIFY(msg.valid);
+    QCOMPARE(msg.contentType, QStringLiteral("application/im-iscomposing+xml"));
+    QVERIFY(msg.body.contains(QStringLiteral("<state>active</state>")));
+    QVERIFY(msg.body.contains(QStringLiteral("<refresh>60</refresh>")));
+    QVERIFY(msg.rawSip.contains(QStringLiteral("application/im-iscomposing+xml")));
+}
+
+void TestSipMessageFoundation::composeIsComposingRejectsUnknownState()
+{
+    SipMessageComposer::IsComposingOptions opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.state = IsComposingInfo::State::Unknown;
+
+    const ComposedSipMessage msg = SipMessageComposer::composeIsComposing(opts);
+    QVERIFY(!msg.valid);
+    QVERIFY(!msg.error.isEmpty());
+}
+
+void TestSipMessageFoundation::generatedIsComposingMapsToMessagingEventFields()
+{
+    SipMessageComposer::IsComposingOptions opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.fromUri = QStringLiteral("sip:bob@example.com");
+    opts.state = IsComposingInfo::State::Active;
+    opts.refreshSeconds = 60;
+    const ComposedSipMessage msg = SipMessageComposer::composeIsComposing(opts);
+    QVERIFY(msg.valid);
+
+    SipMessageTrace trace;
+    trace.direction   = SipMessageTrace::Direction::Outbound;
+    trace.method      = QStringLiteral("MESSAGE");
+    trace.fromUri     = msg.fromUri;
+    trace.toUri       = msg.toUri;
+    trace.callId      = msg.callId;
+    trace.contentType = msg.contentType;
+    trace.rawSip      = msg.rawSip;
+
+    SipTraceLogger::instance().logMessage(trace);
+
+    const MessagingEvent e = MessagingEventStore::instance().snapshot().first();
+    QCOMPARE(e.payloadType, MessagingEvent::PayloadType::IsComposing);
+    QVERIFY(e.generatedIsComposing);
+    QVERIFY(!e.receivedIsComposing);
+    QCOMPARE(e.typingState, QStringLiteral("active"));
+    QCOMPARE(e.typingRefresh, QStringLiteral("60"));
 }
 
 QTEST_GUILESS_MAIN(TestSipMessageFoundation)

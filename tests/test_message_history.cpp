@@ -40,6 +40,10 @@ private slots:
     void duplicateInboundImdnReportIsDeduped();
     void markImdnSentSetsFlagsIndependently();
     void appendInboundImdnStoresCorrelatedMessageId();
+
+    // Task W097: is-composing history rows.
+    void appendInboundTypingStoresState();
+    void duplicateInboundTypingIsDeduped();
 };
 
 void TestMessageHistory::init()
@@ -355,6 +359,32 @@ void TestMessageHistory::appendInboundImdnStoresCorrelatedMessageId()
     QVERIFY(e.isImdnReport);
     QCOMPARE(e.correlatedMessageId, QStringLiteral("orig-msg-9"));
     QCOMPARE(e.direction, MessageHistoryEntry::Direction::Inbound);
+}
+
+void TestMessageHistory::appendInboundTypingStoresState()
+{
+    const qint64 id = MessageHistoryStore::instance().appendInboundTyping(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"),
+        QString(), QStringLiteral("<isComposing><state>active</state></isComposing>"),
+        QStringLiteral("call-typing-1"), QString(), QStringLiteral("active"));
+
+    const MessageHistoryEntry e = MessageHistoryStore::instance().entryById(id);
+    QVERIFY(e.isTypingNotification);
+    QCOMPARE(e.typingState, QStringLiteral("active"));
+    QCOMPARE(e.direction, MessageHistoryEntry::Direction::Inbound);
+    QCOMPARE(e.peerUri, QStringLiteral("sip:alice@example.com"));
+}
+
+void TestMessageHistory::duplicateInboundTypingIsDeduped()
+{
+    for (int i = 0; i < 3; ++i) {
+        MessageHistoryStore::instance().appendInboundTyping(
+            QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"),
+            QString(), QStringLiteral("<isComposing><state>active</state></isComposing>"),
+            QStringLiteral("call-typing-dup"), QString(), QStringLiteral("active"));
+    }
+    QCOMPARE(MessageHistoryStore::instance().count(), 1);
+    QVERIFY(MessageHistoryStore::instance().snapshot().first().isTypingNotification);
 }
 
 QTEST_GUILESS_MAIN(TestMessageHistory)
