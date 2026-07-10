@@ -67,6 +67,7 @@ SipMessageTrace SipRawMessageParser::parse(const QString &rawText,
     trace.fromUri     = findHeaderValue(lines, QStringLiteral("From"), QStringLiteral("f"));
     trace.toUri       = findHeaderValue(lines, QStringLiteral("To"), QStringLiteral("t"));
     trace.contentType = findHeaderValue(lines, QStringLiteral("Content-Type"), QStringLiteral("c"));
+    trace.contentEncoding = findHeaderValue(lines, QStringLiteral("Content-Encoding"), QStringLiteral("e"));
 
     // CSeq method suffix ("312 INVITE") gives us the method for responses too.
     if (trace.method.isEmpty() && !trace.cSeq.isEmpty()) {
