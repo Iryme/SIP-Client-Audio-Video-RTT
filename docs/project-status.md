@@ -1,8 +1,8 @@
 # Project Status
 
-Last updated: 2026-07-09
-Current task count: 48 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W094 complete)
-Active branch: `feature/w094-windows-trace-json-export`
+Last updated: 2026-07-10
+Current task count: 48 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W094 complete) + 1 fix (deflate decoding)
+Active branch: `fix/w092-imdn-deflate-decoding`
 
 ---
 
@@ -85,6 +85,7 @@ Active branch: `feature/w094-windows-trace-json-export`
 | W092 | SIP MESSAGE Foundation — SipMessageComposer, CpimBuilder, SipAccount::sendMessage (pjsua2 Buddy::sendInstantMessage), SipManager::sendSipMessage, compose UI in Messaging Diagnostics page, enableSipMessage/enableCpim/requestImdnByDefault settings | feature/w092-sip-message-foundation | COMPLETE — basic send/receive only, MSRP still fully disabled, no delivery confirmation/IMDN generation; 1 new test suite (11 tests) pass |
 | W093 | Incoming MESSAGE Handling + Message History — dedicated pjsua2 onInstantMessage/onInstantMessageStatus callbacks, MessageHistoryEntry/MessageHistoryStore (separate from MessagingEventStore, dedup logic), Message History UI with filters, outbound status confirmation (Submitted→Sent/Failed) | feature/w093-incoming-message-history | COMPLETE — no IMDN automation/Presence/XCAP/real MSRP; 1 new test suite (10 tests) pass |
 | W094 | Windows Messaging/MSRP Diagnostics JSON Export — InteropTraceExporter (server-comparable schema for scripts/interop/compare-client-server-trace.py), Export Interop JSON button, sample export | feature/w094-windows-trace-json-export | COMPLETE — script not present in this repo (schema documented from spec instead); diagnostic-only, no MSRP activation; 1 new test suite (8 tests) pass |
+| Fix (W092-deflate) | Decode `Content-Encoding: deflate` for IMDN/CPIM/is-composing bodies — DeflateDecoder (Qt's own zlib via qUncompress), decode-before-parse in MessagingDiagnosticsStore, `contentEncoding`/`decodedBodyPreview` fields, `parseStatus=partial`+"deflate decode failed" warning on decode failure | fix/w092-imdn-deflate-decoding | COMPLETE — only `deflate` (zlib/RFC 1950 stream) recognized, `gzip` not implemented; diagnostic-only; 1 new test suite (4 tests) + extended cases in 3 existing suites, all pass |
 
 ---
 
@@ -125,7 +126,8 @@ Active branch: `feature/w094-windows-trace-json-export`
 | SipUriNormalizer | COMPLETE | bare users → sip:user@domain, full URI passthrough |
 | SipMessageTrace / SipTraceLogger | COMPLETE | Credential redaction, export Text/JSON |
 | SipLadderWidget | COMPLETE | paintEvent ladder, arrows, CSeq/Call-ID annotation, MESSAGE color + content-type badge |
-| MessagingDiagnosticsStore | COMPLETE | Filters SipTraceLogger traces for MESSAGE/CPIM/IMDN/is-composing/MSRP-SDP, builds MessagingTraceEntry, export Text/JSON |
+| MessagingDiagnosticsStore | COMPLETE | Filters SipTraceLogger traces for MESSAGE/CPIM/IMDN/is-composing/MSRP-SDP, decodes `Content-Encoding: deflate` before parsing (fix branch), builds MessagingTraceEntry, export Text/JSON |
+| DeflateDecoder | COMPLETE | Fix `fix/w092-imdn-deflate-decoding` — decodes `Content-Encoding: deflate` (zlib/RFC 1950 stream) bodies via Qt's own qUncompress, no new third-party dependency; see [messaging-diagnostics.md](messaging-diagnostics.md) |
 | CpimParser / ImdnParser / IsComposingParser | COMPLETE | RFC 3862 / RFC 5438 / RFC 3994 minimal parsers, pure Qt/text, unit tested |
 | SdpMsrpDiagnosticsParser | COMPLETE | Detects m=message, a=path/accept-types/setup/connection, session-id — detection only, no MSRP session |
 | MessagingDiagnosticsPage | COMPLETE | "Messaging" nav page — diagnostics table (filters, Clear/Export Text/Export JSON/Export Interop JSON, sourced from MessagingEventStore, Task W091/W094) plus a Send SIP MESSAGE composer (Task W092) plus a Message History table with filters (Task W093) |
@@ -133,7 +135,7 @@ Active branch: `feature/w094-windows-trace-json-export`
 | SipMessageComposer / CpimBuilder | COMPLETE | Task W092 — pure Qt composer for outbound SIP MESSAGE (plain/HTML/CPIM, IMDN-request headers), no PJSIP/network dependency; see [sip-message.md](sip-message.md) |
 | SipAccount::sendMessage / SipManager::sendSipMessage | COMPLETE | Task W092 — sends via a transient non-subscribing pjsua2 Buddy (Buddy::sendInstantMessage), fire-and-forget, non-blocking; MSRP untouched. Task W093 added onInstantMessageStatus confirmation (Submitted→Sent/Failed) |
 | MessageHistoryEntry / MessageHistoryStore | COMPLETE | Task W093 — dedicated onInstantMessage callback (From/To/Contact/Content-Type/body/Call-ID/profileId) + outbound composer feed a separate conversational history store with dedup and bounded preview; never touches MessagingEventStore; see [message-history.md](message-history.md) |
-| InteropTraceExporter | COMPLETE | Task W094 — server-comparable JSON export (SIP MESSAGE/CPIM/IMDN/is-composing/MSRP-SDP), reads MessagingTraceEntry directly, no new parsing; see [windows-trace-json-export.md](windows-trace-json-export.md) |
+| InteropTraceExporter | COMPLETE | Task W094 — server-comparable JSON export (SIP MESSAGE/CPIM/IMDN/is-composing/MSRP-SDP), reads MessagingTraceEntry directly, no new parsing; fix branch added contentEncoding/decodedBodyPreview/parseStatus/parseWarnings fields; see [windows-trace-json-export.md](windows-trace-json-export.md) |
 | RttSession | COMPLETE | 5-state SM, sendText, onCallMediaStateChanged |
 | RttPanel | COMPLETE | TX delta, RX accumulation, BS, CR→transcript |
 | FindPJSIP.cmake | COMPLETE | PJSIP discovery, PJSIP::pjsua2 imported target |

@@ -18,6 +18,12 @@ added an "Export Interop JSON" button producing a server-comparable schema
 (SIP-Server-RTT `compare-client-server-trace.py`). Purely an additional
 export format — no changes to capture/parsing. See
 [windows-trace-json-export.md](windows-trace-json-export.md).
+**Fix (branch `fix/w092-imdn-deflate-decoding`)** — Linphone sometimes sends
+`Content-Encoding: deflate` bodies (e.g. compressed `message/imdn+xml`),
+which the diagnostics pipeline previously tried to parse as raw XML,
+producing `parseStatus=partial`. Added deflate decoding before CPIM/IMDN/
+is-composing parsing runs; see the "Content-Encoding: deflate" section
+below.
 
 ## Overview
 
@@ -103,10 +109,13 @@ One row of the Messaging Diagnostics feed:
 |---|---|
 | `timestamp`, `direction`, `method`, `statusCode`, `statusText` | Same semantics as `SipMessageTrace` |
 | `fromUri`, `toUri`, `callId`, `cSeq`, `contentType` | Copied from the underlying SIP headers |
-| `bodyPreview` | Safe, single-line, whitespace-collapsed, length-capped (160 chars) preview for the UI/export table — a display convenience, not a security redaction |
-| `rawSip` | Full raw SIP text; Authorization/Proxy-Authorization values are **already redacted** by `SipTraceLogger` before the entry is built |
-| `contentKind` | `MessagingContentKind` detected from `Content-Type` |
-| `cpim`, `imdn`, `isComposing`, `sdpMsrp` | Structured info, present only when detected (see below) |
+| `contentEncoding` | Raw `Content-Encoding` header value (e.g. `deflate`); empty if the header was absent |
+| `bodyPreview` | Safe, single-line, whitespace-collapsed, length-capped (160 chars) preview for the UI/export table — reflects the **decoded** body when `contentEncoding` was successfully reversed; a display convenience, not a security redaction |
+| `decodedBodyPreview` | Same value as `bodyPreview` whenever decoding applied and succeeded (or when there was no encoding to decode); empty when decoding was attempted and failed |
+| `contentEncodingDecodeFailed` | `true` when `contentEncoding` named a recognized coding but decoding the body against it failed |
+| `rawSip` | Full raw SIP text; Authorization/Proxy-Authorization values are **already redacted** by `SipTraceLogger` before the entry is built. Always the original, still-encoded bytes — decoding never rewrites `rawSip` |
+| `contentKind` | `MessagingContentKind` detected from `Content-Type` (independent of `Content-Encoding` — the declared MIME type, not the wire coding) |
+| `cpim`, `imdn`, `isComposing`, `sdpMsrp` | Structured info, present only when detected (see below); parsed from the **decoded** body when `Content-Encoding` applies |
 
 ### Content-Type detection (`src/sip/MessagingContentKind.h/.cpp`)
 
@@ -145,14 +154,74 @@ finds the `m=message` media block in an SDP body and extracts
 protocol (`TCP/MSRP` or `TCP/TLS/MSRP`), and a best-effort `session-id`
 parsed out of the last MSRP URI in `a=path`.
 
+### Content-Encoding: deflate (`src/sip/DeflateDecoder.h/.cpp`)
+
+Some SIP UAs (observed with Linphone) send `message/imdn+xml` (and
+potentially CPIM/is-composing) bodies compressed with
+`Content-Encoding: deflate`. `DeflateDecoder::decode()` reverses this before
+any CPIM/IMDN/is-composing/SDP-MSRP parsing runs, in
+`MessagingDiagnosticsStore::buildEntry()`:
+
+1. `SipRawMessageParser::parse()` extracts the raw `Content-Encoding` header
+   value into `SipMessageTrace::contentEncoding` (same `findHeaderValue()`
+   convention as `Content-Type`).
+2. If `contentEncoding` case-insensitively equals `deflate` and the body is
+   non-empty, `DeflateDecoder::decode()` is called on the body bytes
+   *before* `CpimParser`/`ImdnParser`/`IsComposingParser`/
+   `SdpMsrpDiagnosticsParser` ever see it. On success, all downstream
+   parsing runs against the decoded text exactly as it would for an
+   unencoded body — this is a pre-processing step, not a new parser.
+3. `bodyPreview` reflects the decoded content on success (or the raw,
+   still-compressed bytes if decoding failed or was never attempted);
+   `decodedBodyPreview` mirrors it, but stays empty when decoding was
+   attempted and failed. `rawSip` / `rawSipRedacted` are **never** rewritten
+   — they always carry the original wire bytes.
+4. On decode failure, `MessagingTraceEntry::contentEncodingDecodeFailed` is
+   set, CPIM/IMDN/is-composing/SDP-MSRP parsing is skipped for that entry
+   (there is nothing valid to parse), and
+   `MessagingEventStore::mapFromTraceEntry()` — the single place that
+   already turns detection gaps into `parseStatus`/`parseWarnings` — sets
+   `parseStatus = Partial` and appends the warning `"deflate decode
+   failed"`. This is the same mechanism Task W091 already uses for e.g. "no
+   CPIM header block could be parsed", so no new UI code was needed: the
+   Messaging Diagnostics table's existing "Parse" column and tooltip, and
+   the interop JSON export's `parseWarnings` array (see
+   [windows-trace-json-export.md](windows-trace-json-export.md)), already
+   surface it.
+
+**Implementation note (why no new dependency was added):** this codebase
+does not link zlib directly. `DeflateDecoder` reuses Qt's own zlib linkage
+via `qUncompress()` instead: it synthesizes the 4-byte big-endian length
+prefix `qUncompress()`'s own `qCompress()` framing expects, wrapping the raw
+wire bytes (a bare zlib/RFC 1950 stream — the format the HTTP/SIP "deflate"
+content-coding actually specifies, and what `qCompress()` itself produces
+after its own 4-byte prefix). The prefix value is only a buffer-size hint —
+`qUncompress()` doubles it and retries on its own until it succeeds or zlib
+reports real corruption — so an arbitrary value works; only genuinely
+invalid/corrupt/truncated streams fail to decode.
+
+**Scope:** the raw `Content-Encoding` header applies to the entire SIP body
+for that message, so decoding happens once, before CPIM detection — not
+separately for a CPIM-wrapped inner body. If a future UA is found to
+compress only the CPIM-wrapped inner part while leaving an outer
+`message/cpim` body uncompressed, that would need a second decode point
+inside the CPIM-wrapped-body branch; not implemented, as it has not been
+observed.
+
+Only `deflate` is recognized. Other `Content-Encoding` values are left
+untouched (the body is parsed as-is, same behavior as before this fix) —
+`gzip`/`identity`/etc. are not implemented.
+
 ### `MessagingDiagnosticsStore` (`src/sip/MessagingDiagnosticsStore.h/.cpp`)
 
 Singleton, same shape as `SipTraceLogger`:
 - `entries()` — read-only ordered list.
 - `clear()` — empties the list, emits `cleared`.
 - `exportToText()` / `exportToJson()` — include base fields, detected
-  `contentKind`, and all structured CPIM/IMDN/is-composing/MSRP sections that
-  were detected; `rawSip` is included and is already credential-redacted.
+  `contentKind`, `contentEncoding`/`decodedBodyPreview`, and all structured
+  CPIM/IMDN/MSRP sections that were detected; `rawSip` is included and is
+  already credential-redacted (and, per the above, never rewritten by
+  deflate decoding).
 - `isMessagingRelevant()` / `buildEntry()` are `static` so they can be (and
   are) unit tested directly without going through the signal chain.
 
@@ -210,11 +279,13 @@ this mirrors the existing tolerant, best-effort style of `SipRawMessageParser`.
 | `tests/test_imdn_parser.cpp` | delivered/displayed/failed dispositions, message-id, original/final recipient |
 | `tests/test_is_composing_parser.cpp` | active/idle/gone states, refresh, timeout |
 | `tests/test_sdp_msrp_diagnostics_parser.cpp` | TCP/MSRP and TCP/TLS/MSRP media blocks, session-id extraction, non-MSRP SDP rejection |
-| `tests/test_messaging_diagnostics_store.cpp` | Relevance filtering, CPIM→IMDN nesting, is-composing, INVITE+MSRP-SDP relevance, clear/export |
+| `tests/test_deflate_decoder.cpp` | Valid zlib/deflate round-trip (via `qCompress()`), empty input, corrupt/garbage input, UTF-8 payload round-trip |
+| `tests/test_sip_raw_message_parser.cpp` | (extended) `Content-Encoding` header extraction, absent-header case |
+| `tests/test_messaging_diagnostics_store.cpp` | Relevance filtering, CPIM→IMDN nesting, is-composing, INVITE+MSRP-SDP relevance, clear/export, plain IMDN, valid deflate-encoded IMDN (decoded + parsed), invalid deflate-encoded IMDN (`parseStatus=partial` + `"deflate decode failed"` warning), plain is-composing regression |
 | `tests/test_messaging_event_store.cpp` | See [messaging-event-store.md](messaging-event-store.md) |
 | `tests/test_sip_message_foundation.cpp` | See [sip-message.md](sip-message.md) |
 | `tests/test_message_history.cpp` | See [message-history.md](message-history.md) |
-| `tests/test_windows_trace_json_export.cpp` | See [windows-trace-json-export.md](windows-trace-json-export.md) |
+| `tests/test_windows_trace_json_export.cpp` | See [windows-trace-json-export.md](windows-trace-json-export.md) (extended: `contentEncoding`/`decodedBodyPreview`/`parseStatus`/`parseWarnings` for valid and invalid deflate) |
 
 Run (see [build-windows.md](build-windows.md) for full environment setup):
 
@@ -224,7 +295,8 @@ cmake --build build_tests --target test_cpim_parser test_imdn_parser test_is_com
 ctest --test-dir build_tests -R "test_cpim_parser|test_imdn_parser|test_is_composing_parser|test_sdp_msrp_diagnostics_parser|test_messaging_diagnostics_store|test_messaging_event_store|test_sip_message_foundation|test_message_history|test_windows_trace_json_export" --output-on-failure
 ```
 
-All 9 suites (W090 + W091 + W092 + W093 + W094) pass locally.
+All 10 suites (W090 + W091 + W092 + W093 + W094 + the deflate-decoding fix)
+pass locally.
 
 ## Known Limitations
 
@@ -232,6 +304,8 @@ All 9 suites (W090 + W091 + W092 + W093 + W094) pass locally.
 - As of Task W092 this client can send/receive basic SIP MESSAGE (plain/HTML/CPIM body, optional IMDN request) — see [sip-message.md](sip-message.md) for the send/receive foundation and its own limitations (no delivery confirmation, no IMDN generation, no MSRP).
 - IMDN `original-recipient` / `final-recipient` are not part of the core RFC 5438 `<imdn>` schema (they originate from RFC 8098 email-style disposition notifications); this parser extracts them opportunistically if present but they will usually be absent in a strict RFC 5438 IMDN body.
 - CPIM nesting is one level deep: a CPIM body whose inner `Content-Type` is itself `message/cpim` is not recursively unwrapped.
+- Only `Content-Encoding: deflate` is decoded; other codings (`gzip`, etc.) are left as-is and will still show up as unparsed/partial. Only a body-level zlib/RFC 1950 stream is recognized — a raw (headerless) RFC 1951 DEFLATE stream, which some non-conformant senders emit instead, will fail to decode (`parseStatus=partial`, `"deflate decode failed"`).
+- Deflate decoding is applied once at the outer SIP body; a compressed inner body nested inside an *uncompressed* CPIM wrapper is not supported (not observed in practice).
 - `bodyPreview` is a UI truncation convenience, not a redaction pass; the only redaction applied to message content is the existing `SipTraceLogger::redactCredentials()` (Authorization/Proxy-Authorization headers), which runs before a trace ever reaches this feature.
 - No persistence — like the SIP Ladder, entries live only for the process lifetime and are exported on demand.
 - LMPE (ETSI TS 103 698) itself remains **NOT STARTED**; this task is a diagnostics foundation only and does not implement LMPE encoding/decoding (see [lmpe.md](lmpe.md)).

@@ -4,6 +4,12 @@
 on top of [Messaging Diagnostics (W090)](messaging-diagnostics.md),
 [Messaging Event Store (W091)](messaging-event-store.md), and
 [SIP MESSAGE Foundation (W092)](sip-message.md).
+**Fix (branch `fix/w092-imdn-deflate-decoding`)** — added `contentEncoding`,
+`decodedBodyPreview`, `parseStatus`, and `parseWarnings` event fields (see
+below) so `Content-Encoding: deflate` bodies (and their decode
+success/failure) are visible in this export; see
+[messaging-diagnostics.md](messaging-diagnostics.md#content-encoding-deflate-srcsipdeflatedecoderhcpp)
+for the decoding itself.
 
 ## Overview
 
@@ -70,8 +76,12 @@ parsing is duplicated anywhere in this task.
 | From | `from` | `MessagingTraceEntry::fromUri` |
 | To | `to` | `MessagingTraceEntry::toUri` |
 | Content-Type | `contentType` | `MessagingTraceEntry::contentType` (outer Content-Type header) |
-| bodyPreview | `bodyPreview` | Same capped, single-line preview the diagnostics table already shows |
-| rawSipRedacted | `rawSipRedacted` | `MessagingTraceEntry::rawSip` — already credential-redacted by `SipTraceLogger` upstream; this exporter performs no redaction of its own |
+| (fix: deflate decoding) | `contentEncoding` | `MessagingTraceEntry::contentEncoding` — raw `Content-Encoding` header value (e.g. `"deflate"`); empty string if the header was absent |
+| bodyPreview | `bodyPreview` | Same capped, single-line preview the diagnostics table already shows (decoded content when `contentEncoding` was successfully reversed) |
+| (fix: deflate decoding) | `decodedBodyPreview` | `MessagingTraceEntry::decodedBodyPreview` — same value as `bodyPreview` when decoding applied and succeeded (or there was nothing to decode); empty when decoding was attempted and failed |
+| (fix: deflate decoding) | `parseStatus` | Alias of `status` (see below) under the literal field name requested by the deflate-decoding fix — same value, both kept for backward compatibility |
+| (fix: deflate decoding) | `parseWarnings` | `MessagingEvent::parseWarnings` array (e.g. `["deflate decode failed"]`); previously only surfaced in the UI table's tooltip, now also in this export |
+| rawSipRedacted | `rawSipRedacted` | `MessagingTraceEntry::rawSip` — already credential-redacted by `SipTraceLogger` upstream; this exporter performs no redaction of its own. Never rewritten by deflate decoding — always the original, still-encoded wire bytes |
 
 **Naming convention chosen**: all JSON keys use `camelCase` (`callId`, not
 `Call-ID`), matching the style already established by
@@ -240,6 +250,7 @@ Pure Qt, no PJSIP dependency.
 | `rawSipRedacted` | Authorization header value never appears in `rawSipRedacted`; `[REDACTED]` marker present |
 | `sampleExportIsValidJson` | Output parses via `QJsonDocument::fromJson` with no error; root fields present |
 | `requiredFieldsPresent` | All Task W094 requirement-2 event fields present as JSON keys |
+| `exportIncludesDeflateDecodingFields` | `contentEncoding`/`decodedBodyPreview`/`parseStatus`/`parseWarnings` for both a valid deflate-encoded IMDN body (decoded, `parseStatus="ok"`) and an invalid one (`parseStatus="partial"`, `"deflate decode failed"` in `parseWarnings`, empty `decodedBodyPreview`) |
 
 Run:
 
@@ -249,8 +260,8 @@ cmake --build build_tests --target test_windows_trace_json_export
 ctest --test-dir build_tests -R test_windows_trace_json_export --output-on-failure
 ```
 
-All 8 test functions pass locally, alongside the full existing suite
-(42/42 total — see [project-status.md](project-status.md)).
+All 9 test functions pass locally, alongside the full existing suite
+(43/43 total — see [project-status.md](project-status.md)).
 
 ## What remains diagnostic-only
 
