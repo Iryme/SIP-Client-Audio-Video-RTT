@@ -71,6 +71,7 @@ set(PJSIP_TRACE_MODULE_SOURCES
 set(MESSAGING_DIAGNOSTICS_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingContentKind.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CpimParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/DeflateDecoder.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/ImdnParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SdpMsrpDiagnosticsParser.cpp
@@ -640,6 +641,23 @@ target_link_libraries(test_sip_raw_message_parser PRIVATE
 )
 
 add_test(NAME test_sip_raw_message_parser COMMAND test_sip_raw_message_parser)
+
+# ---- test_deflate_decoder -------------------------------------------------
+qt_add_executable(test_deflate_decoder
+    test_deflate_decoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/DeflateDecoder.cpp
+)
+
+target_include_directories(test_deflate_decoder PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_deflate_decoder PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_deflate_decoder COMMAND test_deflate_decoder)
 
 # ---- test_cpim_parser ---------------------------------------------------
 qt_add_executable(test_cpim_parser

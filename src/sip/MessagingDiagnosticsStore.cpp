@@ -7,6 +7,7 @@
 #include <QTextStream>
 
 #include "sip/CpimParser.h"
+#include "sip/DeflateDecoder.h"
 #include "sip/ImdnParser.h"
 #include "sip/IsComposingParser.h"
 #include "sip/SdpMsrpDiagnosticsParser.h"
@@ -103,30 +104,57 @@ MessagingTraceEntry MessagingDiagnosticsStore::buildEntry(const SipMessageTrace 
     entry.toUri       = trace.toUri;
     entry.callId      = trace.callId;
     entry.cSeq        = trace.cSeq;
-    entry.contentType = trace.contentType;
-    entry.rawSip      = trace.rawSip;
+    entry.contentType     = trace.contentType;
+    entry.contentEncoding = trace.contentEncoding;
+    entry.rawSip          = trace.rawSip; // never rewritten, even when contentEncoding is decoded below
 
-    const QString body = extractBody(trace.rawSip);
-    entry.bodyPreview  = makeBodyPreview(body);
-    entry.contentKind  = MessagingContentKindDetector::detect(trace.contentType);
+    const QString rawBody = extractBody(trace.rawSip);
+
+    // Decode Content-Encoding (currently only "deflate" is recognized)
+    // before any CPIM/IMDN/is-composing/SDP-MSRP parsing runs on the body —
+    // those parsers only ever understand plain text/XML, not compressed
+    // bytes. The raw wire bytes survive intact inside the QString (see
+    // PjsipTraceModule's QString::fromLatin1 capture), so toLatin1()/
+    // fromLatin1() round-trip them losslessly here.
+    QString body = rawBody;
+    bool decodeFailed = false;
+    if (!trace.contentEncoding.isEmpty() && !rawBody.isEmpty()) {
+        if (trace.contentEncoding.compare(QStringLiteral("deflate"), Qt::CaseInsensitive) == 0) {
+            const DeflateDecoder::Result decoded = DeflateDecoder::decode(rawBody.toLatin1());
+            if (decoded.ok)
+                body = QString::fromLatin1(decoded.data);
+            else
+                decodeFailed = true;
+        }
+        // Unrecognized Content-Encoding values are left as-is (body stays
+        // the raw, still-encoded bytes) — not treated as a failure, since
+        // there is nothing this task was asked to decode.
+    }
+    entry.contentEncodingDecodeFailed = decodeFailed;
+
+    entry.bodyPreview        = makeBodyPreview(decodeFailed ? rawBody : body);
+    entry.decodedBodyPreview = decodeFailed ? QString() : makeBodyPreview(body);
+    entry.contentKind        = MessagingContentKindDetector::detect(trace.contentType);
 
     QString semanticBody = body;
     MessagingContentKind semanticKind = entry.contentKind;
 
     if (entry.contentKind == MessagingContentKind::Cpim) {
-        entry.cpim = CpimParser::parse(body);
+        entry.cpim = decodeFailed ? CpimInfo() : CpimParser::parse(body);
         if (entry.cpim.present && !entry.cpim.contentType.isEmpty()) {
             semanticKind = MessagingContentKindDetector::detect(entry.cpim.contentType);
             semanticBody = entry.cpim.wrappedBody;
         }
     }
 
-    if (semanticKind == MessagingContentKind::Imdn)
-        entry.imdn = ImdnParser::parse(semanticBody);
-    else if (semanticKind == MessagingContentKind::IsComposing)
-        entry.isComposing = IsComposingParser::parse(semanticBody);
+    if (!decodeFailed) {
+        if (semanticKind == MessagingContentKind::Imdn)
+            entry.imdn = ImdnParser::parse(semanticBody);
+        else if (semanticKind == MessagingContentKind::IsComposing)
+            entry.isComposing = IsComposingParser::parse(semanticBody);
+    }
 
-    if (bodyHasSdpMessageMedia(body))
+    if (!decodeFailed && bodyHasSdpMessageMedia(body))
         entry.sdpMsrp = SdpMsrpDiagnosticsParser::parse(body);
 
     return entry;
@@ -232,9 +260,11 @@ QString MessagingDiagnosticsStore::exportToJson() const
         obj[QStringLiteral("to")]          = e.toUri;
         obj[QStringLiteral("callId")]      = e.callId;
         obj[QStringLiteral("cseq")]        = e.cSeq;
-        obj[QStringLiteral("contentType")] = e.contentType;
-        obj[QStringLiteral("contentKind")] = MessagingContentKindDetector::toString(e.contentKind);
-        obj[QStringLiteral("bodyPreview")] = e.bodyPreview;
+        obj[QStringLiteral("contentType")]     = e.contentType;
+        obj[QStringLiteral("contentEncoding")] = e.contentEncoding;
+        obj[QStringLiteral("contentKind")]     = MessagingContentKindDetector::toString(e.contentKind);
+        obj[QStringLiteral("bodyPreview")]        = e.bodyPreview;
+        obj[QStringLiteral("decodedBodyPreview")] = e.decodedBodyPreview;
 
         if (e.cpim.present) {
             QJsonObject cpim;

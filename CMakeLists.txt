@@ -119,6 +119,7 @@ set(SOURCES
     src/sip/PjsipTraceModule.cpp
     src/sip/MessagingContentKind.cpp
     src/sip/CpimParser.cpp
+    src/sip/DeflateDecoder.cpp
     src/sip/ImdnParser.cpp
     src/sip/IsComposingParser.cpp
     src/sip/SdpMsrpDiagnosticsParser.cpp
@@ -218,6 +219,7 @@ set(HEADERS
     src/sip/MessagingContentKind.h
     src/sip/CpimInfo.h
     src/sip/CpimParser.h
+    src/sip/DeflateDecoder.h
     src/sip/ImdnInfo.h
     src/sip/ImdnParser.h
     src/sip/IsComposingInfo.h

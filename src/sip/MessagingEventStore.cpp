@@ -84,6 +84,11 @@ MessagingEvent MessagingEventStore::mapFromTraceEntry(const MessagingTraceEntry 
 
     event.parseStatus = MessagingEvent::ParseStatus::Ok;
 
+    if (entry.contentEncodingDecodeFailed) {
+        event.parseStatus = MessagingEvent::ParseStatus::Partial;
+        event.parseWarnings << QStringLiteral("deflate decode failed");
+    }
+
     // Surface parsing gaps as warnings instead of silently dropping them, so
     // the UI can flag partially-understood content without blocking on it.
     switch (entry.contentKind) {

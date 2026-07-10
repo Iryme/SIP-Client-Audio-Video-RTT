@@ -37,8 +37,20 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
     obj[QStringLiteral("cseq")]        = entry.cSeq;
     obj[QStringLiteral("from")]        = entry.fromUri;
     obj[QStringLiteral("to")]          = entry.toUri;
-    obj[QStringLiteral("contentType")] = entry.contentType;
-    obj[QStringLiteral("bodyPreview")] = entry.bodyPreview;
+    obj[QStringLiteral("contentType")]     = entry.contentType;
+    obj[QStringLiteral("contentEncoding")] = entry.contentEncoding;
+    obj[QStringLiteral("bodyPreview")]        = entry.bodyPreview;
+    obj[QStringLiteral("decodedBodyPreview")] = entry.decodedBodyPreview;
+    // "parseStatus"/"parseWarnings": an explicit alias of "status" above
+    // (kept for backward compatibility with Task W094's field name) plus the
+    // warning list that was previously only surfaced in the UI table — e.g.
+    // "deflate decode failed" when a Content-Encoding: deflate body could
+    // not be decompressed.
+    obj[QStringLiteral("parseStatus")] = MessagingEvent::parseStatusToString(ev.parseStatus);
+    QJsonArray warnings;
+    for (const QString &warning : ev.parseWarnings)
+        warnings.append(warning);
+    obj[QStringLiteral("parseWarnings")] = warnings;
     // Already redacted (Authorization/Proxy-Authorization -> "[REDACTED]")
     // by SipTraceLogger::redactCredentials before this entry was ever built;
     // this exporter does not perform or need any redaction of its own.

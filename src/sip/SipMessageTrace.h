@@ -17,6 +17,7 @@ struct SipMessageTrace
     QString    callId;
     QString    cSeq;
     QString    contentType;   // e.g. "application/sdp"; empty if no body or unknown
+    QString    contentEncoding; // e.g. "deflate"; empty if header absent
     QString    rawSip;        // Full request-line/status-line + headers + body;
                               // Authorization/Proxy-Authorization values are
                               // replaced with [REDACTED] before storage.
