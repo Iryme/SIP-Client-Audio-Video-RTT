@@ -24,7 +24,13 @@
 // MessagingEventStore::mapFromTraceEntry (Task W091).
 namespace InteropTraceExporter {
 
-constexpr int kSchemaVersion = 1;
+// Bumped 1 -> 2 for Task W095: adds contentEncoding/decodeStatus/
+// decodeVariant/compressedBodyLength/decodedBodyLength/decodeError and (when
+// applicable) a nested "rcsFileTransfer" object to every event. All v1
+// fields are unchanged and still present — a v1-only consumer that ignores
+// unrecognized fields continues to work unmodified; only a consumer that
+// wants the new decode/RCS diagnostics needs to be aware of v2.
+constexpr int kSchemaVersion = 2;
 
 // Pure function: builds the full JSON document text from an explicit list
 // of trace entries (event ids assigned 1-based by position). Fully

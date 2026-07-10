@@ -8,6 +8,7 @@
 #include "sip/MessagingDiagnosticsStore.h"
 #include "sip/MessagingEvent.h"
 #include "sip/MessagingEventStore.h"
+#include "sip/UrlRedactor.h"
 
 namespace InteropTraceExporter {
 
@@ -31,6 +32,15 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
     // submitted/sent/failed), which belongs to a live send action, not a
     // captured/replayed trace.
     obj[QStringLiteral("status")]      = MessagingEvent::parseStatusToString(ev.parseStatus);
+    // Task W095: literal "parseStatus" alias of "status" above, plus the
+    // parse warnings that "status" alone doesn't carry — kept as an
+    // additional field rather than a rename to stay compatible with the
+    // v1 schema's "status" contract (see InteropTraceExporter.h).
+    obj[QStringLiteral("parseStatus")] = MessagingEvent::parseStatusToString(ev.parseStatus);
+    QJsonArray parseWarnings;
+    for (const QString &warning : ev.parseWarnings)
+        parseWarnings.append(warning);
+    obj[QStringLiteral("parseWarnings")] = parseWarnings;
     obj[QStringLiteral("transport")]   = MessagingEvent::transportToString(ev.transport);
     obj[QStringLiteral("payloadType")] = MessagingEvent::payloadTypeToString(ev.payloadType);
     obj[QStringLiteral("callId")]      = entry.callId;
@@ -43,6 +53,16 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
     // by SipTraceLogger::redactCredentials before this entry was ever built;
     // this exporter does not perform or need any redaction of its own.
     obj[QStringLiteral("rawSipRedacted")] = entry.rawSip;
+
+    // Content-Encoding decode diagnostics (Task W095).
+    obj[QStringLiteral("contentEncoding")]      = entry.contentEncoding;
+    obj[QStringLiteral("decodedBodyPreview")]   = entry.decodedBodyPreview;
+    obj[QStringLiteral("decodeStatus")]         = contentDecodeStatusToString(entry.decodeStatus);
+    obj[QStringLiteral("decodeVariant")]        = DeflateDecoder::variantToString(entry.decodeVariant);
+    obj[QStringLiteral("compressedBodyLength")] = entry.compressedBodyLength;
+    obj[QStringLiteral("decodedBodyLength")]    = entry.decodedBodyLength;
+    if (!entry.decodeError.isEmpty())
+        obj[QStringLiteral("decodeError")] = entry.decodeError;
 
     if (entry.imdn.present) {
         // Top-level shortcut, mirrored inside the nested "imdn" object.
@@ -91,6 +111,21 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
         // real MSRP session, so there is no MSRP transaction and no MSRP
         // chunk headers to report — only the SDP a=path attribute above.
         obj[QStringLiteral("msrp")] = msrp;
+    }
+
+    if (entry.rcsFtHttp.present) {
+        QJsonObject rcs;
+        rcs[QStringLiteral("fileInfoType")] = entry.rcsFtHttp.fileInfoType;
+        rcs[QStringLiteral("fileName")]     = entry.rcsFtHttp.fileName;
+        rcs[QStringLiteral("fileSize")]     = entry.rcsFtHttp.fileSize;
+        rcs[QStringLiteral("contentType")]  = entry.rcsFtHttp.contentType;
+        // The full URL (entry.rcsFtHttp.dataUrl) commonly carries a one-time
+        // download token — only the redacted form is ever exported; see
+        // docs/content-encoding-diagnostics.md / docs/rcs-ft-http-diagnostics.md.
+        rcs[QStringLiteral("dataUrlRedacted")]  = UrlRedactor::redact(entry.rcsFtHttp.dataUrl);
+        rcs[QStringLiteral("expiresAt")]        = entry.rcsFtHttp.expiresAt;
+        rcs[QStringLiteral("thumbnailPresent")] = entry.rcsFtHttp.thumbnailPresent;
+        obj[QStringLiteral("rcsFileTransfer")] = rcs;
     }
 
     return obj;
