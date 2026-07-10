@@ -88,6 +88,13 @@ struct MessageHistoryEntry
     bool          displayNotificationRequested{false};
     bool          deliveredImdnSent{false};
     bool          displayedImdnSent{false};
+
+    // is-composing (Task W097). Set only on entries whose body IS an
+    // RFC 3994 typing notification (always inbound — this client's own
+    // outbound typing notifications are driven by TypingIndicatorController
+    // and never written into Message History, only the peer's are).
+    bool          isTypingNotification{false};
+    QString       typingState; // "active" / "idle" / "gone"
 };
 
 Q_DECLARE_METATYPE(MessageHistoryEntry)

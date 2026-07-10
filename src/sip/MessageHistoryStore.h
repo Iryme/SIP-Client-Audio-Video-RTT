@@ -54,6 +54,14 @@ public:
                              const QString &callId, const QString &profileId,
                              const QString &correlatedMessageId);
 
+    // Appends an inbound RFC 3994 is-composing notification (Task W097) as
+    // its own history row — same dedup mechanism as appendInbound. state is
+    // "active"/"idle"/"gone" (IsComposingInfo::stateToString).
+    qint64 appendInboundTyping(const QString &fromUri, const QString &toUri,
+                               const QString &contactUri, const QString &body,
+                               const QString &callId, const QString &profileId,
+                               const QString &state);
+
     // Appends an outbound entry at send time (status Queued), from an
     // already-composed message. Returns the new entry's id.
     qint64 appendOutbound(const ComposedSipMessage &msg);

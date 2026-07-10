@@ -161,6 +161,58 @@ qint64 MessageHistoryStore::appendInboundImdn(const QString &fromUri, const QStr
     return entry.id;
 }
 
+qint64 MessageHistoryStore::appendInboundTyping(const QString &fromUri, const QString &toUri,
+                                                const QString &contactUri, const QString &body,
+                                                const QString &callId, const QString &profileId,
+                                                const QString &state)
+{
+    const QString fp = inboundFingerprint(fromUri, toUri,
+                                          QStringLiteral("application/im-iscomposing+xml"),
+                                          body, callId);
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    MessageHistoryEntry entry;
+    {
+        QMutexLocker locker(&m_mutex);
+
+        for (auto it = m_recentInboundFingerprints.begin(); it != m_recentInboundFingerprints.end();) {
+            if (nowMs - it.value() > kDedupWindowMs * 4)
+                it = m_recentInboundFingerprints.erase(it);
+            else
+                ++it;
+        }
+
+        const auto seenIt = m_recentInboundFingerprints.constFind(fp);
+        if (seenIt != m_recentInboundFingerprints.constEnd()
+            && (nowMs - seenIt.value()) < kDedupWindowMs) {
+            return m_recentInboundFingerprintToEntryId.value(fp, 0);
+        }
+
+        entry.id                 = m_nextId++;
+        entry.timestamp          = QDateTime::currentDateTimeUtc();
+        entry.direction          = MessageHistoryEntry::Direction::Inbound;
+        entry.peerUri            = fromUri;
+        entry.contentType        = QStringLiteral("application/im-iscomposing+xml");
+        entry.bodyPreview        = makePreview(body);
+        entry.callId             = callId;
+        entry.contactUri         = contactUri;
+        entry.profileId          = profileId;
+        entry.isTypingNotification = true;
+        entry.typingState        = state;
+        Q_UNUSED(toUri)
+
+        m_entries.append(entry);
+        m_recentInboundFingerprints.insert(fp, nowMs);
+        m_recentInboundFingerprintToEntryId.insert(fp, entry.id);
+
+        while (m_entries.size() > m_maxEntriesRetained)
+            m_entries.removeFirst();
+    }
+
+    emit entryAppended(entry);
+    return entry.id;
+}
+
 qint64 MessageHistoryStore::appendOutbound(const ComposedSipMessage &msg)
 {
     MessageHistoryEntry entry;

@@ -19,6 +19,7 @@
 #include "sip/MessageHistoryStore.h"
 #include "sip/MessagingContentKind.h"
 #include "sip/ImdnParser.h"
+#include "sip/IsComposingParser.h"
 #include "core/AppSettings.h"
 
 #ifdef HAVE_PJSIP
@@ -1302,6 +1303,19 @@ void SipManager::onAccountInstantMessageReceived(const QString &fromUri, const Q
             if (state != MessageHistoryEntry::DeliveryState::None)
                 MessageHistoryStore::instance().correlateDelivery(info.messageId, state);
         }
+        return;
+    }
+
+    // Task W097: an incoming application/im-iscomposing+xml body is a
+    // typing-state notification, not a chat message — log it as its own
+    // history row (MessagingEventStore/Messaging Diagnostics already
+    // receive it unchanged via the independent raw-trace pipeline, Task
+    // W090, so nothing further is duplicated here).
+    if (MessagingContentKindDetector::detect(contentType) == MessagingContentKind::IsComposing) {
+        const IsComposingInfo info = IsComposingParser::parse(body);
+        MessageHistoryStore::instance().appendInboundTyping(
+            fromUri, toUri, contactUri, body, callId, profileId,
+            IsComposingInfo::stateToString(info.state));
         return;
     }
 

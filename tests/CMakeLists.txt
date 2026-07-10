@@ -49,6 +49,11 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipMessageComposer.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CpimBuilder.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
+    # Task W097: SipManager::onAccountInstantMessageReceived now also calls
+    # IsComposingParser::parse directly, and SipMessageComposer.cpp now
+    # calls IsComposingGenerator::generate.
+    ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/IsComposingGenerator.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -102,6 +107,7 @@ set(SIP_MESSAGE_FOUNDATION_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipMessageComposer.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/ImdnGenerator.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/IsComposingGenerator.cpp
 )
 
 # Message History sources (Task W093). Pure Qt, no PJSIP types; independent
@@ -695,6 +701,7 @@ add_test(NAME test_imdn_parser COMMAND test_imdn_parser)
 qt_add_executable(test_is_composing_parser
     test_is_composing_parser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/IsComposingGenerator.cpp
 )
 
 target_include_directories(test_is_composing_parser PRIVATE
@@ -707,6 +714,23 @@ target_link_libraries(test_is_composing_parser PRIVATE
 )
 
 add_test(NAME test_is_composing_parser COMMAND test_is_composing_parser)
+
+# ---- test_typing_indicator_controller (Task W097) --------------------------
+qt_add_executable(test_typing_indicator_controller
+    test_typing_indicator_controller.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/TypingIndicatorController.cpp
+)
+
+target_include_directories(test_typing_indicator_controller PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_typing_indicator_controller PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_typing_indicator_controller COMMAND test_typing_indicator_controller)
 
 # ---- test_sdp_msrp_diagnostics_parser ------------------------------------
 qt_add_executable(test_sdp_msrp_diagnostics_parser

@@ -95,6 +95,28 @@ public:
     static bool autoSendDisplayedImdn()          { return settings().value(QStringLiteral("messaging/autoSendDisplayedImdn"), false).toBool(); }
     static void setAutoSendDisplayedImdn(bool on) { settings().setValue(QStringLiteral("messaging/autoSendDisplayedImdn"), on); }
 
+    // Active is-composing (Task W097) — both default ON per the task spec;
+    // is-composing carries no message content, only a typing-state
+    // indication, so unlike Displayed-IMDN there is no privacy reason to
+    // default it off. Never affects MSRP.
+    static bool enableIsComposing()          { return settings().value(QStringLiteral("messaging/enableIsComposing"), true).toBool(); }
+    static void setEnableIsComposing(bool on) { settings().setValue(QStringLiteral("messaging/enableIsComposing"), on); }
+    static bool autoTypingNotifications()          { return settings().value(QStringLiteral("messaging/autoTypingNotifications"), true).toBool(); }
+    static void setAutoTypingNotifications(bool on) { settings().setValue(QStringLiteral("messaging/autoTypingNotifications"), on); }
+
+    // Typing state-machine timers (Task W097), seconds. refresh: how often
+    // "active" is re-sent while the user keeps typing (RFC 3994 keep-alive,
+    // and the throttle that stops every keystroke from sending a
+    // notification). idle: seconds of no typing before "idle" is sent.
+    // goneDelay: seconds after "idle" before "gone" is sent if typing never
+    // resumes.
+    static int  typingRefreshSeconds()        { return settings().value(QStringLiteral("messaging/typingRefreshSeconds"), 60).toInt(); }
+    static void setTypingRefreshSeconds(int s) { settings().setValue(QStringLiteral("messaging/typingRefreshSeconds"), s); }
+    static int  typingIdleSeconds()           { return settings().value(QStringLiteral("messaging/typingIdleSeconds"), 15).toInt(); }
+    static void setTypingIdleSeconds(int s)    { settings().setValue(QStringLiteral("messaging/typingIdleSeconds"), s); }
+    static int  typingGoneDelaySeconds()      { return settings().value(QStringLiteral("messaging/typingGoneDelaySeconds"), 30).toInt(); }
+    static void setTypingGoneDelaySeconds(int s) { settings().setValue(QStringLiteral("messaging/typingGoneDelaySeconds"), s); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {
