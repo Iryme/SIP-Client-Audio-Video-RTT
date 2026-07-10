@@ -24,6 +24,9 @@ private slots:
     void exportJsonContainsExpectedFields();
     void exportTextContainsExpectedFields();
 
+    void deflateDecodeFailureProducesSpecificWarning();
+    void rcsFtHttpMapsPayloadTypeAndFields();
+
 private:
     static void logMessage(const SipMessageTrace &t) { SipTraceLogger::instance().logMessage(t); }
 };
@@ -194,6 +197,58 @@ void TestMessagingEventStore::exportTextContainsExpectedFields()
     const QString text = MessagingEventStore::instance().exportToText();
     QVERIFY(text.contains(QStringLiteral("transport=")));
     QVERIFY(text.contains(QStringLiteral("evt-call-2")));
+}
+
+void TestMessagingEventStore::deflateDecodeFailureProducesSpecificWarning()
+{
+    SipMessageTrace t;
+    t.direction       = SipMessageTrace::Direction::Inbound;
+    t.method          = QStringLiteral("MESSAGE");
+    t.contentType     = QStringLiteral("message/imdn+xml");
+    t.contentEncoding = QStringLiteral("deflate");
+    t.callId          = QStringLiteral("call-deflate-evt-1");
+    t.rawSip          = QStringLiteral("MESSAGE sip:alice@example.com SIP/2.0\r\n"
+                                       "Content-Type: message/imdn+xml\r\n"
+                                       "Content-Encoding: deflate\r\n\r\n"
+                                       "not-a-valid-deflate-stream");
+
+    logMessage(t);
+
+    QCOMPARE(MessagingEventStore::instance().count(), 1);
+    const MessagingEvent e = MessagingEventStore::instance().snapshot().first();
+    QCOMPARE(e.parseStatus, MessagingEvent::ParseStatus::Partial);
+    QCOMPARE(e.decodeStatus, QStringLiteral("failed"));
+    QVERIFY(e.parseWarnings.contains(QStringLiteral("deflate decode failed")));
+}
+
+void TestMessagingEventStore::rcsFtHttpMapsPayloadTypeAndFields()
+{
+    const QString rcsXml = QStringLiteral(
+        "<file>"
+        "  <file-info type=\"file\">"
+        "    <file-size>2048</file-size>"
+        "    <file-name>voice.m4a</file-name>"
+        "    <content-type>audio/mp4</content-type>"
+        "    <data url=\"https://files.example.test/dl/voice?token=abc\" until=\"2030-01-01T00:00:00.000Z\"/>"
+        "  </file-info>"
+        "</file>");
+
+    SipMessageTrace t;
+    t.method      = QStringLiteral("MESSAGE");
+    t.contentType = QStringLiteral("application/vnd.gsma.rcs-ft-http+xml");
+    t.callId      = QStringLiteral("call-rcs-evt-1");
+    t.rawSip      = QStringLiteral("MESSAGE sip:bob@example.com SIP/2.0\r\n"
+                                   "Content-Type: application/vnd.gsma.rcs-ft-http+xml\r\n\r\n") + rcsXml;
+
+    logMessage(t);
+
+    QCOMPARE(MessagingEventStore::instance().count(), 1);
+    const MessagingEvent e = MessagingEventStore::instance().snapshot().first();
+    QCOMPARE(e.payloadType, MessagingEvent::PayloadType::RcsFtHttp);
+    QCOMPARE(e.parseStatus, MessagingEvent::ParseStatus::Ok);
+    QCOMPARE(e.fileName, QStringLiteral("voice.m4a"));
+    QCOMPARE(e.fileSize, static_cast<qint64>(2048));
+    QVERIFY(!e.dataUrlRedacted.contains(QStringLiteral("token=abc")));
 }
 
 QTEST_GUILESS_MAIN(TestMessagingEventStore)

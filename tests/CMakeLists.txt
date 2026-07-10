@@ -74,6 +74,10 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/ImdnParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SdpMsrpDiagnosticsParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipBodyExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/DeflateDecoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/UrlRedactor.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RcsFtHttpParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingDiagnosticsStore.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingEventStore.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/InteropTraceExporter.cpp
@@ -708,6 +712,74 @@ target_link_libraries(test_sdp_msrp_diagnostics_parser PRIVATE
 )
 
 add_test(NAME test_sdp_msrp_diagnostics_parser COMMAND test_sdp_msrp_diagnostics_parser)
+
+# ---- test_deflate_decoder (Task W095) ------------------------------------
+qt_add_executable(test_deflate_decoder
+    test_deflate_decoder.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/DeflateDecoder.cpp
+)
+
+target_include_directories(test_deflate_decoder PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_deflate_decoder PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_deflate_decoder COMMAND test_deflate_decoder)
+
+# ---- test_sip_body_extractor (Task W095) ----------------------------------
+qt_add_executable(test_sip_body_extractor
+    test_sip_body_extractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipBodyExtractor.cpp
+)
+
+target_include_directories(test_sip_body_extractor PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_sip_body_extractor PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_sip_body_extractor COMMAND test_sip_body_extractor)
+
+# ---- test_rcs_ft_http_parser (Task W095) -----------------------------------
+qt_add_executable(test_rcs_ft_http_parser
+    test_rcs_ft_http_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RcsFtHttpParser.cpp
+)
+
+target_include_directories(test_rcs_ft_http_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_rcs_ft_http_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_rcs_ft_http_parser COMMAND test_rcs_ft_http_parser)
+
+# ---- test_url_redactor (Task W095) -----------------------------------------
+qt_add_executable(test_url_redactor
+    test_url_redactor.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/UrlRedactor.cpp
+)
+
+target_include_directories(test_url_redactor PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_url_redactor PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_url_redactor COMMAND test_url_redactor)
 
 # ---- test_messaging_diagnostics_store ------------------------------------
 qt_add_executable(test_messaging_diagnostics_store
