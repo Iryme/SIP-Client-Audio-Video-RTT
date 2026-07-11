@@ -3,8 +3,11 @@
 Foundation-level RFC 3856/3863 SIP Presence support: SUBSCRIBE/NOTIFY
 subscription lifecycle, PIDF parsing, a per-entity presence store, SIP
 Ladder/Interop JSON diagnostics, and an experimental own-status PUBLISH
-control. XCAP and resource lists are explicitly out of scope (Task W099).
-MSRP remains permanently disabled and untouched.
+control. XCAP and resource lists were explicitly out of scope for this task
+— an XCAP client + diagnostics foundation now exists (Task W099, see
+[xcap.md](xcap.md)), but it treats every document as generic XML and has no
+Presence-specific integration (e.g. pres-rules policy semantics remain
+unimplemented). MSRP remains permanently disabled and untouched.
 
 ## Architecture — two independent pipelines
 

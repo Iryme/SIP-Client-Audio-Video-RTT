@@ -1,8 +1,8 @@
 # Project Status
 
 Last updated: 2026-07-11
-Current task count: 52 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W098 complete)
-Active branch: `feature/w098-presence-foundation`
+Current task count: 53 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W099 complete)
+Active branch: `feature/w099-xcap-foundation`
 
 ---
 
@@ -178,6 +178,7 @@ Active branch: `feature/w098-presence-foundation`
 | IMDN Foundation (generation, correlation, auto-Delivered/Displayed) | COMPLETE | Task W096 — RFC 5438 report generation, Message-ID correlation, auto-Delivered (default ON)/opt-in auto-Displayed (default OFF)/manual "Mark as Read"; MSRP/Presence/XCAP untouched; see [imdn.md](imdn.md) |
 | Active is-composing (generation, typing state machine, indicator) | COMPLETE | Task W097 — RFC 3994 notification generation, debounced/throttled local typing state machine, Message History typing rows + auto-expiring live indicator, Enable is-composing/Auto typing notifications (default ON); MSRP/Presence/XCAP untouched; see [is-composing.md](is-composing.md) |
 | SIP Presence Foundation (SUBSCRIBE/NOTIFY/PIDF) | COMPLETE (foundation) | Task W098 — PIDF parser + presence model, live pjsua2-Buddy subscribe/unsubscribe/refresh lifecycle with auto-resubscribe backoff, dedicated `PresenceStore`, new "Presence" nav page, SIP Ladder badges, `presenceEvents` in Interop JSON export; own-status Publish is experimental (needs re-registration, depends on server PUBLISH support); everything disabled by default; XCAP/resource lists explicitly out of scope (Task W099); MSRP untouched; see [presence.md](presence.md) |
+| XCAP Foundation (client + diagnostics) | COMPLETE (foundation) | Task W099 — asynchronous RFC 4825 GET/PUT/DELETE/HEAD via `QNetworkAccessManager`, generic-XML validation before PUT, Basic auth (proactive header) + Digest auth (via Qt's built-in challenge/response), passwords via `CredentialStore` (never stored/logged in clear), URL-redacted "XCAP" nav page + operation log, `xcapEvents` in Interop JSON export; every AUID (pres-rules/resource-lists/rls-services/xcap-caps) treated as generic XML — no Resource Lists/policy semantics yet; disabled by default; plain HTTP, never drawn as SIP traffic in the Ladder; MSRP untouched; see [xcap.md](xcap.md) |
 | MSRP diagnostics (SDP detection) | COMPLETE | Task W090 — detection only, no real MSRP session, see [msrp-diagnostics.md](msrp-diagnostics.md) |
 | MSRP session (real transport) | NOT STARTED | Explicitly out of scope for Task W090 |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |

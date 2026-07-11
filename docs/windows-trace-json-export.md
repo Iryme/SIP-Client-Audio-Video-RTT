@@ -22,6 +22,11 @@ a new top-level `presenceEvents` array, entirely independent of the
 `events` array documented below — SUBSCRIBE/NOTIFY/PIDF traces are never
 mixed into the SIP MESSAGE event stream. A new top-level key is additive by
 definition, so `schemaVersion` stays `2`. See [presence.md](presence.md).
+**Task W099** — Extended in branch `feature/w099-xcap-foundation`: adds a
+new top-level `xcapEvents` array, entirely independent of both `events` and
+`presenceEvents` — XCAP is plain HTTP, not SIP, so its diagnostics never
+mix with either SIP-trace-based array. Again purely additive, so
+`schemaVersion` stays `2`. See [xcap.md](xcap.md).
 
 ## Overview
 
@@ -67,7 +72,8 @@ parsing is duplicated anywhere in this task.
   "source": "windows-client",
   "exportedAt": "<ISO-8601 UTC timestamp of the export itself>",
   "events": [ { ...one object per MessagingTraceEntry... } ],
-  "presenceEvents": [ { ...one object per PresenceTraceEntry, Task W098... } ]
+  "presenceEvents": [ { ...one object per PresenceTraceEntry, Task W098... } ],
+  "xcapEvents": [ { ...one object per XcapResult, Task W099... } ]
 }
 ```
 
@@ -94,6 +100,33 @@ entirely independent of `events`/`MessagingTraceEntry`. Each entry:
 | `parseStatus` / `parseWarnings` | from PIDF parsing (`PidfParser`), `"ok"`/`"partial"`/`"error"` |
 | `rawSipRedacted` | full raw SIP text, already redacted upstream by `SipTraceLogger` |
 | `presence.entity` / `.tupleId` / `.basicStatus` / `.extendedStatus` / `.contact` / `.priority` / `.note` / `.timestamp` | parsed PIDF fields (empty/`"unknown"` when the body was absent or not `application/pidf+xml`) |
+
+### `xcapEvents` (Task W099)
+
+Built from `XcapDiagnosticsStore`'s `XcapResult` rows (completed
+GET/PUT/DELETE/HEAD operations — see [xcap.md](xcap.md)), entirely
+independent of both `events` and `presenceEvents` — XCAP is plain HTTP,
+never drawn as SIP traffic. Each entry:
+
+| JSON key | Source |
+|---|---|
+| `eventId` | 1-based position in the exported XCAP list |
+| `method` | `"GET"` / `"PUT"` / `"DELETE"` / `"HEAD"` |
+| `timestamp` | operation completion timestamp, ISO 8601 with milliseconds |
+| `duration` | request duration in milliseconds |
+| `urlRedacted` | full document URL, redacted via `XcapUrlRedactor` (userinfo/tokens/sensitive query dropped; scheme/host/port/AUID/partial selector kept) |
+| `auid` | the document's AUID (e.g. `resource-lists`, `pres-rules`) |
+| `xui` | effective XUI used (document-level override, else server config) |
+| `selector` | document name/selector |
+| `nodeSelector` | optional RFC 4825 node selector, if any |
+| `status` | HTTP status code (`0` if the request never reached the network — e.g. a validation failure) |
+| `contentType` | response `Content-Type` |
+| `contentLength` | response body length in bytes |
+| `etag` / `lastModified` | response `ETag` / `Last-Modified` headers |
+| `parseStatus` | `"n/a"` / `"ok"` / `"partial"` / `"error"` — XML validation classification for GET responses; PUT/DELETE/HEAD are always `"n/a"` |
+| `warnings` | XML validation warnings, if any |
+| `networkError` | `true` if the request failed at the transport level (timeout, connection refused, TLS failure, ...) |
+| `errorString` | present only when `networkError` is `true` |
 
 ### schemaVersion 1 → 2 migration (Task W095)
 
