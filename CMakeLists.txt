@@ -109,6 +109,7 @@ set(SOURCES
     src/gui/SipLadderWidget.cpp
     src/gui/SipMessageDetailsDialog.cpp
     src/gui/panels/MessagingDiagnosticsPage.cpp
+    src/gui/panels/PresencePage.cpp
     src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
@@ -135,6 +136,9 @@ set(SOURCES
     src/sip/SipMessageComposer.cpp
     src/sip/MessageHistoryStore.cpp
     src/sip/InteropTraceExporter.cpp
+    src/sip/PidfParser.cpp
+    src/sip/PresenceStore.cpp
+    src/sip/PresenceDiagnosticsStore.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -217,6 +221,7 @@ set(HEADERS
     src/gui/SipLadderWidget.h
     src/gui/SipMessageDetailsDialog.h
     src/gui/panels/MessagingDiagnosticsPage.h
+    src/gui/panels/PresencePage.h
     src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h
@@ -248,6 +253,12 @@ set(HEADERS
     src/sip/MessageHistoryEntry.h
     src/sip/MessageHistoryStore.h
     src/sip/InteropTraceExporter.h
+    src/sip/PresenceInfo.h
+    src/sip/PidfParser.h
+    src/sip/PresenceResubscribePolicy.h
+    src/sip/PresenceStore.h
+    src/sip/PresenceTraceEntry.h
+    src/sip/PresenceDiagnosticsStore.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h
