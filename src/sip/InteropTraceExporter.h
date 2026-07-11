@@ -3,6 +3,7 @@
 #include <QString>
 
 #include "sip/MessagingTraceEntry.h"
+#include "sip/PresenceTraceEntry.h"
 
 // Exports Messaging/MSRP diagnostics (SIP MESSAGE, CPIM, IMDN, is-composing,
 // SDP MSRP attributes) as JSON intended to be comparable with the
@@ -37,16 +38,23 @@ namespace InteropTraceExporter {
 // Task W097 (Active is-composing) similarly adds generatedIsComposing/
 // receivedIsComposing/typingState/typingRefresh/typingTimeout — also
 // purely additive, kSchemaVersion stays 2.
+//
+// Task W098 (Presence Foundation) adds a top-level "presenceEvents" array,
+// built from PresenceTraceEntry rows (SUBSCRIBE/NOTIFY traces, independent
+// of the "events" array above) — a new top-level key, not a change to any
+// existing event's fields, so kSchemaVersion stays 2.
 constexpr int kSchemaVersion = 2;
 
 // Pure function: builds the full JSON document text from an explicit list
 // of trace entries (event ids assigned 1-based by position). Fully
 // unit-testable without a live MessagingDiagnosticsStore/SipTraceLogger
-// signal chain.
-QString exportToJson(const QList<MessagingTraceEntry> &entries);
+// signal chain. presenceEntries is optional — pass an empty list (the
+// default) for callers that only care about the "events" array.
+QString exportToJson(const QList<MessagingTraceEntry> &entries,
+                      const QList<PresenceTraceEntry> &presenceEntries = QList<PresenceTraceEntry>());
 
-// Convenience overload: exports the live MessagingDiagnosticsStore's
-// current entries.
+// Convenience overload: exports the live MessagingDiagnosticsStore's and
+// PresenceDiagnosticsStore's current entries.
 QString exportToJson();
 
 } // namespace InteropTraceExporter

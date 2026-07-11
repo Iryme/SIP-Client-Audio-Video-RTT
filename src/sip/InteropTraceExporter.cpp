@@ -8,6 +8,7 @@
 #include "sip/MessagingDiagnosticsStore.h"
 #include "sip/MessagingEvent.h"
 #include "sip/MessagingEventStore.h"
+#include "sip/PresenceDiagnosticsStore.h"
 #include "sip/UrlRedactor.h"
 
 namespace InteropTraceExporter {
@@ -147,27 +148,81 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
     return obj;
 }
 
+// SIP Presence (Task W098): built directly from PresenceTraceEntry
+// (SUBSCRIBE/NOTIFY raw-trace diagnostics, see PresenceDiagnosticsStore) —
+// entirely independent of MessagingTraceEntry/MessagingEvent, per the
+// requirement to keep Presence diagnostics out of the Messaging pipeline.
+QJsonObject buildPresenceEvent(const PresenceTraceEntry &entry, qint64 eventId)
+{
+    QJsonObject obj;
+    obj[QStringLiteral("eventId")]   = static_cast<double>(eventId);
+    obj[QStringLiteral("timestamp")] = entry.timestamp.toString(Qt::ISODateWithMs);
+    obj[QStringLiteral("direction")] = entry.direction == SipMessageTrace::Direction::Outbound
+        ? QStringLiteral("outbound") : QStringLiteral("inbound");
+    obj[QStringLiteral("method")]              = entry.method;
+    obj[QStringLiteral("callId")]              = entry.callId;
+    obj[QStringLiteral("cseq")]                = entry.cSeq;
+    obj[QStringLiteral("from")]                = entry.fromUri;
+    obj[QStringLiteral("to")]                  = entry.toUri;
+    obj[QStringLiteral("eventPackage")]        = entry.eventPackage;
+    obj[QStringLiteral("subscriptionState")]   = entry.subscriptionState;
+    obj[QStringLiteral("subscriptionExpires")] = entry.subscriptionExpires;
+    obj[QStringLiteral("subscriptionReason")]  = entry.subscriptionReason;
+    obj[QStringLiteral("contentType")]         = entry.contentType;
+    obj[QStringLiteral("parseStatus")]         = PresenceInfo::parseStatusToString(entry.pidf.parseStatus);
+
+    QJsonArray warnings;
+    for (const QString &warning : entry.pidf.parseWarnings)
+        warnings.append(warning);
+    obj[QStringLiteral("parseWarnings")] = warnings;
+
+    // Already redacted upstream by SipTraceLogger — safe to export as-is.
+    obj[QStringLiteral("rawSipRedacted")] = entry.rawSip;
+
+    QJsonObject presence;
+    presence[QStringLiteral("entity")]         = entry.pidf.entityUri;
+    presence[QStringLiteral("tupleId")]        = entry.pidf.tupleId;
+    presence[QStringLiteral("basicStatus")]    = PresenceInfo::basicStatusToString(entry.pidf.basicStatus);
+    presence[QStringLiteral("extendedStatus")] = PresenceInfo::extendedStatusToString(entry.pidf.extendedStatus);
+    presence[QStringLiteral("contact")]        = entry.pidf.contactUri;
+    presence[QStringLiteral("priority")]       = entry.pidf.priority;
+    presence[QStringLiteral("note")]           = entry.pidf.note;
+    presence[QStringLiteral("timestamp")]      = entry.pidf.timestamp.isValid()
+        ? entry.pidf.timestamp.toString(Qt::ISODateWithMs) : QString();
+    obj[QStringLiteral("presence")] = presence;
+
+    return obj;
+}
+
 } // namespace
 
-QString exportToJson(const QList<MessagingTraceEntry> &entries)
+QString exportToJson(const QList<MessagingTraceEntry> &entries,
+                      const QList<PresenceTraceEntry> &presenceEntries)
 {
     QJsonArray events;
     qint64 id = 1;
     for (const MessagingTraceEntry &entry : entries)
         events.append(buildEvent(entry, id++));
 
+    QJsonArray presenceEvents;
+    qint64 presenceId = 1;
+    for (const PresenceTraceEntry &entry : presenceEntries)
+        presenceEvents.append(buildPresenceEvent(entry, presenceId++));
+
     QJsonObject root;
-    root[QStringLiteral("schemaVersion")] = kSchemaVersion;
-    root[QStringLiteral("source")]        = QStringLiteral("windows-client");
-    root[QStringLiteral("exportedAt")]    = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    root[QStringLiteral("events")]        = events;
+    root[QStringLiteral("schemaVersion")]  = kSchemaVersion;
+    root[QStringLiteral("source")]         = QStringLiteral("windows-client");
+    root[QStringLiteral("exportedAt")]     = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    root[QStringLiteral("events")]         = events;
+    root[QStringLiteral("presenceEvents")] = presenceEvents;
 
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
 QString exportToJson()
 {
-    return exportToJson(MessagingDiagnosticsStore::instance().entries());
+    return exportToJson(MessagingDiagnosticsStore::instance().entries(),
+                        PresenceDiagnosticsStore::instance().entries());
 }
 
 } // namespace InteropTraceExporter
