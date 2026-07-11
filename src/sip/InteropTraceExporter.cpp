@@ -10,6 +10,7 @@
 #include "sip/MessagingEventStore.h"
 #include "sip/PresenceDiagnosticsStore.h"
 #include "sip/UrlRedactor.h"
+#include "sip/XcapDiagnosticsStore.h"
 
 namespace InteropTraceExporter {
 
@@ -194,10 +195,45 @@ QJsonObject buildPresenceEvent(const PresenceTraceEntry &entry, qint64 eventId)
     return obj;
 }
 
+// XCAP (Task W099): built directly from XcapResult (completed GET/PUT/
+// DELETE/HEAD operations) — plain HTTP, entirely independent of both
+// MessagingTraceEntry and PresenceTraceEntry.
+QJsonObject buildXcapEvent(const XcapResult &result, qint64 eventId)
+{
+    QJsonObject obj;
+    obj[QStringLiteral("eventId")]   = static_cast<double>(eventId);
+    obj[QStringLiteral("method")]    = xcapHttpMethodToString(result.method);
+    obj[QStringLiteral("timestamp")] = result.timestamp.toString(Qt::ISODateWithMs);
+    obj[QStringLiteral("duration")]  = result.durationMs;
+    obj[QStringLiteral("urlRedacted")] = result.urlRedacted;
+    obj[QStringLiteral("auid")]      = result.auid;
+    obj[QStringLiteral("xui")]       = result.xui;
+    obj[QStringLiteral("selector")]  = result.documentSelector;
+    obj[QStringLiteral("nodeSelector")] = result.nodeSelector;
+    obj[QStringLiteral("status")]    = result.httpStatus;
+    obj[QStringLiteral("contentType")] = result.contentType;
+    obj[QStringLiteral("contentLength")] = result.contentLength;
+    obj[QStringLiteral("etag")]      = result.etag;
+    obj[QStringLiteral("lastModified")] = result.lastModified;
+    obj[QStringLiteral("parseStatus")] = xcapParseStatusToString(result.parseStatus);
+
+    QJsonArray warnings;
+    for (const QString &warning : result.warnings)
+        warnings.append(warning);
+    obj[QStringLiteral("warnings")] = warnings;
+
+    obj[QStringLiteral("networkError")] = result.networkError;
+    if (!result.errorString.isEmpty())
+        obj[QStringLiteral("errorString")] = result.errorString;
+
+    return obj;
+}
+
 } // namespace
 
 QString exportToJson(const QList<MessagingTraceEntry> &entries,
-                      const QList<PresenceTraceEntry> &presenceEntries)
+                      const QList<PresenceTraceEntry> &presenceEntries,
+                      const QList<XcapResult> &xcapEntries)
 {
     QJsonArray events;
     qint64 id = 1;
@@ -209,12 +245,18 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
     for (const PresenceTraceEntry &entry : presenceEntries)
         presenceEvents.append(buildPresenceEvent(entry, presenceId++));
 
+    QJsonArray xcapEvents;
+    qint64 xcapId = 1;
+    for (const XcapResult &result : xcapEntries)
+        xcapEvents.append(buildXcapEvent(result, xcapId++));
+
     QJsonObject root;
     root[QStringLiteral("schemaVersion")]  = kSchemaVersion;
     root[QStringLiteral("source")]         = QStringLiteral("windows-client");
     root[QStringLiteral("exportedAt")]     = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     root[QStringLiteral("events")]         = events;
     root[QStringLiteral("presenceEvents")] = presenceEvents;
+    root[QStringLiteral("xcapEvents")]     = xcapEvents;
 
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
@@ -222,7 +264,8 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
 QString exportToJson()
 {
     return exportToJson(MessagingDiagnosticsStore::instance().entries(),
-                        PresenceDiagnosticsStore::instance().entries());
+                        PresenceDiagnosticsStore::instance().entries(),
+                        XcapDiagnosticsStore::instance().entries());
 }
 
 } // namespace InteropTraceExporter

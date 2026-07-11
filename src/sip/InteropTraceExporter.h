@@ -4,6 +4,7 @@
 
 #include "sip/MessagingTraceEntry.h"
 #include "sip/PresenceTraceEntry.h"
+#include "sip/XcapModels.h"
 
 // Exports Messaging/MSRP diagnostics (SIP MESSAGE, CPIM, IMDN, is-composing,
 // SDP MSRP attributes) as JSON intended to be comparable with the
@@ -43,18 +44,24 @@ namespace InteropTraceExporter {
 // built from PresenceTraceEntry rows (SUBSCRIBE/NOTIFY traces, independent
 // of the "events" array above) — a new top-level key, not a change to any
 // existing event's fields, so kSchemaVersion stays 2.
+//
+// Task W099 (XCAP Foundation) adds a top-level "xcapEvents" array, built
+// from XcapResult rows (completed GET/PUT/DELETE/HEAD operations, plain
+// HTTP — independent of both "events" and "presenceEvents") — again purely
+// additive, kSchemaVersion stays 2.
 constexpr int kSchemaVersion = 2;
 
 // Pure function: builds the full JSON document text from an explicit list
 // of trace entries (event ids assigned 1-based by position). Fully
 // unit-testable without a live MessagingDiagnosticsStore/SipTraceLogger
-// signal chain. presenceEntries is optional — pass an empty list (the
-// default) for callers that only care about the "events" array.
+// signal chain. presenceEntries/xcapEntries are optional — pass an empty
+// list (the default) for callers that don't care about that section.
 QString exportToJson(const QList<MessagingTraceEntry> &entries,
-                      const QList<PresenceTraceEntry> &presenceEntries = QList<PresenceTraceEntry>());
+                      const QList<PresenceTraceEntry> &presenceEntries = QList<PresenceTraceEntry>(),
+                      const QList<XcapResult> &xcapEntries = QList<XcapResult>());
 
-// Convenience overload: exports the live MessagingDiagnosticsStore's and
-// PresenceDiagnosticsStore's current entries.
+// Convenience overload: exports the live MessagingDiagnosticsStore's,
+// PresenceDiagnosticsStore's, and XcapDiagnosticsStore's current entries.
 QString exportToJson();
 
 } // namespace InteropTraceExporter
