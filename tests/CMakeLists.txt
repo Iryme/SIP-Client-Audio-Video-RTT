@@ -54,6 +54,11 @@ set(CALL_SOURCES
     # calls IsComposingGenerator::generate.
     ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/IsComposingGenerator.cpp
+    # Task W098: SipManager::subscribePresence/onAccountBuddyPresenceChanged/
+    # schedulePresenceResubscribe call PresenceStore::instance() directly
+    # (SipAccount.cpp's Buddy subscription API needs no further .cpp — it
+    # only uses PresenceInfo.h, header-only).
+    ${CMAKE_SOURCE_DIR}/src/sip/PresenceStore.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -96,6 +101,11 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingDiagnosticsStore.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/MessagingEventStore.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/InteropTraceExporter.cpp
+    # Task W098: InteropTraceExporter.cpp's no-arg exportToJson() overload
+    # calls PresenceDiagnosticsStore::instance() directly, which in turn
+    # calls PidfParser::parse().
+    ${CMAKE_SOURCE_DIR}/src/sip/PidfParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/PresenceDiagnosticsStore.cpp
 )
 
 # SIP MESSAGE Foundation sources (Task W092) — composer + CPIM builder, plus
@@ -731,6 +741,81 @@ target_link_libraries(test_typing_indicator_controller PRIVATE
 )
 
 add_test(NAME test_typing_indicator_controller COMMAND test_typing_indicator_controller)
+
+# ---- test_pidf_parser (Task W098) ----------------------------------------
+qt_add_executable(test_pidf_parser
+    test_pidf_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/PidfParser.cpp
+)
+
+target_include_directories(test_pidf_parser PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_pidf_parser PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_pidf_parser COMMAND test_pidf_parser)
+
+# ---- test_presence_store (Task W098) --------------------------------------
+qt_add_executable(test_presence_store
+    test_presence_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/PresenceStore.cpp
+)
+
+target_include_directories(test_presence_store PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_presence_store PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_presence_store COMMAND test_presence_store)
+
+# ---- test_presence_diagnostics_store (Task W098) ---------------------------
+# Also covers the SUBSCRIBE/NOTIFY raw-trace mapping (Event/Subscription-State/
+# Expires header extraction + PIDF parsing) without a live PJSIP stack.
+qt_add_executable(test_presence_diagnostics_store
+    test_presence_diagnostics_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/PidfParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/PresenceDiagnosticsStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipRawMessageParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/SipBodyExtractor.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_presence_diagnostics_store PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_presence_diagnostics_store PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_presence_diagnostics_store COMMAND test_presence_diagnostics_store)
+
+# ---- test_presence_resubscribe_policy (Task W098) --------------------------
+# Header-only pure logic — no PJSIP/network dependency at all.
+qt_add_executable(test_presence_resubscribe_policy
+    test_presence_resubscribe_policy.cpp
+)
+
+target_include_directories(test_presence_resubscribe_policy PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_presence_resubscribe_policy PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_presence_resubscribe_policy COMMAND test_presence_resubscribe_policy)
 
 # ---- test_sdp_msrp_diagnostics_parser ------------------------------------
 qt_add_executable(test_sdp_msrp_diagnostics_parser

@@ -6,6 +6,7 @@
 
 #include "sip/InteropTraceExporter.h"
 #include "sip/MessagingDiagnosticsStore.h"
+#include "sip/PresenceDiagnosticsStore.h"
 #include "sip/SipTraceLogger.h"
 
 // Tests for InteropTraceExporter — the server-compatible JSON export (Task
@@ -56,6 +57,9 @@ private slots:
     void exportContentEncodingFailedFields();
     void exportRcsFileTransferFields();
 
+    void exportPresenceEventsSection();
+    void presenceEventsDoNotAffectMessagingEventsSchema();
+
 private:
     static void logMessage(const SipMessageTrace &t) { SipTraceLogger::instance().logMessage(t); }
     static QJsonObject firstEvent(const QString &json);
@@ -65,12 +69,14 @@ void TestWindowsTraceJsonExport::init()
 {
     SipTraceLogger::instance().clear();
     MessagingDiagnosticsStore::instance().clear();
+    PresenceDiagnosticsStore::instance().clear();
 }
 
 void TestWindowsTraceJsonExport::cleanup()
 {
     SipTraceLogger::instance().clear();
     MessagingDiagnosticsStore::instance().clear();
+    PresenceDiagnosticsStore::instance().clear();
 }
 
 QJsonObject TestWindowsTraceJsonExport::firstEvent(const QString &json)
@@ -371,6 +377,64 @@ void TestWindowsTraceJsonExport::exportRcsFileTransferFields()
     const QString redacted = rcs.value(QStringLiteral("dataUrlRedacted")).toString();
     QVERIFY(!redacted.contains(QStringLiteral("one-time-secret")));
     QVERIFY(redacted.startsWith(QStringLiteral("https://files.example.test")));
+}
+
+void TestWindowsTraceJsonExport::exportPresenceEventsSection()
+{
+    const QString pidf = QStringLiteral(
+        "<presence xmlns=\"urn:ietf:params:xml:ns:pidf\" entity=\"sip:bob@example.com\">"
+        "<tuple id=\"t1\"><status><basic>open</basic></status></tuple></presence>");
+
+    SipMessageTrace t;
+    t.method      = QStringLiteral("NOTIFY");
+    t.contentType = QStringLiteral("application/pidf+xml");
+    t.callId      = QStringLiteral("call-presence-1");
+    t.rawSip      = QStringLiteral(
+        "NOTIFY sip:alice@example.com SIP/2.0\r\n"
+        "Call-ID: call-presence-1\r\n"
+        "CSeq: 1 NOTIFY\r\n"
+        "Event: presence\r\n"
+        "Subscription-State: active;expires=300\r\n"
+        "Content-Type: application/pidf+xml\r\n\r\n") + pidf;
+    logMessage(t);
+
+    const QString json = InteropTraceExporter::exportToJson();
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8(), &err);
+    QCOMPARE(err.error, QJsonParseError::NoError);
+    QVERIFY(doc.object().value(QStringLiteral("presenceEvents")).isArray());
+
+    const QJsonArray presenceEvents = doc.object().value(QStringLiteral("presenceEvents")).toArray();
+    QCOMPARE(presenceEvents.size(), 1);
+    const QJsonObject ev = presenceEvents.first().toObject();
+    QCOMPARE(ev.value(QStringLiteral("method")).toString(), QStringLiteral("NOTIFY"));
+    QCOMPARE(ev.value(QStringLiteral("eventPackage")).toString(), QStringLiteral("presence"));
+    QCOMPARE(ev.value(QStringLiteral("subscriptionState")).toString(), QStringLiteral("active"));
+    QCOMPARE(ev.value(QStringLiteral("subscriptionExpires")).toInt(), 300);
+    QCOMPARE(ev.value(QStringLiteral("parseStatus")).toString(), QStringLiteral("ok"));
+
+    const QJsonObject presence = ev.value(QStringLiteral("presence")).toObject();
+    QCOMPARE(presence.value(QStringLiteral("entity")).toString(), QStringLiteral("sip:bob@example.com"));
+    QCOMPARE(presence.value(QStringLiteral("tupleId")).toString(), QStringLiteral("t1"));
+    QCOMPARE(presence.value(QStringLiteral("basicStatus")).toString(), QStringLiteral("open"));
+}
+
+void TestWindowsTraceJsonExport::presenceEventsDoNotAffectMessagingEventsSchema()
+{
+    // A plain SIP MESSAGE export must still work unchanged (schemaVersion
+    // stays 2; "events" is unaffected by the new "presenceEvents" key).
+    SipMessageTrace t;
+    t.method      = QStringLiteral("MESSAGE");
+    t.contentType = QStringLiteral("text/plain");
+    t.callId      = QStringLiteral("call-basic-2");
+    t.rawSip      = QStringLiteral("MESSAGE sip:bob@example.com SIP/2.0\r\n\r\nHi");
+    logMessage(t);
+
+    const QString json = InteropTraceExporter::exportToJson();
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    QCOMPARE(doc.object().value(QStringLiteral("schemaVersion")).toInt(), 2);
+    QVERIFY(doc.object().value(QStringLiteral("events")).toArray().size() >= 1);
+    QVERIFY(doc.object().contains(QStringLiteral("presenceEvents")));
 }
 
 QTEST_GUILESS_MAIN(TestWindowsTraceJsonExport)
