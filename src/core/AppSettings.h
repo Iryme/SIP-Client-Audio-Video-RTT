@@ -117,6 +117,32 @@ public:
     static int  typingGoneDelaySeconds()      { return settings().value(QStringLiteral("messaging/typingGoneDelaySeconds"), 30).toInt(); }
     static void setTypingGoneDelaySeconds(int s) { settings().setValue(QStringLiteral("messaging/typingGoneDelaySeconds"), s); }
 
+    // SIP Presence Foundation (Task W098) — conservative defaults: presence,
+    // subscribe, and publish are all off until explicitly enabled from the
+    // UI, and no target URI is ever assumed. Auto-resubscribe only matters
+    // once Presence + Subscribe are both enabled; it never overrides the
+    // "no retry for rejected/noresource" rule (see
+    // PresenceResubscribePolicy::shouldAutoRetry). Never touches MSRP.
+    static bool enablePresence()               { return settings().value(QStringLiteral("presence/enablePresence"), false).toBool(); }
+    static void setEnablePresence(bool on)     { settings().setValue(QStringLiteral("presence/enablePresence"), on); }
+    static bool enablePresenceSubscribe()      { return settings().value(QStringLiteral("presence/enableSubscribe"), false).toBool(); }
+    static void setEnablePresenceSubscribe(bool on) { settings().setValue(QStringLiteral("presence/enableSubscribe"), on); }
+    // Publish is marked experimental — see docs/presence.md for why (relies
+    // on AccountConfig.presConfig.publishEnabled, which pjsua2 only applies
+    // at account creation time, so toggling this requires re-registration).
+    static bool enablePresencePublish()        { return settings().value(QStringLiteral("presence/enablePublish"), false).toBool(); }
+    static void setEnablePresencePublish(bool on) { settings().setValue(QStringLiteral("presence/enablePublish"), on); }
+    static int  presenceDefaultExpiresSeconds()        { return settings().value(QStringLiteral("presence/defaultExpiresSeconds"), 300).toInt(); }
+    static void setPresenceDefaultExpiresSeconds(int s) { settings().setValue(QStringLiteral("presence/defaultExpiresSeconds"), s); }
+    static bool presenceAutoResubscribe()      { return settings().value(QStringLiteral("presence/autoResubscribe"), true).toBool(); }
+    static void setPresenceAutoResubscribe(bool on) { settings().setValue(QStringLiteral("presence/autoResubscribe"), on); }
+    static int  presenceMaxRetainedEvents()        { return settings().value(QStringLiteral("presence/maxRetainedEvents"), 500).toInt(); }
+    static void setPresenceMaxRetainedEvents(int max) { settings().setValue(QStringLiteral("presence/maxRetainedEvents"), max); }
+    // Default own-status selection for the (experimental) Publish control —
+    // one of available/away/busy/do-not-disturb/offline.
+    static QString presenceDefaultState()        { return settings().value(QStringLiteral("presence/defaultState"), QStringLiteral("available")).toString(); }
+    static void setPresenceDefaultState(const QString &state) { settings().setValue(QStringLiteral("presence/defaultState"), state); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {

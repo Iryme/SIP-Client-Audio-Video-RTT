@@ -58,6 +58,32 @@ public:
     // AFTER deleting the real PjCall for that callId. Returns nullptr if not found.
     void *takeEarlyPjCall(int callId);
 
+    // ---- SIP Presence (Task W098) -------------------------------------------
+    // Starts a presence subscription to targetUri via a long-lived pjsua2
+    // Buddy owned by this SipAccount (subscribe=true). Idempotent: returns
+    // false with an explanatory error if already subscribed to targetUri.
+    // State updates arrive asynchronously via buddyPresenceChanged.
+    bool subscribePresence(const QString &targetUri, QString &error);
+
+    // Ends a presence subscription previously started with subscribePresence
+    // and releases the underlying Buddy. No-op (returns false) if not
+    // currently subscribed to targetUri.
+    bool unsubscribePresence(const QString &targetUri, QString &error);
+
+    // Manually asks pjsua2 to re-poll/refresh an existing subscription
+    // (UI "Refresh" action). No-op (returns false) if not subscribed.
+    bool refreshPresenceSubscription(const QString &targetUri, QString &error);
+
+    // Sets this account's own presence status, used both as the local
+    // record and — if the account was created with presence-publish enabled
+    // (AppSettings::enablePresencePublish, applied at account-creation time
+    // only) — published to the server via PUBLISH. Experimental: see
+    // docs/presence.md for the exact limitation. basicStatus is "open" or
+    // "closed"; activity is one of available/away/busy/do-not-disturb/
+    // offline (best-effort mapped onto pjsua2's limited PresenceStatus).
+    bool setOwnPresenceState(const QString &basicStatus, const QString &activity,
+                             const QString &note, QString &error);
+
 signals:
     void registrationStateChanged(RegistrationState state,
                                   const QString &statusText,
@@ -91,6 +117,21 @@ signals:
     // this signal is never emitted (sendMessage always fails synchronously).
     void instantMessageStatusReceived(qint64 correlationId, bool success,
                                       int statusCode, const QString &reason);
+
+    // Emitted from the dedicated pjsua2 Buddy::onBuddyState() callback
+    // (Task W098) whenever a watched entity's presence/subscription state
+    // changes. basicStatus is "open"/"closed"/"unknown"; activity is
+    // "away"/"busy"/"" (pjsua2's PresenceStatus only distinguishes those two
+    // RPID activities); subscriptionState is "pending"/"active"/
+    // "terminated"/"unknown"; subscriptionReason is only meaningful when
+    // subscriptionState is "terminated" (normalized to one of timeout/
+    // deactivated/probation/rejected/noresource/giveup/invariant/unknown).
+    // In stub mode this signal is never emitted.
+    void buddyPresenceChanged(const QString &entityUri, const QString &contactUri,
+                              const QString &basicStatus, const QString &activity,
+                              const QString &statusText, const QString &note,
+                              const QString &subscriptionState, const QString &subscriptionReason,
+                              const QString &profileId);
 
 private:
     struct Impl;

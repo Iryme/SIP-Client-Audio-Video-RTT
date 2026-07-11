@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -105,6 +106,22 @@ public:
     // a display notification, or a Displayed report was already sent for
     // it.
     bool sendDisplayedImdnForEntry(qint64 inboundEntryId, QString &error);
+
+    // ---- SIP Presence (Task W098) --------------------------------------
+    // Starts/stops/refreshes a presence subscription to targetUri via the
+    // active account, gated by AppSettings::enablePresence()/
+    // enablePresenceSubscribe(). Returns false (with `error` set) if
+    // presence/subscribe is disabled, no account is active, or PJSIP
+    // rejects the request.
+    bool subscribePresence(const QString &targetUri, QString &error);
+    bool unsubscribePresence(const QString &targetUri, QString &error);
+    bool refreshPresenceSubscription(const QString &targetUri, QString &error);
+
+    // Sets this account's own presence status (experimental — see
+    // docs/presence.md). basicStatus is "open"/"closed"; activity is one of
+    // available/away/busy/do-not-disturb/offline.
+    bool setOwnPresenceState(const QString &basicStatus, const QString &activity,
+                             const QString &note, QString &error);
 
     // Access the RTT session for the current call (never null).
     RttSession *rttSession();
@@ -230,6 +247,15 @@ private slots:
     void onAccountInstantMessageStatusReceived(qint64 correlationId, bool success,
                                                int statusCode, const QString &reason);
 
+    // Task W098: routes the account's dedicated Buddy::onBuddyState()
+    // callback into PresenceStore only. Also drives auto-resubscribe
+    // backoff on subscription termination.
+    void onAccountBuddyPresenceChanged(const QString &entityUri, const QString &contactUri,
+                                       const QString &basicStatus, const QString &activity,
+                                       const QString &statusText, const QString &note,
+                                       const QString &subscriptionState, const QString &subscriptionReason,
+                                       const QString &profileId);
+
 private:
     SipManager();
     ~SipManager() override;
@@ -260,6 +286,12 @@ private:
     bool sendImdnReport(const QString &toUri, const QString &originalMessageId,
                         ImdnInfo::Disposition disposition, qint64 inboundEntryId, QString &error);
 
+    // Task W098: schedules a backoff-delayed automatic re-SUBSCRIBE for
+    // entityUri after its subscription terminated with a retryable reason
+    // (see PresenceResubscribePolicy). No-op if auto-resubscribe/presence/
+    // subscribe is disabled in AppSettings.
+    void schedulePresenceResubscribe(const QString &entityUri);
+
 #ifdef HAVE_PJSIP
 public:
     struct PjEndpoint;
@@ -286,4 +318,9 @@ private:
     QTimer                    m_refreshTimer;
     int                       m_registrationExpirySeconds{0};
     bool                      m_refreshing{false};
+
+    // SIP Presence (Task W098) auto-resubscribe backoff state, one timer +
+    // attempt counter per watched entity URI.
+    QHash<QString, QTimer *> m_presenceBackoffTimers;
+    QHash<QString, int>      m_presenceBackoffAttempts;
 };

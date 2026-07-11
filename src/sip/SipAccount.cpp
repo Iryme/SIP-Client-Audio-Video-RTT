@@ -382,12 +382,99 @@ struct SipAccount::Impl
             }, Qt::QueuedConnection);
         }
 
+        // SIP Presence (Task W098): the account-level presence-subscription
+        // status callback. Left un-overridden — pjsua2's default behavior
+        // (prm.code stays at its default 200) already auto-accepts an
+        // incoming SUBSCRIBE, which is sufficient for this foundation task:
+        // whatever this account's own status was last set to via
+        // setOwnPresenceState() is what such a watcher will see on
+        // subsequent NOTIFYs. See docs/presence.md for the exact rationale.
+
     private:
         Impl *m_impl;
     };
 
+    // SIP Presence (Task W098): a long-lived pjsua2 Buddy used purely to
+    // watch one entity's presence (subscribe=true). Per pjsua2's own
+    // documentation (pjsua2/presence.hpp), the library does not keep buddy
+    // instances alive on its own — the *original* instance that called
+    // create() must be owned by the application for the life of the
+    // subscription, and only its destructor unregisters/deletes the
+    // underlying pjsua-lib buddy. That is why these are heap-allocated and
+    // tracked in Impl::presenceBuddies rather than being transient/stack
+    // objects (unlike the throwaway Buddy in sendMessage(), which never
+    // subscribes).
+    class PresenceBuddy final : public pj::Buddy
+    {
+    public:
+        PresenceBuddy(Impl *implementation, QString entityUri)
+            : m_impl(implementation), m_entityUri(std::move(entityUri)) {}
+
+        void onBuddyState() override
+        {
+            if (!m_impl || !m_impl->owner)
+                return;
+
+            QString contactUri, basicStatus, activity, statusText, note, subState, subReason;
+            try {
+                pj::BuddyInfo info = getInfo();
+                contactUri = QString::fromStdString(info.contact);
+
+                switch (info.presStatus.status) {
+                case PJSUA_BUDDY_STATUS_ONLINE:  basicStatus = QStringLiteral("open"); break;
+                case PJSUA_BUDDY_STATUS_OFFLINE: basicStatus = QStringLiteral("closed"); break;
+                default:                         basicStatus = QStringLiteral("unknown"); break;
+                }
+
+                switch (info.presStatus.activity) {
+                case PJRPID_ACTIVITY_AWAY: activity = QStringLiteral("away"); break;
+                case PJRPID_ACTIVITY_BUSY: activity = QStringLiteral("busy"); break;
+                default: break; // pjsua2's PresenceStatus does not distinguish further RPID activities
+                }
+
+                statusText = QString::fromStdString(info.presStatus.statusText);
+                note       = QString::fromStdString(info.presStatus.note);
+
+                switch (info.subState) {
+                case PJSIP_EVSUB_STATE_ACTIVE:
+                    subState = QStringLiteral("active");
+                    break;
+                case PJSIP_EVSUB_STATE_PENDING:
+                case PJSIP_EVSUB_STATE_ACCEPTED:
+                case PJSIP_EVSUB_STATE_SENT:
+                    subState = QStringLiteral("pending");
+                    break;
+                case PJSIP_EVSUB_STATE_TERMINATED:
+                    subState = QStringLiteral("terminated");
+                    break;
+                default:
+                    subState = QStringLiteral("unknown");
+                    break;
+                }
+                subReason = QString::fromStdString(info.subTermReason);
+            } catch (...) {}
+
+            QPointer<SipAccount> self = m_impl->owner;
+            const QString entityUri = m_entityUri;
+            const QString profileId = self ? self->profileId() : QString();
+
+            QMetaObject::invokeMethod(self,
+                [self, entityUri, contactUri, basicStatus, activity, statusText, note,
+                 subState, subReason, profileId]() {
+                    if (self)
+                        emit self->buddyPresenceChanged(entityUri, contactUri, basicStatus, activity,
+                                                        statusText, note, subState, subReason, profileId);
+                }, Qt::QueuedConnection);
+        }
+
+    private:
+        Impl   *m_impl;
+        QString m_entityUri;
+    };
+
     Account *account{nullptr};
     QMap<int, EarlyCall *> earlyCalls; // callId → EarlyCall*, keyed by PJSIP call_id
+    QMap<QString, PresenceBuddy *> presenceBuddies; // targetUri → PresenceBuddy*
 #endif
 };
 
@@ -401,6 +488,13 @@ SipAccount::SipAccount(const QString &profileId, QObject *parent)
 SipAccount::~SipAccount()
 {
 #ifdef HAVE_PJSIP
+    // pjsua2 requires every Buddy owned by an account to be deleted before
+    // the account itself is shut down (see pjsua2/presence.hpp) — do this
+    // first, before account->shutdown().
+    for (auto *buddy : qAsConst(m_impl->presenceBuddies))
+        delete buddy;
+    m_impl->presenceBuddies.clear();
+
     if (m_impl->account)
         m_impl->account->shutdown();
     delete m_impl->account;
@@ -499,6 +593,13 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
         // the intent is clear and logged. The negotiated level may be lower if
         // the remote peer SDP does not advertise red/90000.
         config.textConfig.redundancyLevel = kRttRedLevelDefault;
+
+        // SIP Presence (Task W098): pjsua2 only applies presConfig at
+        // account-creation time — toggling AppSettings::enablePresencePublish
+        // later requires a fresh registration (re-create the account) to
+        // take effect. See docs/presence.md for why this is marked
+        // experimental rather than a fully dynamic setting.
+        config.presConfig.publishEnabled = AppSettings::enablePresencePublish();
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("PJSIP RTT text config: redundancyLevel=%1 (RED RFC 4103/2198; "
                            "max=%2; negotiated level subject to SDP answer)")
@@ -698,6 +799,139 @@ bool SipAccount::sendMessage(const QString &toUri, const QString &contentType, c
     Q_UNUSED(extraHeaders)
     Q_UNUSED(correlationId)
     error = QStringLiteral("PJSIP is unavailable; SIP MESSAGE was not sent");
+    return false;
+#endif
+}
+
+bool SipAccount::subscribePresence(const QString &targetUri, QString &error)
+{
+#ifdef HAVE_PJSIP
+    if (!m_impl->account) {
+        error = QStringLiteral("No active SIP account");
+        return false;
+    }
+    if (m_impl->presenceBuddies.contains(targetUri)) {
+        error = QStringLiteral("Already subscribed to this URI");
+        return false;
+    }
+
+    try {
+        pj::BuddyConfig cfg;
+        cfg.uri = targetUri.toStdString();
+        cfg.subscribe = true;
+        cfg.subscribe_dlg_event = false;
+
+        auto *buddy = new Impl::PresenceBuddy(m_impl, targetUri);
+        buddy->create(*m_impl->account, cfg);
+        m_impl->presenceBuddies.insert(targetUri, buddy);
+
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP Presence SUBSCRIBE started: target=%1").arg(targetUri));
+        return true;
+    } catch (const pj::Error &e) {
+        error = QString::fromStdString(e.reason);
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("PJSIP Presence SUBSCRIBE failed: target=%1 error=%2").arg(targetUri, error));
+        return false;
+    }
+#else
+    Q_UNUSED(targetUri)
+    error = QStringLiteral("PJSIP is unavailable; presence subscription was not attempted");
+    return false;
+#endif
+}
+
+bool SipAccount::unsubscribePresence(const QString &targetUri, QString &error)
+{
+#ifdef HAVE_PJSIP
+    auto it = m_impl->presenceBuddies.find(targetUri);
+    if (it == m_impl->presenceBuddies.end()) {
+        error = QStringLiteral("Not subscribed to this URI");
+        return false;
+    }
+
+    try {
+        (*it)->subscribePresence(false);
+    } catch (const pj::Error &e) {
+        // Still tear down our local Buddy even if the unsubscribe request
+        // itself failed to send (e.g. transport already gone) — we must not
+        // leak a Buddy the caller believes is gone.
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("PJSIP Presence unsubscribe request failed: target=%1 error=%2")
+                .arg(targetUri, QString::fromStdString(e.reason)));
+    }
+
+    delete it.value();
+    m_impl->presenceBuddies.erase(it);
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("PJSIP Presence SUBSCRIBE stopped: target=%1").arg(targetUri));
+    return true;
+#else
+    Q_UNUSED(targetUri)
+    error = QStringLiteral("PJSIP is unavailable; presence subscription was not attempted");
+    return false;
+#endif
+}
+
+bool SipAccount::refreshPresenceSubscription(const QString &targetUri, QString &error)
+{
+#ifdef HAVE_PJSIP
+    auto it = m_impl->presenceBuddies.find(targetUri);
+    if (it == m_impl->presenceBuddies.end()) {
+        error = QStringLiteral("Not subscribed to this URI");
+        return false;
+    }
+    try {
+        (*it)->updatePresence();
+        return true;
+    } catch (const pj::Error &e) {
+        error = QString::fromStdString(e.reason);
+        return false;
+    }
+#else
+    Q_UNUSED(targetUri)
+    error = QStringLiteral("PJSIP is unavailable; presence refresh was not attempted");
+    return false;
+#endif
+}
+
+bool SipAccount::setOwnPresenceState(const QString &basicStatus, const QString &activity,
+                                     const QString &note, QString &error)
+{
+#ifdef HAVE_PJSIP
+    if (!m_impl->account) {
+        error = QStringLiteral("No active SIP account");
+        return false;
+    }
+    try {
+        pj::PresenceStatus st;
+        st.status = basicStatus.compare(QStringLiteral("open"), Qt::CaseInsensitive) == 0
+            ? PJSUA_BUDDY_STATUS_ONLINE : PJSUA_BUDDY_STATUS_OFFLINE;
+        st.statusText = activity.toStdString();
+        st.note = note.toStdString();
+        if (activity.compare(QStringLiteral("away"), Qt::CaseInsensitive) == 0)
+            st.activity = PJRPID_ACTIVITY_AWAY;
+        else if (activity.compare(QStringLiteral("busy"), Qt::CaseInsensitive) == 0
+                 || activity.compare(QStringLiteral("do-not-disturb"), Qt::CaseInsensitive) == 0)
+            st.activity = PJRPID_ACTIVITY_BUSY;
+        else
+            st.activity = PJRPID_ACTIVITY_UNKNOWN;
+
+        m_impl->account->setOnlineStatus(st);
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("PJSIP own presence status set: basic=%1 activity=%2 publishEnabled=%3")
+                .arg(basicStatus, activity,
+                     m_impl->accountConfig.presConfig.publishEnabled ? QStringLiteral("true") : QStringLiteral("false")));
+        return true;
+    } catch (const pj::Error &e) {
+        error = QString::fromStdString(e.reason);
+        return false;
+    }
+#else
+    Q_UNUSED(basicStatus)
+    Q_UNUSED(activity)
+    Q_UNUSED(note)
+    error = QStringLiteral("PJSIP is unavailable; presence status was not set");
     return false;
 #endif
 }

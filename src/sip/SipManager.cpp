@@ -20,6 +20,9 @@
 #include "sip/MessagingContentKind.h"
 #include "sip/ImdnParser.h"
 #include "sip/IsComposingParser.h"
+#include "sip/PresenceInfo.h"
+#include "sip/PresenceResubscribePolicy.h"
+#include "sip/PresenceStore.h"
 #include "core/AppSettings.h"
 
 #ifdef HAVE_PJSIP
@@ -366,6 +369,8 @@ bool SipManager::registerActiveProfile()
             this, &SipManager::onAccountInstantMessageReceived);
     connect(m_account, &SipAccount::instantMessageStatusReceived,
             this, &SipManager::onAccountInstantMessageStatusReceived);
+    connect(m_account, &SipAccount::buddyPresenceChanged,
+            this, &SipManager::onAccountBuddyPresenceChanged);
 #ifdef HAVE_PJSIP
     connect(m_account, &SipAccount::incomingPjsipCallReceived,
             this, [this](const QString &remoteUri, int callId) {
@@ -778,6 +783,14 @@ void SipManager::destroyAccount()
     delete m_account;
     m_account = nullptr;
     m_registeredProfileId.clear();
+
+    // Any live presence subscriptions belonged to the destroyed account's
+    // Buddy objects — stop pending backoff retries so a resubscribe attempt
+    // never fires against a URI whose subscription no longer exists.
+    for (QTimer *timer : qAsConst(m_presenceBackoffTimers))
+        delete timer;
+    m_presenceBackoffTimers.clear();
+    m_presenceBackoffAttempts.clear();
 }
 
 void SipManager::scheduleRetryIfEligible(int statusCode)
@@ -1391,6 +1404,141 @@ void SipManager::onAccountInstantMessageStatusReceived(qint64 correlationId, boo
     MessageHistoryStore::instance().updateOutboundStatus(
         correlationId, success ? MessageHistoryEntry::OutboundStatus::Sent
                                : MessageHistoryEntry::OutboundStatus::Failed);
+}
+
+bool SipManager::subscribePresence(const QString &targetUri, QString &error)
+{
+    if (!AppSettings::enablePresence() || !AppSettings::enablePresenceSubscribe()) {
+        error = QStringLiteral("Presence subscribe is disabled in settings");
+        return false;
+    }
+    if (targetUri.trimmed().isEmpty()) {
+        error = QStringLiteral("Target SIP URI is empty");
+        return false;
+    }
+    if (!m_account) {
+        error = QStringLiteral("No active SIP account");
+        return false;
+    }
+    return m_account->subscribePresence(targetUri, error);
+}
+
+bool SipManager::unsubscribePresence(const QString &targetUri, QString &error)
+{
+    if (!m_account) {
+        error = QStringLiteral("No active SIP account");
+        return false;
+    }
+    // Cancel any pending auto-resubscribe for this entity — an explicit
+    // Unsubscribe is a user action that must win over a scheduled retry.
+    if (QTimer *timer = m_presenceBackoffTimers.value(targetUri))
+        timer->stop();
+    m_presenceBackoffAttempts.remove(targetUri);
+    return m_account->unsubscribePresence(targetUri, error);
+}
+
+bool SipManager::refreshPresenceSubscription(const QString &targetUri, QString &error)
+{
+    if (!m_account) {
+        error = QStringLiteral("No active SIP account");
+        return false;
+    }
+    return m_account->refreshPresenceSubscription(targetUri, error);
+}
+
+bool SipManager::setOwnPresenceState(const QString &basicStatus, const QString &activity,
+                                     const QString &note, QString &error)
+{
+    if (!AppSettings::enablePresence()) {
+        error = QStringLiteral("Presence is disabled in settings");
+        return false;
+    }
+    if (!m_account) {
+        error = QStringLiteral("No active SIP account");
+        return false;
+    }
+    return m_account->setOwnPresenceState(basicStatus, activity, note, error);
+}
+
+void SipManager::onAccountBuddyPresenceChanged(const QString &entityUri, const QString &contactUri,
+                                               const QString &basicStatus, const QString &activity,
+                                               const QString &statusText, const QString &note,
+                                               const QString &subscriptionState, const QString &subscriptionReason,
+                                               const QString & /*profileId*/)
+{
+    PresenceInfo info;
+    info.entityUri     = entityUri;
+    info.contactUri    = contactUri;
+    info.basicStatus   = PresenceInfo::basicStatusFromString(basicStatus);
+    info.note          = note.isEmpty() ? statusText : note;
+    info.timestamp     = QDateTime::currentDateTimeUtc();
+    info.expires       = AppSettings::presenceDefaultExpiresSeconds();
+    info.subscriptionState  = PresenceInfo::subscriptionStateFromString(subscriptionState);
+    info.subscriptionReason = subscriptionReason;
+    info.contentType   = QStringLiteral("application/pidf+xml");
+    info.parseStatus   = PresenceInfo::ParseStatus::Ok;
+
+    if (activity.compare(QStringLiteral("away"), Qt::CaseInsensitive) == 0)
+        info.extendedStatus = PresenceInfo::ExtendedStatus::Away;
+    else if (activity.compare(QStringLiteral("busy"), Qt::CaseInsensitive) == 0)
+        info.extendedStatus = PresenceInfo::ExtendedStatus::Busy;
+    else if (info.basicStatus == PresenceInfo::BasicStatus::Open)
+        info.extendedStatus = PresenceInfo::ExtendedStatus::Available;
+    else if (info.basicStatus == PresenceInfo::BasicStatus::Closed)
+        info.extendedStatus = PresenceInfo::ExtendedStatus::Offline;
+
+    PresenceStore::instance().upsert(info);
+
+    if (info.subscriptionState == PresenceInfo::SubscriptionState::Active) {
+        // A live subscription is proof the peer accepted us — clear any
+        // backoff state so a later termination starts counting from 1 again.
+        m_presenceBackoffAttempts.remove(entityUri);
+        return;
+    }
+
+    if (info.subscriptionState != PresenceInfo::SubscriptionState::Terminated)
+        return;
+
+    if (!AppSettings::enablePresence() || !AppSettings::enablePresenceSubscribe()
+        || !AppSettings::presenceAutoResubscribe()) {
+        return;
+    }
+
+    if (!PresenceResubscribePolicy::shouldAutoRetry(info.subscriptionReason)) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Presence auto-resubscribe skipped for %1: reason=%2 requires explicit action")
+                .arg(entityUri, info.subscriptionReason));
+        m_presenceBackoffAttempts.remove(entityUri);
+        return;
+    }
+
+    schedulePresenceResubscribe(entityUri);
+}
+
+void SipManager::schedulePresenceResubscribe(const QString &entityUri)
+{
+    const int attempt = m_presenceBackoffAttempts.value(entityUri, 0) + 1;
+    m_presenceBackoffAttempts[entityUri] = attempt;
+    const int delayMs = PresenceResubscribePolicy::backoffMs(attempt);
+
+    QTimer *timer = m_presenceBackoffTimers.value(entityUri);
+    if (!timer) {
+        timer = new QTimer(this);
+        timer->setSingleShot(true);
+        m_presenceBackoffTimers.insert(entityUri, timer);
+        connect(timer, &QTimer::timeout, this, [this, entityUri]() {
+            QString error;
+            if (!subscribePresence(entityUri, error)) {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("Presence auto-resubscribe failed for %1: %2").arg(entityUri, error));
+            }
+        });
+    }
+
+    Logger::instance().info(LogCategory::Sip,
+        QStringLiteral("Presence auto-resubscribe scheduled for %1: attempt=%2 delayMs=%3")
+            .arg(entityUri).arg(attempt).arg(delayMs));
+    timer->start(delayMs);
 }
 
 bool SipManager::answerCall()
