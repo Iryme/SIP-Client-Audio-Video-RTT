@@ -1,8 +1,8 @@
 # Project Status
 
-Last updated: 2026-07-10
-Current task count: 51 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W097 complete)
-Active branch: `feature/w097-is-composing`
+Last updated: 2026-07-11
+Current task count: 52 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W098 complete)
+Active branch: `feature/w098-presence-foundation`
 
 ---
 
@@ -177,6 +177,7 @@ Active branch: `feature/w097-is-composing`
 | Content-Encoding deflate decoding + RCS FT HTTP diagnostics | COMPLETE | Task W095 — binary-safe body extraction, zlib/raw-deflate/gzip decoder with decompression-bomb limits, read-only RCS file-transfer descriptor parser with URL redaction; diagnostic-only, no file download/network access; see [content-encoding-diagnostics.md](content-encoding-diagnostics.md) and [rcs-ft-http-diagnostics.md](rcs-ft-http-diagnostics.md) |
 | IMDN Foundation (generation, correlation, auto-Delivered/Displayed) | COMPLETE | Task W096 — RFC 5438 report generation, Message-ID correlation, auto-Delivered (default ON)/opt-in auto-Displayed (default OFF)/manual "Mark as Read"; MSRP/Presence/XCAP untouched; see [imdn.md](imdn.md) |
 | Active is-composing (generation, typing state machine, indicator) | COMPLETE | Task W097 — RFC 3994 notification generation, debounced/throttled local typing state machine, Message History typing rows + auto-expiring live indicator, Enable is-composing/Auto typing notifications (default ON); MSRP/Presence/XCAP untouched; see [is-composing.md](is-composing.md) |
+| SIP Presence Foundation (SUBSCRIBE/NOTIFY/PIDF) | COMPLETE (foundation) | Task W098 — PIDF parser + presence model, live pjsua2-Buddy subscribe/unsubscribe/refresh lifecycle with auto-resubscribe backoff, dedicated `PresenceStore`, new "Presence" nav page, SIP Ladder badges, `presenceEvents` in Interop JSON export; own-status Publish is experimental (needs re-registration, depends on server PUBLISH support); everything disabled by default; XCAP/resource lists explicitly out of scope (Task W099); MSRP untouched; see [presence.md](presence.md) |
 | MSRP diagnostics (SDP detection) | COMPLETE | Task W090 — detection only, no real MSRP session, see [msrp-diagnostics.md](msrp-diagnostics.md) |
 | MSRP session (real transport) | NOT STARTED | Explicitly out of scope for Task W090 |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |

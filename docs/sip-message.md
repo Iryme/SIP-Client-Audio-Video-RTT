@@ -31,6 +31,18 @@ for outbound RFC 3994 typing notifications, again reusing this document's
 send path unchanged, plus a local `TypingIndicatorController` state machine
 driving when active/idle/gone notifications are sent from the compose
 editor.
+**Task W098** — [SIP Presence](presence.md) (branch
+`feature/w098-presence-foundation`) is a **separate transport** from
+everything in this document: SUBSCRIBE/NOTIFY/PIDF presence exchanges never
+use the SIP MESSAGE method, are never composed via `SipMessageComposer`, and
+are never routed into `MessageHistoryStore`/`MessagingEventStore`. Presence
+has its own send path (`SipAccount::subscribePresence()`/pjsua2 `Buddy`, not
+`SipAccount::sendMessage()`), its own diagnostics store
+(`PresenceDiagnosticsStore`, not `MessagingDiagnosticsStore`), and its own UI
+page. The only two things Presence shares with this document's pipeline are
+the underlying raw-trace capture (`SipTraceLogger`/`PjsipTraceModule`, fully
+method-agnostic) and `InteropTraceExporter`'s single JSON document (a new,
+independent `presenceEvents` array alongside the existing `events` array).
 
 ## Overview
 

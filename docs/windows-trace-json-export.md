@@ -17,6 +17,11 @@ every event — purely additive, `schemaVersion` stays `2`. See
 `generatedIsComposing`/`receivedIsComposing`/`typingState`/`typingRefresh`/
 `typingTimeout` to every event — purely additive, `schemaVersion` stays
 `2`. See [is-composing.md](is-composing.md).
+**Task W098** — Extended in branch `feature/w098-presence-foundation`: adds
+a new top-level `presenceEvents` array, entirely independent of the
+`events` array documented below — SUBSCRIBE/NOTIFY/PIDF traces are never
+mixed into the SIP MESSAGE event stream. A new top-level key is additive by
+definition, so `schemaVersion` stays `2`. See [presence.md](presence.md).
 
 ## Overview
 
@@ -61,9 +66,34 @@ parsing is duplicated anywhere in this task.
   "schemaVersion": 2,
   "source": "windows-client",
   "exportedAt": "<ISO-8601 UTC timestamp of the export itself>",
-  "events": [ { ...one object per MessagingTraceEntry... } ]
+  "events": [ { ...one object per MessagingTraceEntry... } ],
+  "presenceEvents": [ { ...one object per PresenceTraceEntry, Task W098... } ]
 }
 ```
+
+### `presenceEvents` (Task W098)
+
+Built from `PresenceDiagnosticsStore`'s `PresenceTraceEntry` rows
+(SUBSCRIBE/NOTIFY raw-trace diagnostics — see [presence.md](presence.md)),
+entirely independent of `events`/`MessagingTraceEntry`. Each entry:
+
+| JSON key | Source |
+|---|---|
+| `eventId` | 1-based position in the exported presence list |
+| `timestamp` | trace timestamp, ISO 8601 with milliseconds |
+| `direction` | `"inbound"` / `"outbound"` |
+| `method` | `"SUBSCRIBE"` or `"NOTIFY"` |
+| `callId` | `Call-ID` header |
+| `cseq` | `CSeq` header |
+| `from` / `to` | `From` / `To` header values, verbatim |
+| `eventPackage` | `Event` header value (expected `"presence"`) |
+| `subscriptionState` | `Subscription-State` header's state token (pending/active/terminated), lowercased |
+| `subscriptionExpires` | `expires=` param on `Subscription-State`, else the `Expires` header; `-1` if neither present |
+| `subscriptionReason` | `reason=` param on `Subscription-State`, normalized via `PresenceInfo::normalizeSubscriptionReason` |
+| `contentType` | `Content-Type` header |
+| `parseStatus` / `parseWarnings` | from PIDF parsing (`PidfParser`), `"ok"`/`"partial"`/`"error"` |
+| `rawSipRedacted` | full raw SIP text, already redacted upstream by `SipTraceLogger` |
+| `presence.entity` / `.tupleId` / `.basicStatus` / `.extendedStatus` / `.contact` / `.priority` / `.note` / `.timestamp` | parsed PIDF fields (empty/`"unknown"` when the body was absent or not `application/pidf+xml`) |
 
 ### schemaVersion 1 → 2 migration (Task W095)
 
