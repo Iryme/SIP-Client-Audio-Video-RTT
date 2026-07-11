@@ -143,6 +143,28 @@ public:
     static QString presenceDefaultState()        { return settings().value(QStringLiteral("presence/defaultState"), QStringLiteral("available")).toString(); }
     static void setPresenceDefaultState(const QString &state) { settings().setValue(QStringLiteral("presence/defaultState"), state); }
 
+    // XCAP Foundation (Task W099) — disabled by default, no root URI ever
+    // assumed. The XCAP password is never stored here; it goes through
+    // CredentialStore (same secure-backend mechanism as SIP profile
+    // passwords), keyed by the fixed pseudo-profile id "xcap" + xcapUsername.
+    static bool enableXcap()               { return settings().value(QStringLiteral("xcap/enable"), false).toBool(); }
+    static void setEnableXcap(bool on)     { settings().setValue(QStringLiteral("xcap/enable"), on); }
+    static QString xcapRoot()              { return settings().value(QStringLiteral("xcap/root"), QString()).toString(); }
+    static void setXcapRoot(const QString &uri) { settings().setValue(QStringLiteral("xcap/root"), uri); }
+    static QString xcapXui()               { return settings().value(QStringLiteral("xcap/xui"), QString()).toString(); }
+    static void setXcapXui(const QString &xui) { settings().setValue(QStringLiteral("xcap/xui"), xui); }
+    static QString xcapUsername()          { return settings().value(QStringLiteral("xcap/username"), QString()).toString(); }
+    static void setXcapUsername(const QString &user) { settings().setValue(QStringLiteral("xcap/username"), user); }
+    // One of "none" / "basic" / "digest" (see xcapAuthModeFromString/ToString in XcapModels.h).
+    static QString xcapAuthentication()    { return settings().value(QStringLiteral("xcap/authentication"), QStringLiteral("none")).toString(); }
+    static void setXcapAuthentication(const QString &mode) { settings().setValue(QStringLiteral("xcap/authentication"), mode); }
+    static bool validateXmlBeforePut()     { return settings().value(QStringLiteral("xcap/validateXmlBeforePut"), true).toBool(); }
+    static void setValidateXmlBeforePut(bool on) { settings().setValue(QStringLiteral("xcap/validateXmlBeforePut"), on); }
+    static int  xcapTimeout()              { return settings().value(QStringLiteral("xcap/timeoutSeconds"), 15).toInt(); }
+    static void setXcapTimeout(int seconds) { settings().setValue(QStringLiteral("xcap/timeoutSeconds"), seconds); }
+    static bool xcapVerifyTls()            { return settings().value(QStringLiteral("xcap/verifyTls"), true).toBool(); }
+    static void setXcapVerifyTls(bool on)  { settings().setValue(QStringLiteral("xcap/verifyTls"), on); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {
