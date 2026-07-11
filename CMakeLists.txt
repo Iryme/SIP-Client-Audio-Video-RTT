@@ -110,6 +110,7 @@ set(SOURCES
     src/gui/SipMessageDetailsDialog.cpp
     src/gui/panels/MessagingDiagnosticsPage.cpp
     src/gui/panels/PresencePage.cpp
+    src/gui/panels/XcapPage.cpp
     src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
@@ -139,6 +140,11 @@ set(SOURCES
     src/sip/PidfParser.cpp
     src/sip/PresenceStore.cpp
     src/sip/PresenceDiagnosticsStore.cpp
+    src/sip/XcapUrlRedactor.cpp
+    src/sip/XcapXmlValidator.cpp
+    src/sip/XcapRequestBuilder.cpp
+    src/sip/XcapClient.cpp
+    src/sip/XcapDiagnosticsStore.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -222,6 +228,7 @@ set(HEADERS
     src/gui/SipMessageDetailsDialog.h
     src/gui/panels/MessagingDiagnosticsPage.h
     src/gui/panels/PresencePage.h
+    src/gui/panels/XcapPage.h
     src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h
@@ -259,6 +266,13 @@ set(HEADERS
     src/sip/PresenceStore.h
     src/sip/PresenceTraceEntry.h
     src/sip/PresenceDiagnosticsStore.h
+    src/sip/XcapModels.h
+    src/sip/XcapAuthHeaderBuilder.h
+    src/sip/XcapUrlRedactor.h
+    src/sip/XcapXmlValidator.h
+    src/sip/XcapRequestBuilder.h
+    src/sip/XcapClient.h
+    src/sip/XcapDiagnosticsStore.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h
