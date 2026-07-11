@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Test Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Core Test Multimedia Network)
 
 option(BUILD_LIVE_VALIDATION_TOOLS "Build manual live SIP validation tools" OFF)
 
@@ -139,6 +139,25 @@ set(AUDIO_MEDIA_SOURCES
     ${CMAKE_SOURCE_DIR}/src/media/VideoStatistics.cpp
     ${CMAKE_SOURCE_DIR}/src/media/VideoPipelineMonitor.cpp
 )
+
+# XCAP Foundation sources (Task W099). XcapClient.cpp needs Qt6::Network and
+# CredentialStore (+ its Logger dependency).
+set(XCAP_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapUrlRedactor.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapXmlValidator.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapRequestBuilder.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapDiagnosticsStore.cpp
+)
+
+# InteropTraceExporter.cpp's no-arg exportToJson() overload calls
+# XcapDiagnosticsStore::instance()/entries() directly (Task W099), so every
+# target that links InteropTraceExporter.cpp (i.e. everything already using
+# MESSAGING_DIAGNOSTICS_SOURCES) must also link XCAP_SOURCES, or the symbol
+# is left unresolved at link time even for tests that never call that
+# overload — the linker still requires every function InteropTraceExporter.cpp
+# calls to resolve.
+list(APPEND MESSAGING_DIAGNOSTICS_SOURCES ${XCAP_SOURCES})
 
 # ---- test_sip_profile_manager ------------------------------------------
 qt_add_executable(test_sip_profile_manager
@@ -817,6 +836,104 @@ target_link_libraries(test_presence_resubscribe_policy PRIVATE
 
 add_test(NAME test_presence_resubscribe_policy COMMAND test_presence_resubscribe_policy)
 
+# ---- test_xcap_url_redactor (Task W099) ------------------------------------
+qt_add_executable(test_xcap_url_redactor
+    test_xcap_url_redactor.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapUrlRedactor.cpp
+)
+
+target_include_directories(test_xcap_url_redactor PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_xcap_url_redactor PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_xcap_url_redactor COMMAND test_xcap_url_redactor)
+
+# ---- test_xcap_xml_validator (Task W099) -----------------------------------
+qt_add_executable(test_xcap_xml_validator
+    test_xcap_xml_validator.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapXmlValidator.cpp
+)
+
+target_include_directories(test_xcap_xml_validator PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_xcap_xml_validator PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_xcap_xml_validator COMMAND test_xcap_xml_validator)
+
+# ---- test_xcap_request_builder (Task W099) ---------------------------------
+# Pure request-model construction — no QNetworkAccessManager dependency.
+qt_add_executable(test_xcap_request_builder
+    test_xcap_request_builder.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/XcapRequestBuilder.cpp
+)
+
+target_include_directories(test_xcap_request_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_xcap_request_builder PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_xcap_request_builder COMMAND test_xcap_request_builder)
+
+# ---- test_xcap_auth_header_builder (Task W099) -----------------------------
+qt_add_executable(test_xcap_auth_header_builder
+    test_xcap_auth_header_builder.cpp
+)
+
+target_include_directories(test_xcap_auth_header_builder PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_xcap_auth_header_builder PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_xcap_auth_header_builder COMMAND test_xcap_auth_header_builder)
+
+# ---- test_xcap_diagnostics_store (Task W099) -------------------------------
+# XcapDiagnosticsStore.cpp's constructor connects to XcapClient::instance(),
+# which needs Qt6::Network + CredentialStore (+ its Logger dependency); the
+# export test also links InteropTraceExporter.cpp, which needs the full
+# Messaging/Presence diagnostics chain (all its called functions must
+# resolve even though this test only exercises the xcapEvents section).
+qt_add_executable(test_xcap_diagnostics_store
+    test_xcap_diagnostics_store.cpp
+    ${SIP_TRACE_SOURCES}
+    ${MESSAGING_DIAGNOSTICS_SOURCES}
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+)
+
+target_include_directories(test_xcap_diagnostics_store PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_xcap_diagnostics_store PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Network
+)
+if(WIN32)
+    target_link_libraries(test_xcap_diagnostics_store PRIVATE Advapi32)
+endif()
+
+add_test(NAME test_xcap_diagnostics_store COMMAND test_xcap_diagnostics_store)
+
 # ---- test_sdp_msrp_diagnostics_parser ------------------------------------
 qt_add_executable(test_sdp_msrp_diagnostics_parser
     test_sdp_msrp_diagnostics_parser.cpp
@@ -908,6 +1025,8 @@ qt_add_executable(test_messaging_diagnostics_store
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${SIP_TRACE_SOURCES}
     ${MESSAGING_DIAGNOSTICS_SOURCES}
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
 )
 
 target_include_directories(test_messaging_diagnostics_store PRIVATE
@@ -917,7 +1036,11 @@ target_include_directories(test_messaging_diagnostics_store PRIVATE
 target_link_libraries(test_messaging_diagnostics_store PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Network
 )
+if(WIN32)
+    target_link_libraries(test_messaging_diagnostics_store PRIVATE Advapi32)
+endif()
 
 add_test(NAME test_messaging_diagnostics_store COMMAND test_messaging_diagnostics_store)
 
@@ -927,6 +1050,8 @@ qt_add_executable(test_messaging_event_store
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${SIP_TRACE_SOURCES}
     ${MESSAGING_DIAGNOSTICS_SOURCES}
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
 )
 
 target_include_directories(test_messaging_event_store PRIVATE
@@ -936,7 +1061,11 @@ target_include_directories(test_messaging_event_store PRIVATE
 target_link_libraries(test_messaging_event_store PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Network
 )
+if(WIN32)
+    target_link_libraries(test_messaging_event_store PRIVATE Advapi32)
+endif()
 
 add_test(NAME test_messaging_event_store COMMAND test_messaging_event_store)
 
@@ -947,6 +1076,8 @@ qt_add_executable(test_sip_message_foundation
     ${SIP_TRACE_SOURCES}
     ${MESSAGING_DIAGNOSTICS_SOURCES}
     ${SIP_MESSAGE_FOUNDATION_SOURCES}
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
 )
 
 target_include_directories(test_sip_message_foundation PRIVATE
@@ -956,7 +1087,11 @@ target_include_directories(test_sip_message_foundation PRIVATE
 target_link_libraries(test_sip_message_foundation PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Network
 )
+if(WIN32)
+    target_link_libraries(test_sip_message_foundation PRIVATE Advapi32)
+endif()
 
 add_test(NAME test_sip_message_foundation COMMAND test_sip_message_foundation)
 
@@ -986,6 +1121,8 @@ qt_add_executable(test_windows_trace_json_export
     ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
     ${SIP_TRACE_SOURCES}
     ${MESSAGING_DIAGNOSTICS_SOURCES}
+    ${SECURITY_SOURCES}
+    ${SECURITY_HEADERS}
 )
 
 target_include_directories(test_windows_trace_json_export PRIVATE
@@ -995,7 +1132,11 @@ target_include_directories(test_windows_trace_json_export PRIVATE
 target_link_libraries(test_windows_trace_json_export PRIVATE
     Qt6::Core
     Qt6::Test
+    Qt6::Network
 )
+if(WIN32)
+    target_link_libraries(test_windows_trace_json_export PRIVATE Advapi32)
+endif()
 
 add_test(NAME test_windows_trace_json_export COMMAND test_windows_trace_json_export)
 
