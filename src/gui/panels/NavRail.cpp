@@ -171,6 +171,7 @@ NavRail::NavRail(QWidget *parent)
     addNavButton(layout, QString{}, "Clients",   "clients");
     addNavButton(layout, QString{}, "SIP Ladder","sipladder");
     addNavButton(layout, QString{}, "Messaging", "messaging");
+    addNavButton(layout, QString{}, "Presence",  "presence");
     addNavButton(layout, QString{}, "History",   "callhistory");
     addNavButton(layout, QString{}, "Logs",      "logs");
     addNavButton(layout, QString{}, "Diagnostics", "diagnostics");
@@ -225,6 +226,7 @@ QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
     else if (page == QLatin1String("clients")) svgData = kIconClients;
     else if (page == QLatin1String("sipladder")) svgData = kIconSipLadder;
     else if (page == QLatin1String("messaging")) svgData = kIconMessaging;
+    else if (page == QLatin1String("presence")) svgData = kIconDiagnostics; // reused icon; no dedicated Presence glyph yet
     else if (page == QLatin1String("callhistory")) svgData = kIconHistory;
     else if (page == QLatin1String("logs"))   svgData = kIconLogs;
     else if (page == QLatin1String("diagnostics")) svgData = kIconDiagnostics;

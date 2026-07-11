@@ -28,6 +28,8 @@ static QString contentTypeTag(const SipMessageTrace &t)
         return QStringLiteral("IMDN");
     if (ct.startsWith(QStringLiteral("application/im-iscomposing+xml")))
         return QStringLiteral("is-composing");
+    if (ct.startsWith(QStringLiteral("application/pidf+xml")))
+        return QStringLiteral("PIDF");
     if (t.rawSip.contains(QStringLiteral("m=message")))
         return QStringLiteral("MSRP-SDP");
     return QString();
@@ -374,5 +376,7 @@ QColor SipLadderWidget::colorForTrace(const SipMessageTrace &t)
     if (m == QStringLiteral("CANCEL"))    return QColor("#FF9944");
     if (m == QStringLiteral("ACK"))       return QColor("#CCCCAA");
     if (m == QStringLiteral("MESSAGE"))   return QColor("#B084F5");
+    if (m == QStringLiteral("SUBSCRIBE")) return QColor("#4FC3E8");
+    if (m == QStringLiteral("NOTIFY"))    return QColor("#4FE8B0");
     return QColor("#CCCCCC");
 }
