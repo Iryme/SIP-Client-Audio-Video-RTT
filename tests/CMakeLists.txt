@@ -1322,6 +1322,26 @@ target_link_libraries(test_trace_comparator PRIVATE
 
 add_test(NAME test_trace_comparator COMMAND test_trace_comparator)
 
+# ---- test_lmpe_codec_unconfirmed (Task W103) -------------------------------
+# UnconfirmedLmpeCodec is a header-only fail-closed stub with no dependencies
+# beyond QtCore — guards against ever silently claiming LMPE compatibility
+# before the real ETSI TS 103 698 format is confirmed. See
+# docs/agent-results/W103-lmpe-foundation-result.md.
+qt_add_executable(test_lmpe_codec_unconfirmed
+    test_lmpe_codec_unconfirmed.cpp
+)
+
+target_include_directories(test_lmpe_codec_unconfirmed PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_lmpe_codec_unconfirmed PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_lmpe_codec_unconfirmed COMMAND test_lmpe_codec_unconfirmed)
+
 # ---- test_msrp_sip_media_injector (Task W101, Phase 2) ---------------------
 # Proves MsrpSipMediaInjector writes a real "m=message" section into an
 # actual pjmedia_sdp_session and that pjmedia_sdp_print() emits it on the
