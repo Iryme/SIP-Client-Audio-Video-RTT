@@ -258,12 +258,23 @@ void SipManager::shutdown()
         destroyAccount();
     }
 
+    // Bug fix (found via live manual testing, 2026-07-13): this reset() emits
+    // stateChanged (-> registrationStateChanged), which DiagnosticsCollector
+    // listens to and reacts by querying PjsipAudioMapper::
+    // activeCaptureDeviceName()/activePlaybackDeviceName() — both of which
+    // call into pj::Endpoint::instance(). That must happen BEFORE
+    // shutdownPjsip() below destroys the pjlib endpoint (ep->ep.libDestroy()
+    // frees pjlib's own thread-local-storage slot); reset() used to run
+    // after shutdownPjsip(), so that diagnostics query hit an already-freed
+    // TLS slot (pj_thread_local_get's PJ_ASSERT_RETURN(index >= 0) failing)
+    // and hard-aborted the whole app on every exit.
+    m_stateMachine.reset(QStringLiteral("SIP backend shut down"));
+
 #ifdef HAVE_PJSIP
     shutdownPjsip(m_ep);
 #endif
 
     m_initialized = false;
-    m_stateMachine.reset(QStringLiteral("SIP backend shut down"));
     Logger::instance().info(LogCategory::Sip, QStringLiteral("SIP backend shut down"));
     emit shutdownComplete();
 }

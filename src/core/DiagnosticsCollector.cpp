@@ -155,17 +155,26 @@ void DiagnosticsCollector::rebuild()
             return dev;
         };
 
+        // Defense in depth (bug found via live manual testing, 2026-07-13):
+        // PjsipAudioMapper's try/catch only ever catches pj::Error C++
+        // exceptions — it cannot catch pjlib's own assert()/abort() when
+        // pj::Endpoint::instance() is queried after pjsip has already been
+        // torn down (SipManager::shutdown()). Never call into it once
+        // SipManager reports uninitialized, regardless of why this rebuild
+        // was triggered.
+        const bool pjsipAlive = SipManager::instance().isInitialized();
+
         const MediaDevice mic = resolve(MediaDeviceType::Microphone,
                                         AppSettings::loadSelectedMicrophone());
         QString micName = mic.isNull() ? QString{} : mic.displayName;
-        if (micName.isEmpty())
+        if (micName.isEmpty() && pjsipAlive)
             micName = PjsipAudioMapper::activeCaptureDeviceName();
         s.microphoneName = micName.isEmpty() ? diagnosticsNotAvailable() : micName;
 
         const MediaDevice spk = resolve(MediaDeviceType::Speaker,
                                         AppSettings::loadSelectedSpeaker());
         QString spkName = spk.isNull() ? QString{} : spk.displayName;
-        if (spkName.isEmpty())
+        if (spkName.isEmpty() && pjsipAlive)
             spkName = PjsipAudioMapper::activePlaybackDeviceName();
         s.speakerName = spkName.isEmpty() ? diagnosticsNotAvailable() : spkName;
 
