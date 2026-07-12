@@ -31,6 +31,23 @@ const char *kBaseSdp =
     "m=video 51372 RTP/AVP 96\r\n"
     "a=rtpmap:96 H264/90000\r\n";
 
+// Task W102 Phase 2: the shape PJSIP's own pjmedia_sdp_neg create_answer()
+// produces before our callback runs — a rejected (port 0) "message"
+// placeholder cloned from a peer-initiated offer, at the same index as the
+// offer's own m=message. answerMessageMediaAtIndex must be able to replace
+// exactly this shape.
+const char *kAnswerWithRejectedMessagePlaceholder =
+    "v=0\r\n"
+    "o=- 123456 654321 IN IP4 192.0.2.10\r\n"
+    "s=-\r\n"
+    "c=IN IP4 192.0.2.10\r\n"
+    "t=0 0\r\n"
+    "m=audio 49170 RTP/AVP 0\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "m=video 51372 RTP/AVP 96\r\n"
+    "a=rtpmap:96 H264/90000\r\n"
+    "m=message 0 TCP/MSRP *\r\n";
+
 } // namespace
 
 class TestMsrpSipMediaInjector : public QObject
@@ -155,6 +172,63 @@ private slots:
         QVERIFY(!r2.injected);
     }
 
+    // Task W102 Phase 2: replacing the rejected placeholder at the correct
+    // index with a real accepted answer must preserve media count/ordering
+    // (RFC 3264 answer rules) and leave audio/video untouched.
+    void answersAtCorrectIndexReplacingRejectedPlaceholder()
+    {
+        pjmedia_sdp_session *sdp = parseAnswerWithPlaceholder();
+        QVERIFY(sdp != nullptr);
+        QCOMPARE(static_cast<int>(sdp->media_count), 3);
+
+        const MsrpUri uri = MsrpPath::buildUri(false, QStringLiteral("192.0.2.10"), 49500,
+                                                QStringLiteral("answersession"));
+        const auto result = MsrpSipMediaInjector::answerMessageMediaAtIndex(
+            sdp, m_attrPool, /*index=*/2, uri, MsrpSetup::Passive,
+            {QStringLiteral("text/plain")}, {}, 49500);
+
+        QVERIFY(result.injected);
+        QCOMPARE(static_cast<int>(sdp->media_count), 3); // count unchanged — answer rule
+
+        char buf[4096];
+        const int printed = pjmedia_sdp_print(sdp, buf, sizeof(buf));
+        QVERIFY(printed > 0);
+        const QString wire = QString::fromLatin1(buf, printed);
+
+        QVERIFY(wire.contains(QStringLiteral("m=audio 49170 RTP/AVP 0")));
+        QVERIFY(wire.contains(QStringLiteral("m=video 51372 RTP/AVP 96")));
+        QVERIFY(wire.contains(QStringLiteral("m=message 49500 TCP/MSRP *")));
+        QVERIFY(wire.contains(QStringLiteral("a=path:msrp://192.0.2.10:49500/answersession;tcp")));
+        QVERIFY(wire.contains(QStringLiteral("a=setup:passive")));
+    }
+
+    void answerRejectsWrongIndex()
+    {
+        pjmedia_sdp_session *sdp = parseAnswerWithPlaceholder();
+        const MsrpUri uri = MsrpPath::buildUri(false, QStringLiteral("192.0.2.10"), 49500,
+                                                QStringLiteral("x"));
+        // Index 0 is audio, not message — must refuse rather than corrupt it.
+        const auto result = MsrpSipMediaInjector::answerMessageMediaAtIndex(
+            sdp, m_attrPool, 0, uri, MsrpSetup::Passive, {}, {}, 49500);
+        QVERIFY(!result.injected);
+        QVERIFY(!result.errorMessage.isEmpty());
+
+        char buf[4096];
+        const int printed = pjmedia_sdp_print(sdp, buf, sizeof(buf));
+        const QString wire = QString::fromLatin1(buf, printed);
+        QVERIFY(wire.contains(QStringLiteral("m=audio 49170 RTP/AVP 0"))); // untouched
+    }
+
+    void answerRejectsOutOfRangeIndex()
+    {
+        pjmedia_sdp_session *sdp = parseAnswerWithPlaceholder();
+        const MsrpUri uri = MsrpPath::buildUri(false, QStringLiteral("192.0.2.10"), 49500,
+                                                QStringLiteral("x"));
+        const auto result = MsrpSipMediaInjector::answerMessageMediaAtIndex(
+            sdp, m_attrPool, 99, uri, MsrpSetup::Passive, {}, {}, 49500);
+        QVERIFY(!result.injected);
+    }
+
 private:
     pjmedia_sdp_session *parseBase()
     {
@@ -162,6 +236,18 @@ private:
         // writable copy each time so tests don't interfere with each other.
         static char buf[2048];
         std::strncpy(buf, kBaseSdp, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        pjmedia_sdp_session *sdp = nullptr;
+        const pj_status_t st = pjmedia_sdp_parse(m_pool, buf, std::strlen(buf), &sdp);
+        if (st != PJ_SUCCESS)
+            return nullptr;
+        return sdp;
+    }
+
+    pjmedia_sdp_session *parseAnswerWithPlaceholder()
+    {
+        static char buf[2048];
+        std::strncpy(buf, kAnswerWithRejectedMessagePlaceholder, sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
         pjmedia_sdp_session *sdp = nullptr;
         const pj_status_t st = pjmedia_sdp_parse(m_pool, buf, std::strlen(buf), &sdp);

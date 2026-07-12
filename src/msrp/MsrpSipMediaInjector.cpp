@@ -9,25 +9,13 @@ namespace MsrpSipMediaInjector {
 
 #ifdef HAVE_PJSIP
 
-InjectResult injectMessageMedia(void *pjSdpSessionPtr, void *pjPoolPtr,
-                                 const MsrpUri &localUri, MsrpSetup setup,
-                                 const QStringList &acceptTypes,
-                                 const QStringList &acceptWrappedTypes,
-                                 int port)
+namespace {
+
+pjmedia_sdp_media *buildMessageMedia(pj_pool_t *pool, const MsrpUri &localUri, MsrpSetup setup,
+                                      const QStringList &acceptTypes,
+                                      const QStringList &acceptWrappedTypes,
+                                      int port)
 {
-    InjectResult result;
-
-    auto *sdp = static_cast<pjmedia_sdp_session *>(pjSdpSessionPtr);
-    auto *pool = static_cast<pj_pool_t *>(pjPoolPtr);
-    if (!sdp || !pool) {
-        result.errorMessage = QStringLiteral("null SDP session or pool");
-        return result;
-    }
-    if (sdp->media_count >= PJMEDIA_MAX_SDP_MEDIA) {
-        result.errorMessage = QStringLiteral("SDP media section limit reached");
-        return result;
-    }
-
     auto *m = PJ_POOL_ZALLOC_T(pool, pjmedia_sdp_media);
     m->desc.media = pj_str(const_cast<char *>("message"));
     m->desc.port = static_cast<pj_uint16_t>(port);
@@ -61,7 +49,62 @@ InjectResult injectMessageMedia(void *pjSdpSessionPtr, void *pjPoolPtr,
             addAttr("accept-wrapped-types", acceptWrappedTypes.join(QLatin1Char(' ')));
     }
 
-    sdp->media[sdp->media_count++] = m;
+    return m;
+}
+
+} // namespace
+
+InjectResult injectMessageMedia(void *pjSdpSessionPtr, void *pjPoolPtr,
+                                 const MsrpUri &localUri, MsrpSetup setup,
+                                 const QStringList &acceptTypes,
+                                 const QStringList &acceptWrappedTypes,
+                                 int port)
+{
+    InjectResult result;
+
+    auto *sdp = static_cast<pjmedia_sdp_session *>(pjSdpSessionPtr);
+    auto *pool = static_cast<pj_pool_t *>(pjPoolPtr);
+    if (!sdp || !pool) {
+        result.errorMessage = QStringLiteral("null SDP session or pool");
+        return result;
+    }
+    if (sdp->media_count >= PJMEDIA_MAX_SDP_MEDIA) {
+        result.errorMessage = QStringLiteral("SDP media section limit reached");
+        return result;
+    }
+
+    sdp->media[sdp->media_count++] =
+        buildMessageMedia(pool, localUri, setup, acceptTypes, acceptWrappedTypes, port);
+    result.injected = true;
+    return result;
+}
+
+InjectResult answerMessageMediaAtIndex(void *pjSdpSessionPtr, void *pjPoolPtr, int index,
+                                        const MsrpUri &localUri, MsrpSetup setup,
+                                        const QStringList &acceptTypes,
+                                        const QStringList &acceptWrappedTypes,
+                                        int port)
+{
+    InjectResult result;
+
+    auto *sdp = static_cast<pjmedia_sdp_session *>(pjSdpSessionPtr);
+    auto *pool = static_cast<pj_pool_t *>(pjPoolPtr);
+    if (!sdp || !pool) {
+        result.errorMessage = QStringLiteral("null SDP session or pool");
+        return result;
+    }
+    if (index < 0 || static_cast<unsigned>(index) >= sdp->media_count) {
+        result.errorMessage = QStringLiteral("answer media index out of range");
+        return result;
+    }
+    const pjmedia_sdp_media *existing = sdp->media[index];
+    if (!existing || pj_stricmp2(&existing->desc.media, "message") != 0) {
+        result.errorMessage = QStringLiteral("media at index is not an m=message section");
+        return result;
+    }
+
+    sdp->media[index] =
+        buildMessageMedia(pool, localUri, setup, acceptTypes, acceptWrappedTypes, port);
     result.injected = true;
     return result;
 }
@@ -88,6 +131,14 @@ QString resolveSessionConnectionHost(void *pjSdpSessionPtr)
 
 InjectResult injectMessageMedia(void *, void *, const MsrpUri &, MsrpSetup,
                                  const QStringList &, const QStringList &, int)
+{
+    InjectResult result;
+    result.errorMessage = QStringLiteral("PJSIP not enabled in this build");
+    return result;
+}
+
+InjectResult answerMessageMediaAtIndex(void *, void *, int, const MsrpUri &, MsrpSetup,
+                                        const QStringList &, const QStringList &, int)
 {
     InjectResult result;
     result.errorMessage = QStringLiteral("PJSIP not enabled in this build");

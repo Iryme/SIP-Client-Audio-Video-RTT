@@ -44,6 +44,27 @@ InjectResult injectMessageMedia(void *pjSdpSession, void *pjPool,
                                  const QStringList &acceptWrappedTypes,
                                  int port);
 
+// Task W102 Phase 2 (peer-initiated offer/answer): replaces the media
+// section already at `index` in a live pjmedia_sdp_session with a real,
+// accepted "m=message" answer. Unlike injectMessageMedia (which appends —
+// correct only for the offerer path), an SDP *answer* must keep the same
+// media count and ordering as the offer it responds to (RFC 3264 §6); by
+// the time onCallSdpCreated fires for the answer, PJSIP's own
+// pjmedia_sdp_neg has already cloned the offer's unmatched "message"
+// section into the answer as a rejected (port 0) placeholder at the
+// correct index (see pjmedia_sdp_neg.c's create_answer/media_used loop —
+// it never finds a local capability for a media type PJSUA's own media
+// manager doesn't know about, so it clones-and-deactivates). This
+// function overwrites that placeholder with our real accepted section.
+// Fails (does not modify the session) if `index` is out of range or the
+// media type at that index is not "message" — a defensive check against
+// ever answering into the wrong slot.
+InjectResult answerMessageMediaAtIndex(void *pjSdpSession, void *pjPool, int index,
+                                        const MsrpUri &localUri, MsrpSetup setup,
+                                        const QStringList &acceptTypes,
+                                        const QStringList &acceptWrappedTypes,
+                                        int port);
+
 // Reads the connection ("c=") address PJSIP already resolved for this SDP's
 // audio/video media (session-level first, else the first media section that
 // has one) — used as the advertised MSRP host when msrp/advertisedHost is

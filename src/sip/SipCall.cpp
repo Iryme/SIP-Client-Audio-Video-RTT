@@ -13,6 +13,7 @@
 #include "msrp/MsrpSipMediaInjector.h"
 #include "msrp/MsrpSession.h"
 #include "msrp/MsrpPath.h"
+#include "msrp/MsrpSdpNegotiator.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -152,6 +153,43 @@ static pjmedia_vid_dev_index preferredPjsipVideoCaptureDevice()
                 .arg(preferredName));
     } catch (...) {}
     return PJMEDIA_VID_INVALID_DEV;
+}
+
+// Task W102 Phase 2: extracts every "m=message" section from a live/remote
+// pjmedia_sdp_session, paired with its media index, reusing the already
+// vetted MsrpSdpNegotiator text parser (per-section text obtained via the
+// public pjmedia_sdp_media_print — no re-implementation of SDP attribute
+// parsing, no vendor edit). Used against prm.remSdp when this client is
+// answering a peer-initiated offer.
+struct IndexedMessageBlock
+{
+    int index{-1};
+    MsrpSdpNegotiator::MediaBlock block;
+};
+
+static QList<IndexedMessageBlock> extractRemoteMessageBlocks(const pjmedia_sdp_session *sdp)
+{
+    QList<IndexedMessageBlock> result;
+    if (!sdp)
+        return result;
+    char buf[4096];
+    for (unsigned i = 0; i < sdp->media_count; ++i) {
+        const pjmedia_sdp_media *m = sdp->media[i];
+        if (!m || pj_stricmp2(&m->desc.media, "message") != 0)
+            continue;
+        const int len = pjmedia_sdp_media_print(m, buf, sizeof(buf));
+        if (len <= 0)
+            continue;
+        const QString text = QString::fromLatin1(buf, len);
+        const auto blocks = MsrpSdpNegotiator::parseMessageBlocks(text);
+        if (blocks.isEmpty())
+            continue;
+        IndexedMessageBlock entry;
+        entry.index = static_cast<int>(i);
+        entry.block = blocks.first();
+        result.append(entry);
+    }
+    return result;
 }
 #endif
 
@@ -626,7 +664,7 @@ struct SipCall::Impl
                 }
 
                 if (!alreadyHasMessage) {
-                    m_impl->ensureMsrpSessionForOutgoingSdp();
+                    m_impl->startMsrpPassiveListener();
                     if (!m_impl->msrpSdpPool)
                         m_impl->msrpSdpPool = pjsua_pool_create("msrp-sdp", 2048, 2048);
 
@@ -679,6 +717,128 @@ struct SipCall::Impl
                             QStringLiteral("MSRP m=message injection failed: callId=%1 reason=%2")
                                 .arg(m_impl->q ? m_impl->q->callId() : QString())
                                 .arg(injectResult.errorMessage));
+                    }
+                }
+            }
+
+            // Task W102 Phase 2: answer a peer-initiated m=message offer.
+            // By this point PJSIP's own SDP negotiator (pjmedia_sdp_neg.c
+            // create_answer) has already cloned every offered "message"
+            // section into prm.sdp as a rejected (port 0) placeholder at
+            // the SAME index (it never finds a local media capability for
+            // a type PJSUA's media manager doesn't know about — see
+            // MsrpSipMediaInjector::answerMessageMediaAtIndex's comment).
+            // We only need to look at prm.remSdp (the offer) to decide
+            // whether to keep that rejection or replace it with a real
+            // accepted section — audio/video/RTT sections elsewhere in the
+            // same SDP are untouched either way, so rejecting or accepting
+            // MSRP here never affects the rest of the call.
+            if (!isOfferer && m_impl
+                    && AppSettings::enableMsrp()
+                    && (AppSettings::enableMsrpTcp() || AppSettings::enableMsrpTls())) {
+                const auto *remSdp = static_cast<const pjmedia_sdp_session *>(prm.remSdp.pjSdpSession);
+                const auto remoteBlocks = extractRemoteMessageBlocks(remSdp);
+                bool answeredOne = m_impl->msrpSession != nullptr; // single-session-per-call model (W101)
+                for (const auto &entry : remoteBlocks) {
+                    if (entry.block.rejected || entry.block.parseStatus == MsrpParseStatus::Error)
+                        continue; // nothing to answer — leave PJSIP's own rejection in place
+                    if (answeredOne) {
+                        // Task W102 known limitation (documented, not silently
+                        // dropped): this client's SipCall owns exactly one live
+                        // MsrpSession per call. A second simultaneous
+                        // m=message offer in the same SDP is explicitly
+                        // rejected (left at port 0) rather than risking two
+                        // sessions being multiplexed onto one mapping.
+                        Logger::instance().warn(LogCategory::Sip,
+                            QStringLiteral("Rejecting additional m=message section (index=%1): "
+                                           "only one live MSRP session per call is supported")
+                                .arg(entry.index));
+                        continue;
+                    }
+
+                    if (m_impl->msrpSession) {
+                        // Renegotiation (re-INVITE/UPDATE) of an already-accepted
+                        // MSRP session: keep the existing session/role, just
+                        // re-answer at whatever index this offer placed it at.
+                    } else {
+                        // Task W102 Phase 3: choose OUR role as the complement
+                        // of what the remote proposed — this structurally
+                        // rules out active/active and passive/passive
+                        // collisions, since we never independently pick a
+                        // fixed role; we only ever mirror or default.
+                        if (entry.block.setup == MsrpSetup::Active) {
+                            m_impl->startMsrpPassiveListener();
+                        } else if (entry.block.setup == MsrpSetup::Passive) {
+                            if (!m_impl->startMsrpActiveConnect(entry.block.path)) {
+                                Logger::instance().warn(LogCategory::Sip,
+                                    QStringLiteral("Remote requested MSRP active connect (setup:passive) "
+                                                    "but no usable remote path was offered (index=%1)")
+                                        .arg(entry.index));
+                            }
+                        } else {
+                            // actpass or missing/unrecognized: default to
+                            // passive (documented choice — this client always
+                            // has a working passive-listen code path).
+                            m_impl->startMsrpPassiveListener();
+                        }
+                    }
+
+                    if (!m_impl->msrpSession) {
+                        continue; // listener/connect failed — leave the port-0 rejection
+                    }
+
+                    if (!m_impl->msrpSdpPool)
+                        m_impl->msrpSdpPool = pjsua_pool_create("msrp-sdp", 2048, 2048);
+
+                    const QStringList acceptTypes = AppSettings::msrpAcceptTypes()
+                        .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                    const QStringList acceptWrappedTypes = AppSettings::msrpAcceptWrappedTypes()
+                        .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+
+                    const MsrpSetup ourSetup = (entry.block.setup == MsrpSetup::Active)
+                        ? MsrpSetup::Passive
+                        : (entry.block.setup == MsrpSetup::Passive ? MsrpSetup::Active : MsrpSetup::Passive);
+
+                    // For the active-connect case the "port" we answer with is
+                    // purely informational (see startMsrpActiveConnect); for
+                    // passive it's the real bound listener port.
+                    const int answerPort = (ourSetup == MsrpSetup::Active)
+                        ? (m_impl->msrpLocalUri.port > 0 ? m_impl->msrpLocalUri.port : 2855)
+                        : m_impl->msrpSession->transportLocalPort();
+
+                    MsrpUri advertisedUri = m_impl->msrpLocalUri;
+                    if (ourSetup == MsrpSetup::Passive) {
+                        QString host = AppSettings::msrpAdvertisedHost();
+                        if (host.isEmpty())
+                            host = MsrpSipMediaInjector::resolveSessionConnectionHost(prm.sdp.pjSdpSession);
+                        if (!host.isEmpty())
+                            advertisedUri.host = host;
+                    }
+
+                    const auto answerResult = MsrpSipMediaInjector::answerMessageMediaAtIndex(
+                        prm.sdp.pjSdpSession, m_impl->msrpSdpPool, entry.index,
+                        advertisedUri, ourSetup, acceptTypes, acceptWrappedTypes, answerPort);
+
+                    if (answerResult.injected) {
+                        answeredOne = true;
+                        m_impl->msrpSession->setMediaIndex(entry.index);
+                        try {
+                            m_impl->msrpSession->setSipHeaderCallId(
+                                QString::fromStdString(getInfo().callIdString));
+                        } catch (...) {
+                        }
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("MSRP m=message answered (peer-initiated offer): callId=%1 "
+                                           "index=%2 ourRole=%3 remoteRole=%4")
+                                .arg(m_impl->q ? m_impl->q->callId() : QString())
+                                .arg(entry.index)
+                                .arg(msrpSetupToString(ourSetup))
+                                .arg(msrpSetupToString(entry.block.setup)));
+                    } else {
+                        Logger::instance().warn(LogCategory::Sip,
+                            QStringLiteral("MSRP m=message answer injection failed (index=%1): %2")
+                                .arg(entry.index)
+                                .arg(answerResult.errorMessage));
                     }
                 }
             }
@@ -957,10 +1117,17 @@ struct SipCall::Impl
     // msrpSession null and msrpListenerFailed set so the caller offers
     // m=message with port 0 (a valid "not available" answer, RFC 3264)
     // instead of an offer nobody could ever connect to.
-    void ensureMsrpSessionForOutgoingSdp()
+    // Task W102 Phase 2/3 refactor: creation/wiring of the MsrpSession
+    // object is split from actually starting a transport, so the same
+    // object-creation code path serves both this call's own offer (always
+    // passive-listens — see startMsrpPassiveListener) and an incoming
+    // peer-initiated offer we are answering (role depends on the remote's
+    // negotiated a=setup — see startMsrpPassiveListener/startMsrpActiveConnect
+    // in onCallSdpCreated's answer branch).
+    void createMsrpSessionObject()
     {
-        if (msrpSession || msrpListenerFailed)
-            return; // already started, or already tried and failed this call
+        if (msrpSession)
+            return;
 
         const QString sessionKey = q ? q->callId() : QUuid::createUuid().toString();
         msrpSession = new MsrpSession(sessionKey, nullptr);
@@ -989,6 +1156,22 @@ struct SipCall::Impl
         msrpSession->setMaxMessageBytes(AppSettings::msrpMaxMessageBytes());
         msrpSession->setTlsVerifyPeer(AppSettings::msrpTlsVerifyPeer());
         msrpSession->setTlsCaCertificatePath(AppSettings::msrpTlsCaPath());
+    }
+
+    // Starts this call's own MSRP passive listener BEFORE the SDP offer/
+    // answer that advertises it is built. Idempotent: a re-INVITE/UPDATE
+    // later in the same call reuses the same listener/session rather than
+    // opening a second one. On failure, leaves msrpSession null and
+    // msrpListenerFailed set so the caller offers/answers m=message with
+    // port 0 (a valid "not available" answer, RFC 3264) instead of a
+    // section nobody could ever connect to.
+    void startMsrpPassiveListener()
+    {
+        if (msrpSession || msrpListenerFailed)
+            return; // already started, or already tried and failed this call
+
+        createMsrpSessionObject();
+        const QString sessionKey = q ? q->callId() : msrpSession->info().sessionKey;
 
         const bool useTls = AppSettings::enableMsrpTls();
         const QString bindAddress = AppSettings::msrpLocalBindAddress().isEmpty()
@@ -1022,8 +1205,49 @@ struct SipCall::Impl
 
         msrpLocalUri = MsrpPath::buildUri(useTls, bindAddress, boundPort, localSessionId);
         Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("MSRP passive listener started before SDP offer: callId=%1 port=%2 tls=%3")
+            QStringLiteral("MSRP passive listener started: callId=%1 port=%2 tls=%3")
                 .arg(sessionKey).arg(boundPort).arg(useTls));
+    }
+
+    // Task W102 Phase 2/3: used only when answering a peer-initiated
+    // m=message offer whose negotiated setup role assigns *us* the active
+    // (connecting) side — i.e. the remote offered "a=setup:passive". The
+    // remote's own advertised a=path (already parsed into `remotePath`) is
+    // where we connect to; our own advertised path uses an unspecified
+    // port (RFC 4975 default 2855/2856) rather than probing/claiming a
+    // real listening port, because nothing needs to dial back into us for
+    // *this* session — the only connection this session ever uses is the
+    // one we are about to open. This is a deliberate, documented protocol
+    // choice, not a fabricated listener (see docs/msrp-offer-answer.md).
+    bool startMsrpActiveConnect(const QList<MsrpUri> &remotePath)
+    {
+        if (msrpSession || msrpListenerFailed)
+            return false;
+        if (remotePath.isEmpty() || !remotePath.first().ok) {
+            msrpListenerFailed = true;
+            return false;
+        }
+
+        createMsrpSessionObject();
+        const QString sessionKey = q ? q->callId() : msrpSession->info().sessionKey;
+
+        const bool useTls = remotePath.first().transportProtocol() == MsrpTransportProtocol::Tls;
+        const QString localSessionId = MsrpPath::generateSessionId();
+        QString host = AppSettings::msrpAdvertisedHost();
+        if (host.isEmpty())
+            host = remotePath.first().host; // best available hint until c= is resolved by caller
+
+        msrpSession->setLocalUri(MsrpPath::buildUri(useTls, host, /*port*/ -1, localSessionId));
+        msrpSession->setRemotePath(remotePath);
+        msrpSession->connectAsActive(AppSettings::msrpConnectionTimeoutMs());
+
+        msrpLocalUri = msrpSession->info().localSessionId.isEmpty()
+            ? MsrpPath::buildUri(useTls, host, -1, localSessionId)
+            : MsrpPath::buildUri(useTls, host, -1, msrpSession->info().localSessionId);
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("MSRP active connect started (answering as active): callId=%1 remoteHost=%2 remotePort=%3 tls=%4")
+                .arg(sessionKey).arg(remotePath.first().host).arg(remotePath.first().port).arg(useTls));
+        return true;
     }
 
     PjCall             *pjCall{nullptr};
