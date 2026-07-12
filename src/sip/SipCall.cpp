@@ -10,11 +10,15 @@
 #include "media/VideoQualityManager.h"
 #include "media/RtpStats.h"
 #include "msrp/MsrpSipIntegration.h"
+#include "msrp/MsrpSipMediaInjector.h"
+#include "msrp/MsrpSession.h"
+#include "msrp/MsrpPath.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
 #include <pjsua-lib/pjsua.h>
 #include <pj/errno.h>
+#include <pj/pool.h>
 #endif
 
 #if defined(HAVE_PJSIP) && defined(_WIN32)
@@ -595,30 +599,97 @@ struct SipCall::Impl
 
         void onCallSdpCreated(pj::OnCallSdpCreatedParam &prm) override
         {
-            // Extract m= lines from the created SDP offer/answer so callers can
-            // verify that m=audio and m=video are both present without needing a
-            // live SIP trace capture.
-            QStringList mLines;
-            const QString sdp = QString::fromStdString(prm.sdp.wholeSdp);
-            for (const QString &line : sdp.split(QLatin1Char('\n'))) {
-                const QString trimmed = line.trimmed();
-                if (trimmed.startsWith(QLatin1String("m=")))
-                    mLines.append(trimmed);
-            }
-            // wholeSdp is empty in some pjsua2 callback paths — fall back to
-            // the parsed SDP session so this log stays useful.
-            if (mLines.isEmpty()) {
+            // Task W101 Phase 2: this call is the SDP *offerer* exactly when
+            // no remote offer is present yet — pjsua2 leaves remSdp empty in
+            // that case (see OnCallSdpCreatedParam's doc comment). Only the
+            // offerer path is wired here (initial INVITE and any re-INVITE/
+            // UPDATE this client itself originates); answering a
+            // peer-initiated m=message offer is not yet implemented — see
+            // docs/msrp-live-sdp-integration.md for why (PJSUA's own
+            // handling of media types it doesn't recognize needs a separate
+            // audit before an automatic accept/reject splice at the
+            // matching index can be trusted not to corrupt the SDP).
+            const bool isOfferer = prm.remSdp.wholeSdp.empty()
+                                 && prm.remSdp.pjSdpSession == nullptr;
+            if (isOfferer && m_impl
+                    && AppSettings::enableMsrp()
+                    && (AppSettings::enableMsrpTcp() || AppSettings::enableMsrpTls())) {
+                bool alreadyHasMessage = false;
                 if (const auto *s = static_cast<const pjmedia_sdp_session *>(
                         prm.sdp.pjSdpSession)) {
                     for (unsigned i = 0; i < s->media_count; ++i) {
-                        const pjmedia_sdp_media *m = s->media[i];
-                        if (!m)
-                            continue;
-                        mLines.append(QStringLiteral("m=%1 %2")
-                            .arg(QString::fromLatin1(m->desc.media.ptr,
-                                     static_cast<int>(m->desc.media.slen)))
-                            .arg(m->desc.port));
+                        if (s->media[i] && pj_stricmp2(&s->media[i]->desc.media, "message") == 0) {
+                            alreadyHasMessage = true;
+                            break;
+                        }
                     }
+                }
+
+                if (!alreadyHasMessage) {
+                    m_impl->ensureMsrpSessionForOutgoingSdp();
+                    if (!m_impl->msrpSdpPool)
+                        m_impl->msrpSdpPool = pjsua_pool_create("msrp-sdp", 2048, 2048);
+
+                    const QStringList acceptTypes = AppSettings::msrpAcceptTypes()
+                        .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                    const QStringList acceptWrappedTypes = AppSettings::msrpAcceptWrappedTypes()
+                        .split(QLatin1Char(' '), Qt::SkipEmptyParts);
+
+                    int advertisedPort = 0;
+                    MsrpUri advertisedUri = m_impl->msrpLocalUri;
+                    if (m_impl->msrpSession && !m_impl->msrpListenerFailed) {
+                        advertisedPort = m_impl->msrpSession->transportLocalPort();
+                        QString host = AppSettings::msrpAdvertisedHost();
+                        if (host.isEmpty())
+                            host = MsrpSipMediaInjector::resolveSessionConnectionHost(prm.sdp.pjSdpSession);
+                        if (!host.isEmpty())
+                            advertisedUri.host = host;
+                    }
+
+                    const auto injectResult = MsrpSipMediaInjector::injectMessageMedia(
+                        prm.sdp.pjSdpSession, m_impl->msrpSdpPool, advertisedUri,
+                        MsrpSetup::ActPass, acceptTypes, acceptWrappedTypes, advertisedPort);
+
+                    if (injectResult.injected) {
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("MSRP m=message injected into outbound SDP: callId=%1 port=%2 host=%3")
+                                .arg(m_impl->q ? m_impl->q->callId() : QString())
+                                .arg(advertisedPort)
+                                .arg(advertisedUri.host));
+                    } else {
+                        Logger::instance().warn(LogCategory::Sip,
+                            QStringLiteral("MSRP m=message injection failed: callId=%1 reason=%2")
+                                .arg(m_impl->q ? m_impl->q->callId() : QString())
+                                .arg(injectResult.errorMessage));
+                    }
+                }
+            }
+
+            // Extract m= lines from the created SDP offer/answer so callers can
+            // verify that m=audio/m=video/m=message are present without needing
+            // a live SIP trace capture. Prefer the parsed SDP session (which now
+            // reflects our own pjSdpSession-level MSRP injection above) over
+            // wholeSdp — wholeSdp is a separate, size-capped text snapshot
+            // (PJSUA2_MAX_SDP_BUF_LEN) that our injection deliberately never
+            // touches, and is empty in some pjsua2 callback paths anyway.
+            QStringList mLines;
+            if (const auto *s = static_cast<const pjmedia_sdp_session *>(prm.sdp.pjSdpSession)) {
+                for (unsigned i = 0; i < s->media_count; ++i) {
+                    const pjmedia_sdp_media *m = s->media[i];
+                    if (!m)
+                        continue;
+                    mLines.append(QStringLiteral("m=%1 %2")
+                        .arg(QString::fromLatin1(m->desc.media.ptr,
+                                 static_cast<int>(m->desc.media.slen)))
+                        .arg(m->desc.port));
+                }
+            }
+            const QString sdp = QString::fromStdString(prm.sdp.wholeSdp);
+            if (mLines.isEmpty()) {
+                for (const QString &line : sdp.split(QLatin1Char('\n'))) {
+                    const QString trimmed = line.trimmed();
+                    if (trimmed.startsWith(QLatin1String("m=")))
+                        mLines.append(trimmed);
                 }
             }
             Logger::instance().info(LogCategory::Media,
@@ -627,10 +698,9 @@ struct SipCall::Impl
                     .arg(mLines.isEmpty() ? QStringLiteral("(none)")
                                           : mLines.join(QStringLiteral(", "))));
 
-            // Task W100 (MSRP Foundation): read-only detection only — never
-            // injects/edits m=message into this already-created SDP (see
-            // MsrpSipIntegration.h for why). Surfaces MSRP presence in a
-            // live call's SDP to the MSRP page/diagnostics.
+            // Task W100 (MSRP Foundation): still-useful read-only detection for
+            // the peer's own SDP (e.g. remote-offered m=message on the answer
+            // path, which this task does not yet act on — see comment above).
             if (m_impl && m_impl->q)
                 MsrpSipIntegration::detectFromSdp(sdp, m_impl->q->callId());
         }
@@ -860,6 +930,67 @@ struct SipCall::Impl
                 .arg(videoCapDev).arg(st));
     }
 
+    // Task W101 Phase 2/3: lazily starts this call's own MSRP passive
+    // listener BEFORE the SDP offer/answer that advertises it is built —
+    // called from PjCall::onCallSdpCreated, which fires while the SDP is
+    // still being composed (i.e. strictly before anything is transmitted).
+    // Idempotent: a re-INVITE/UPDATE later in the same call reuses the same
+    // listener/session rather than opening a second one. On failure, leaves
+    // msrpSession null and msrpListenerFailed set so the caller offers
+    // m=message with port 0 (a valid "not available" answer, RFC 3264)
+    // instead of an offer nobody could ever connect to.
+    void ensureMsrpSessionForOutgoingSdp()
+    {
+        if (msrpSession || msrpListenerFailed)
+            return; // already started, or already tried and failed this call
+
+        const QString sessionKey = q ? q->callId() : QUuid::createUuid().toString();
+        msrpSession = new MsrpSession(sessionKey, nullptr);
+        if (q)
+            msrpSession->setSipCallId(q->callId());
+        msrpSession->setChunkSizeBytes(AppSettings::msrpChunkSizeBytes());
+        msrpSession->setRequestReports(AppSettings::msrpRequestReports());
+        msrpSession->setMaxFrameBytes(AppSettings::msrpMaxFrameBytes());
+        msrpSession->setMaxMessageBytes(AppSettings::msrpMaxMessageBytes());
+        msrpSession->setTlsVerifyPeer(AppSettings::msrpTlsVerifyPeer());
+        msrpSession->setTlsCaCertificatePath(AppSettings::msrpTlsCaPath());
+
+        const bool useTls = AppSettings::enableMsrpTls();
+        const QString bindAddress = AppSettings::msrpLocalBindAddress().isEmpty()
+            ? QStringLiteral("0.0.0.0") : AppSettings::msrpLocalBindAddress();
+        const int requestedPort = AppSettings::msrpPortMode() == QStringLiteral("fixed")
+            ? AppSettings::msrpFixedPort() : 0;
+
+        // Session-id is generated once, up front — random/unique per task
+        // requirement — and reused for both the transport's own identity
+        // and the advertised a=path so they never disagree.
+        const QString localSessionId = MsrpPath::generateSessionId();
+
+        // listenAsPassive() binds a QTcpServer synchronously — by the time
+        // this call returns, transportLocalPort() reflects the real bound
+        // port, so the SDP built right after this call always advertises a
+        // listener that is genuinely already up (task requirement: "portul
+        // advertised trebuie sa corespunda listener-ului real").
+        msrpSession->setLocalUri(MsrpPath::buildUri(useTls, bindAddress, requestedPort, localSessionId));
+        msrpSession->listenAsPassive(bindAddress, AppSettings::msrpConnectionTimeoutMs());
+
+        const int boundPort = msrpSession->transportLocalPort();
+        if (boundPort <= 0) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("MSRP passive listener failed to bind; offering m=message with port 0: callId=%1")
+                    .arg(sessionKey));
+            delete msrpSession;
+            msrpSession = nullptr;
+            msrpListenerFailed = true;
+            return;
+        }
+
+        msrpLocalUri = MsrpPath::buildUri(useTls, bindAddress, boundPort, localSessionId);
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("MSRP passive listener started before SDP offer: callId=%1 port=%2 tls=%3")
+                .arg(sessionKey).arg(boundPort).arg(useTls));
+    }
+
     PjCall             *pjCall{nullptr};
     pj::Call           *earlyCall{nullptr};           // EarlyCall from SipAccount; freed after pjCall
     void               *pjAccountHandle{nullptr};     // pj::Account* cast to void*
@@ -875,6 +1006,16 @@ struct SipCall::Impl
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
     bool                videoActiveBeforeHold{false};  // video was negotiated when local hold was sent
     bool                rttActiveBeforeHold{false};    // T.140 text was active when local hold was sent
+
+    // Task W101 (Live MSRP SIP Integration): pj_pool_t* (via pjsua_pool_create,
+    // public API — not the dialog's own pool, which pjsua2 does not expose).
+    // Owns the memory for every m=message attribute spliced into this call's
+    // SDP; must outlive any SDP that references it, so it lives for the
+    // whole call and is released in ~SipCall.
+    void        *msrpSdpPool{nullptr};
+    MsrpSession *msrpSession{nullptr};   // this call's own MSRP listener/session, lazily started
+    MsrpUri      msrpLocalUri;           // this call's advertised msrp(s):// URI once the listener is up
+    bool         msrpListenerFailed{false}; // true once we've tried and failed — offer m=message with port 0
 #endif
 };
 
@@ -926,6 +1067,18 @@ SipCall::~SipCall()
     // unregistering pjCall and silencing all remaining PJSIP callbacks.
     delete m_impl->earlyCall;
     m_impl->earlyCall = nullptr;
+
+    // Task W101: tear down this call's own MSRP listener/session before the
+    // pool its advertised SDP attributes were allocated from is released —
+    // the session itself doesn't reference the pool, but closing it first
+    // keeps teardown order predictable (transport closed → then SDP memory
+    // freed, never the reverse).
+    delete m_impl->msrpSession;
+    m_impl->msrpSession = nullptr;
+    if (m_impl->msrpSdpPool) {
+        pj_pool_release(static_cast<pj_pool_t *>(m_impl->msrpSdpPool));
+        m_impl->msrpSdpPool = nullptr;
+    }
 #endif
     delete m_impl;
 }

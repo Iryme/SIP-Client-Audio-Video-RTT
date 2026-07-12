@@ -60,12 +60,27 @@ set(CALL_SOURCES
     # only uses PresenceInfo.h, header-only).
     ${CMAKE_SOURCE_DIR}/src/sip/PresenceStore.cpp
     # Task W100: SipCall.cpp's onCallSdpCreated calls
-    # MsrpSipIntegration::detectFromSdp() directly (read-only SDP detection,
-    # never live SDP injection — see MsrpSipIntegration.h).
+    # MsrpSipIntegration::detectFromSdp() directly (read-only SDP detection).
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSipIntegration.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSdpNegotiator.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpPath.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSessionStore.cpp
+    # Task W101: SipCall.cpp's onCallSdpCreated now also splices a real
+    # m=message section into the live pjmedia_sdp_session via
+    # MsrpSipMediaInjector, and Impl::ensureMsrpSessionForOutgoingSdp() owns
+    # a real MsrpSession (passive listener) per call — pulls in the full
+    # MSRP session dependency chain.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSipMediaInjector.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransport.h
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSession.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFrameParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFrameSerializer.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpChunkAssembler.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpMessageChunker.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransactionStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDiagnosticsStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -280,6 +295,7 @@ target_link_libraries(test_registration_state_machine PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 
 add_test(NAME test_registration_state_machine COMMAND test_registration_state_machine)
@@ -312,6 +328,7 @@ target_link_libraries(test_sip_manager PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 if(WIN32)
     target_link_libraries(test_sip_manager PRIVATE Advapi32)
@@ -347,6 +364,7 @@ target_link_libraries(test_registration_retry PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 if(WIN32)
     target_link_libraries(test_registration_retry PRIVATE Advapi32)
@@ -382,6 +400,7 @@ target_link_libraries(test_registration_expiry PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 if(WIN32)
     target_link_libraries(test_registration_expiry PRIVATE Advapi32)
@@ -417,6 +436,7 @@ target_link_libraries(test_profile_switch PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 if(WIN32)
     target_link_libraries(test_profile_switch PRIVATE Advapi32)
@@ -539,6 +559,7 @@ target_link_libraries(test_diagnostics_bundle PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 if(WIN32)
     target_link_libraries(test_diagnostics_bundle PRIVATE Advapi32)
@@ -602,6 +623,7 @@ target_link_libraries(test_audio_media PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 
 add_test(NAME test_audio_media COMMAND test_audio_media)
@@ -623,6 +645,7 @@ target_link_libraries(test_video_media PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 
 add_test(NAME test_video_media COMMAND test_video_media)
@@ -665,6 +688,7 @@ target_link_libraries(test_rtt_session PRIVATE
     Qt6::Core
     Qt6::Test
     Qt6::Multimedia
+    Qt6::Network
 )
 
 add_test(NAME test_rtt_session COMMAND test_rtt_session)
@@ -1275,6 +1299,34 @@ endif()
 
 add_test(NAME test_windows_trace_json_export COMMAND test_windows_trace_json_export)
 
+# ---- test_msrp_sip_media_injector (Task W101, Phase 2) ---------------------
+# Proves MsrpSipMediaInjector writes a real "m=message" section into an
+# actual pjmedia_sdp_session and that pjmedia_sdp_print() emits it on the
+# wire — not just an internal Qt model. Needs real pjmedia/pjlib, so it only
+# exists when ENABLE_PJSIP=ON.
+if(ENABLE_PJSIP AND PJSIP_FOUND)
+    qt_add_executable(test_msrp_sip_media_injector
+        test_msrp_sip_media_injector.cpp
+        ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSipMediaInjector.cpp
+        ${CMAKE_SOURCE_DIR}/src/msrp/MsrpPath.cpp
+    )
+    target_include_directories(test_msrp_sip_media_injector PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_compile_definitions(test_msrp_sip_media_injector PRIVATE PJMEDIA_HAS_VIDEO=1)
+    target_link_libraries(test_msrp_sip_media_injector PRIVATE
+        Qt6::Core
+        Qt6::Test
+        PJSIP::pjsua2
+        "${CMAKE_SOURCE_DIR}/.deps/pjsip-msvc-install/bin/pjlib.lib"
+    )
+    if(WIN32)
+        target_link_libraries(test_msrp_sip_media_injector PRIVATE ws2_32)
+    endif()
+    if(TARGET Pj::pjlib)
+        target_link_libraries(test_msrp_sip_media_injector PRIVATE Pj::pjlib)
+    endif()
+    add_test(NAME test_msrp_sip_media_injector COMMAND test_msrp_sip_media_injector)
+endif()
+
 # PjsipGdiRenderer.cpp (included via CALL_SOURCES on Windows) needs Qt6::Widgets and Qt6::Gui.
 if(CALL_SOURCES_EXTRA_LIBS)
     foreach(_call_test IN ITEMS
@@ -1588,6 +1640,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
     target_link_libraries(live_registration_probe PRIVATE
         Qt6::Core
         Qt6::Multimedia
+        Qt6::Network
         PJSIP::pjsua2
         ${CALL_SOURCES_EXTRA_LIBS}
     )
@@ -1621,6 +1674,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
     target_link_libraries(live_audio_call_probe PRIVATE
         Qt6::Core
         Qt6::Multimedia
+        Qt6::Network
         PJSIP::pjsua2
         ${CALL_SOURCES_EXTRA_LIBS}
     )
@@ -1660,6 +1714,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
     target_link_libraries(live_emergency_call_probe PRIVATE
         Qt6::Core
         Qt6::Multimedia
+        Qt6::Network
         PJSIP::pjsua2
         ${CALL_SOURCES_EXTRA_LIBS}
     )

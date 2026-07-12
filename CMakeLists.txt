@@ -161,6 +161,7 @@ set(SOURCES
     src/msrp/MsrpPayloadDispatcher.cpp
     src/msrp/MessagingTransportPolicy.cpp
     src/msrp/MsrpSipIntegration.cpp
+    src/msrp/MsrpSipMediaInjector.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
