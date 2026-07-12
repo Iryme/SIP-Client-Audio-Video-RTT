@@ -656,6 +656,24 @@ struct SipCall::Impl
                                 .arg(m_impl->q ? m_impl->q->callId() : QString())
                                 .arg(advertisedPort)
                                 .arg(advertisedUri.host));
+
+                        // Task W101 Phase 4: SIP<->MSRP dialog mapping — record
+                        // the real SIP Call-ID (distinct from this app's internal
+                        // callId()) and the media index this m=message section
+                        // landed at, so the session can be correlated by more
+                        // than IP/port even when a call renegotiates media order.
+                        if (m_impl->msrpSession) {
+                            if (const auto *s = static_cast<const pjmedia_sdp_session *>(prm.sdp.pjSdpSession))
+                                m_impl->msrpSession->setMediaIndex(static_cast<int>(s->media_count) - 1);
+                            try {
+                                m_impl->msrpSession->setSipHeaderCallId(
+                                    QString::fromStdString(getInfo().callIdString));
+                            } catch (...) {
+                                // getInfo() can throw during teardown races (see
+                                // isSessionTerminatedError elsewhere in this
+                                // file) — the mapping simply stays unset.
+                            }
+                        }
                     } else {
                         Logger::instance().warn(LogCategory::Sip,
                             QStringLiteral("MSRP m=message injection failed: callId=%1 reason=%2")

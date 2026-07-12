@@ -65,6 +65,8 @@ void MsrpSession::setRemotePath(const QList<MsrpUri> &path)
         m_info.remoteSessionId = path.first().sessionId;
 }
 void MsrpSession::setSipCallId(const QString &callId) { m_info.sipCallId = callId; }
+void MsrpSession::setSipHeaderCallId(const QString &callId) { m_info.sipHeaderCallId = callId; publishInfo(); }
+void MsrpSession::setMediaIndex(int index) { m_info.mediaIndex = index; publishInfo(); }
 void MsrpSession::setChunkSizeBytes(int n) { m_chunkSizeBytes = n; }
 void MsrpSession::setRequestReports(bool on) { m_requestReports = on; }
 void MsrpSession::setMaxFrameBytes(int n) { m_parser = MsrpFrameParser(n); }

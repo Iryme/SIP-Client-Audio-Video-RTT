@@ -28,6 +28,8 @@ public:
     void setLocalUri(const MsrpUri &uri);
     void setRemotePath(const QList<MsrpUri> &path);
     void setSipCallId(const QString &callId);
+    void setSipHeaderCallId(const QString &callId);
+    void setMediaIndex(int index);
     void setChunkSizeBytes(int n);
     void setRequestReports(bool on);
     void setMaxFrameBytes(int n);
