@@ -1303,6 +1303,25 @@ endif()
 
 add_test(NAME test_windows_trace_json_export COMMAND test_windows_trace_json_export)
 
+# ---- test_trace_comparator (Task W102 Phase 11) ---------------------------
+# TraceComparator.cpp has no dependencies beyond QtCore/QtJson — a minimal,
+# self-contained target rather than pulling in the full messaging pipeline.
+qt_add_executable(test_trace_comparator
+    test_trace_comparator.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/TraceComparator.cpp
+)
+
+target_include_directories(test_trace_comparator PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_trace_comparator PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_trace_comparator COMMAND test_trace_comparator)
+
 # ---- test_msrp_sip_media_injector (Task W101, Phase 2) ---------------------
 # Proves MsrpSipMediaInjector writes a real "m=message" section into an
 # actual pjmedia_sdp_session and that pjmedia_sdp_print() emits it on the

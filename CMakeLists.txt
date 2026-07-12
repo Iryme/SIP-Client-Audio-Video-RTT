@@ -138,6 +138,7 @@ set(SOURCES
     src/sip/SipMessageComposer.cpp
     src/sip/MessageHistoryStore.cpp
     src/sip/InteropTraceExporter.cpp
+    src/sip/TraceComparator.cpp
     src/sip/PidfParser.cpp
     src/sip/PresenceStore.cpp
     src/sip/PresenceDiagnosticsStore.cpp
