@@ -9,6 +9,7 @@
 #include "media/MediaDeviceSelectionModel.h"
 #include "media/VideoQualityManager.h"
 #include "media/RtpStats.h"
+#include "msrp/MsrpSipIntegration.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -625,6 +626,13 @@ struct SipCall::Impl
                     .arg(mLines.size())
                     .arg(mLines.isEmpty() ? QStringLiteral("(none)")
                                           : mLines.join(QStringLiteral(", "))));
+
+            // Task W100 (MSRP Foundation): read-only detection only — never
+            // injects/edits m=message into this already-created SDP (see
+            // MsrpSipIntegration.h for why). Surfaces MSRP presence in a
+            // live call's SDP to the MSRP page/diagnostics.
+            if (m_impl && m_impl->q)
+                MsrpSipIntegration::detectFromSdp(sdp, m_impl->q->callId());
         }
 
         void onCallRxText(pj::OnCallRxTextParam &prm) override
