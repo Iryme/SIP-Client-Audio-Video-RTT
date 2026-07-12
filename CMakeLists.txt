@@ -163,6 +163,8 @@ set(SOURCES
     src/msrp/MessagingTransportPolicy.cpp
     src/msrp/MsrpSipIntegration.cpp
     src/msrp/MsrpSipMediaInjector.cpp
+    src/msrp/MsrpFileSelector.cpp
+    src/msrp/MsrpFileReceiver.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -318,6 +320,8 @@ set(HEADERS
     src/msrp/MsrpPayloadDispatcher.h
     src/msrp/MessagingTransportPolicy.h
     src/msrp/MsrpSipIntegration.h
+    src/msrp/MsrpFileSelector.h
+    src/msrp/MsrpFileReceiver.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h

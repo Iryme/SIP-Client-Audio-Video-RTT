@@ -26,6 +26,9 @@ public:
     {
         QString messageId;
         QString contentType;
+        // RFC 5547 file transfer (Task W104): captured from the first chunk,
+        // same as contentType — empty for ordinary chat messages.
+        QString contentDisposition;
         QByteArray body;
         bool complete{false};
         bool aborted{false};
@@ -62,6 +65,7 @@ private:
         QByteArray data;
         qint64 total{-1};
         QString contentType;
+        QString contentDisposition;
         QDateTime lastActivity;
         QSet<qint64> receivedStarts;
         qint64 bytesReceived{0};

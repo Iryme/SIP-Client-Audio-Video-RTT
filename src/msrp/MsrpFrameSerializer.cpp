@@ -31,6 +31,7 @@ QByteArray serialize(const MsrpFrame &frame, bool *ok)
 
     if (!headerValueSafe(frame.toPath) || !headerValueSafe(frame.fromPath)
         || !headerValueSafe(frame.messageId) || !headerValueSafe(frame.contentType)
+        || !headerValueSafe(frame.contentDisposition)
         || !headerValueSafe(frame.successReport) || !headerValueSafe(frame.failureReport)
         || !headerValueSafe(frame.status) || !headerValueSafe(frame.method))
         return QByteArray();
@@ -65,6 +66,7 @@ QByteArray serialize(const MsrpFrame &frame, bool *ok)
     // Content-Type + blank line + body only when there actually is a body
     // (or an explicit Content-Type) — matches RFC 4975's example framing.
     if (!frame.contentType.isEmpty() || !frame.body.isEmpty()) {
+        appendHeader(out, QStringLiteral("Content-Disposition"), frame.contentDisposition);
         appendHeader(out, QStringLiteral("Content-Type"), frame.contentType);
         out += "\r\n";
         out += frame.body; // binary-safe, never converted to/from QString

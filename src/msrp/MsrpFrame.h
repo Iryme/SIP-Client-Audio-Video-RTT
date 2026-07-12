@@ -81,6 +81,12 @@ struct MsrpFrame
     QString fromPath;
     QString messageId;
     QString contentType;
+    // RFC 5547 file transfer: "attachment; filename=\"...\"" (or empty for
+    // ordinary chat messages). Parsed/serialized like Content-Type, never
+    // reinterpreted as a filesystem path anywhere near the wire layer — see
+    // MsrpFileSelector::sanitizeFileNameForDisplay for the one place a
+    // peer-supplied name is ever turned into a suggested save-dialog label.
+    QString contentDisposition;
     QString successReport;   // "yes" / "no"
     QString failureReport;   // "yes" / "no" / "partial"
     QString status;          // response "Status:" header, e.g. "000 200 OK"

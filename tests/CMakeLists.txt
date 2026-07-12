@@ -81,6 +81,9 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDiagnosticsStore.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
+    # Task W104: MsrpSession.cpp's sendFile()/fileTransferReceived path calls
+    # MsrpFileSelector::sanitizeFileNameForDisplay directly.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFileSelector.cpp
     # Task W101 Phase 5: SipManager.cpp's sendSipMessage() now calls
     # MessagingTransportPolicy::decideInitialTransport/
     # decideFallbackAfterMsrpFailure directly.
@@ -1011,10 +1014,29 @@ qt_add_executable(test_msrp_session_harness
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpMessageChunker.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSession.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFileSelector.cpp
 )
 target_include_directories(test_msrp_session_harness PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_msrp_session_harness PRIVATE Qt6::Core Qt6::Test Qt6::Network)
 add_test(NAME test_msrp_session_harness COMMAND test_msrp_session_harness)
+
+# ---- test_msrp_file_selector (Task W104) -----------------------------------
+qt_add_executable(test_msrp_file_selector
+    test_msrp_file_selector.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFileSelector.cpp
+)
+target_include_directories(test_msrp_file_selector PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_file_selector PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_file_selector COMMAND test_msrp_file_selector)
+
+# ---- test_msrp_file_receiver (Task W104) ------------------------------------
+qt_add_executable(test_msrp_file_receiver
+    test_msrp_file_receiver.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFileReceiver.cpp
+)
+target_include_directories(test_msrp_file_receiver PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_file_receiver PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_file_receiver COMMAND test_msrp_file_receiver)
 
 # ---- test_xcap_xml_validator (Task W099) -----------------------------------
 qt_add_executable(test_xcap_xml_validator

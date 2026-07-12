@@ -11,10 +11,14 @@
 // chunk with no Byte-Range header (matches the common unchunked case).
 namespace MsrpMessageChunker {
 
+// contentDisposition (Task W104, RFC 5547 file transfer) is repeated on
+// every chunk, same as contentType — defaults to empty for the ordinary
+// chat-message case, which leaves the Content-Disposition header omitted.
 QList<MsrpFrame> buildSendFrames(const QString &transactionIdPrefix,
                                  const QString &toPath, const QString &fromPath,
                                  const QString &messageId, const QString &contentType,
                                  const QByteArray &body, int chunkSizeBytes,
-                                 bool requestSuccessReport, bool requestFailureReport);
+                                 bool requestSuccessReport, bool requestFailureReport,
+                                 const QString &contentDisposition = QString());
 
 } // namespace MsrpMessageChunker

@@ -31,6 +31,8 @@ QMap<QString, QString> parseKnownAndUnknown(const QByteArray &headerBytes, MsrpF
             frame.messageId = value;
         } else if (name.compare(QStringLiteral("Content-Type"), Qt::CaseInsensitive) == 0) {
             frame.contentType = value;
+        } else if (name.compare(QStringLiteral("Content-Disposition"), Qt::CaseInsensitive) == 0) {
+            frame.contentDisposition = value;
         } else if (name.compare(QStringLiteral("Success-Report"), Qt::CaseInsensitive) == 0) {
             frame.successReport = value;
         } else if (name.compare(QStringLiteral("Failure-Report"), Qt::CaseInsensitive) == 0) {

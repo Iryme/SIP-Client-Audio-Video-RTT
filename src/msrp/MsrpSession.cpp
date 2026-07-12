@@ -1,8 +1,12 @@
 #include "MsrpSession.h"
 
+#include <QCryptographicHash>
+#include <QFile>
+#include <QFileInfo>
 #include <QRandomGenerator>
 
 #include "msrp/MsrpDiagnosticsStore.h"
+#include "msrp/MsrpFileSelector.h"
 #include "msrp/MsrpFrameSerializer.h"
 #include "msrp/MsrpMessageChunker.h"
 #include "msrp/MsrpSessionStore.h"
@@ -70,7 +74,7 @@ void MsrpSession::setMediaIndex(int index) { m_info.mediaIndex = index; publishI
 void MsrpSession::setChunkSizeBytes(int n) { m_chunkSizeBytes = n; }
 void MsrpSession::setRequestReports(bool on) { m_requestReports = on; }
 void MsrpSession::setMaxFrameBytes(int n) { m_parser = MsrpFrameParser(n); }
-void MsrpSession::setMaxMessageBytes(qint64 n) { m_assembler = MsrpChunkAssembler(n); }
+void MsrpSession::setMaxMessageBytes(qint64 n) { m_maxMessageBytes = n; m_assembler = MsrpChunkAssembler(n); }
 void MsrpSession::setTlsVerifyPeer(bool verify) { m_tlsVerifyPeer = verify; }
 void MsrpSession::setTlsCaCertificatePath(const QString &path) { m_tlsCaCertificatePath = path; }
 
@@ -175,6 +179,30 @@ void MsrpSession::handleFrame(const MsrpFrame &frame)
             emit payloadReceived(m_sessionKey, assembled.message.messageId,
                                 assembled.message.contentType, assembled.message.body);
 
+            // Task W104: Content-Disposition's first token (before any
+            // ';'-separated parameters, e.g. "attachment; filename=...")
+            // decides whether this was a file transfer, per RFC 5547.
+            const QString dispositionType =
+                assembled.message.contentDisposition.section(QLatin1Char(';'), 0, 0).trimmed();
+            if (dispositionType.compare(QStringLiteral("attachment"), Qt::CaseInsensitive) == 0) {
+                QString suggestedName;
+                const QString params = assembled.message.contentDisposition.section(QLatin1Char(';'), 1);
+                const int filenameIdx = params.indexOf(QStringLiteral("filename="), 0, Qt::CaseInsensitive);
+                if (filenameIdx >= 0) {
+                    QString raw = params.mid(filenameIdx + 9).trimmed();
+                    if (raw.startsWith(QLatin1Char('"'))) {
+                        const int endQuote = raw.indexOf(QLatin1Char('"'), 1);
+                        raw = endQuote > 0 ? raw.mid(1, endQuote - 1) : raw.mid(1);
+                    } else {
+                        raw = raw.section(QLatin1Char(';'), 0, 0).trimmed();
+                    }
+                    suggestedName = MsrpFileSelector::sanitizeFileNameForDisplay(raw);
+                }
+                emit fileTransferReceived(m_sessionKey, assembled.message.messageId,
+                                          assembled.message.contentType, suggestedName,
+                                          assembled.message.body);
+            }
+
             if (frame.successReport.compare(QStringLiteral("yes"), Qt::CaseInsensitive) == 0) {
                 MsrpFrame report;
                 report.isRequest = true;
@@ -255,6 +283,58 @@ QString MsrpSession::sendMessage(const QString &contentType, const QByteArray &b
 
     publishInfo();
     return messageId;
+}
+
+MsrpSession::FileSendResult MsrpSession::sendFile(const QString &filePath, const QString &contentType)
+{
+    FileSendResult result;
+
+    QFile file(filePath);
+    const QFileInfo fileInfo(filePath);
+    if (!fileInfo.exists() || !fileInfo.isFile()) {
+        result.error = QStringLiteral("file does not exist: %1").arg(fileInfo.fileName());
+        return result;
+    }
+    if (fileInfo.size() > m_maxMessageBytes) {
+        result.error = QStringLiteral("file exceeds max message size (%1 > %2 bytes)")
+            .arg(fileInfo.size()).arg(m_maxMessageBytes);
+        return result;
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        result.error = QStringLiteral("failed to open file: %1").arg(file.errorString());
+        return result;
+    }
+
+    const QByteArray body = file.readAll();
+    if (body.size() != fileInfo.size()) {
+        result.error = QStringLiteral("short read from file: %1").arg(file.errorString());
+        return result;
+    }
+
+    const QString sha1Hex = QString::fromLatin1(QCryptographicHash::hash(body, QCryptographicHash::Sha1).toHex());
+    const QString sanitizedName = MsrpFileSelector::sanitizeFileNameForDisplay(fileInfo.fileName());
+    QString escapedName = sanitizedName;
+    escapedName.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+    const QString disposition = QStringLiteral("attachment; filename=\"%1\"").arg(escapedName);
+
+    const QString messageId = randomMessageId();
+    const QString toPath = MsrpPath::buildPath(m_remotePath);
+    const QString fromPath = m_localUri.toString();
+
+    const auto frames = MsrpMessageChunker::buildSendFrames(
+        m_sessionKey.left(6), toPath, fromPath, messageId, contentType, body,
+        m_chunkSizeBytes, m_requestReports, m_requestReports, disposition);
+
+    for (const auto &f : frames)
+        sendFrame(f, /*track=*/true, MsrpMethod::Send, messageId);
+
+    publishInfo();
+
+    result.ok = true;
+    result.messageId = messageId;
+    result.fileSize = body.size();
+    result.sha1Hex = sha1Hex;
+    return result;
 }
 
 void MsrpSession::sendFrame(MsrpFrame frame, bool track, MsrpMethod method, const QString &messageId)

@@ -37,6 +37,7 @@ MsrpChunkAssembler::FeedResult MsrpChunkAssembler::feedChunk(const MsrpFrame &fr
         result.status = FeedStatus::Complete;
         result.message.messageId = frame.messageId;
         result.message.contentType = frame.contentType;
+        result.message.contentDisposition = frame.contentDisposition;
         result.message.body = frame.body;
         result.message.complete = true;
         return result;
@@ -48,6 +49,8 @@ MsrpChunkAssembler::FeedResult MsrpChunkAssembler::feedChunk(const MsrpFrame &fr
         pending.contentType = frame.contentType;
     else if (!frame.contentType.isEmpty() && pending.contentType != frame.contentType)
         result.errorMessage = QStringLiteral("Content-Type mismatch between chunks");
+    if (pending.contentDisposition.isEmpty())
+        pending.contentDisposition = frame.contentDisposition;
 
     const qint64 start = frame.hasByteRange ? frame.byteRange.start : 1;
     if (frame.hasByteRange && !frame.byteRange.totalIsStar() && pending.total < 0)
@@ -102,6 +105,7 @@ MsrpChunkAssembler::FeedResult MsrpChunkAssembler::feedChunk(const MsrpFrame &fr
         result.status = FeedStatus::Complete;
         result.message.messageId = frame.messageId;
         result.message.contentType = pending.contentType;
+        result.message.contentDisposition = pending.contentDisposition;
         result.message.body = pending.data;
         result.message.complete = true;
         m_pending.remove(frame.messageId);

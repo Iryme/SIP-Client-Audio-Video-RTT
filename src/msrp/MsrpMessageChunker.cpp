@@ -19,7 +19,8 @@ QList<MsrpFrame> buildSendFrames(const QString &transactionIdPrefix,
                                  const QString &toPath, const QString &fromPath,
                                  const QString &messageId, const QString &contentType,
                                  const QByteArray &body, int chunkSizeBytes,
-                                 bool requestSuccessReport, bool requestFailureReport)
+                                 bool requestSuccessReport, bool requestFailureReport,
+                                 const QString &contentDisposition)
 {
     QList<MsrpFrame> frames;
 
@@ -36,6 +37,7 @@ QList<MsrpFrame> buildSendFrames(const QString &transactionIdPrefix,
         f.fromPath = fromPath;
         f.messageId = messageId;
         f.contentType = contentType;
+        f.contentDisposition = contentDisposition;
         f.successReport = successVal;
         f.failureReport = failureVal;
         f.body = body;
@@ -60,6 +62,7 @@ QList<MsrpFrame> buildSendFrames(const QString &transactionIdPrefix,
         f.fromPath = fromPath;
         f.messageId = messageId;
         f.contentType = contentType;
+        f.contentDisposition = contentDisposition;
         // Success-Report/Failure-Report are only meaningful on the final
         // chunk per RFC 4975 (intermediate chunks report per-chunk
         // acceptance via the ordinary 200 response only).

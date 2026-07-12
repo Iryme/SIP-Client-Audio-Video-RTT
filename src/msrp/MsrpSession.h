@@ -45,6 +45,22 @@ public:
     // Returns the generated Message-ID.
     QString sendMessage(const QString &contentType, const QByteArray &body);
 
+    // Task W104 (RFC 5547 MSRP file transfer). Reads filePath fully into
+    // memory (same bounded-in-memory model as every other MSRP message —
+    // see setMaxMessageBytes()) and sends it as one MSRP message with a
+    // Content-Disposition: attachment header carrying a sanitized filename.
+    // Rejects (ok=false) rather than truncating/streaming-partial when the
+    // file cannot be opened or exceeds the configured max message size.
+    struct FileSendResult
+    {
+        bool ok{false};
+        QString error;
+        QString messageId;
+        qint64 fileSize{0};
+        QString sha1Hex;
+    };
+    FileSendResult sendFile(const QString &filePath, const QString &contentType);
+
     MsrpSessionInfo info() const { return m_info; }
 
     // Actual bound/connected local TCP port — needed by callers (and the
@@ -63,6 +79,14 @@ signals:
     // path if a REPORT is still pending for it.
     void messageDeliveryStatusChanged(const QString &sessionKey, const QString &messageId,
                                       bool success, const QString &statusText);
+
+    // Task W104: fires in addition to payloadReceived (never instead of it)
+    // whenever an assembled inbound message's Content-Disposition indicates
+    // a file transfer ("attachment"). Nothing here touches disk — the
+    // caller decides whether/where to save via MsrpFileReceiver::saveToPath.
+    void fileTransferReceived(const QString &sessionKey, const QString &messageId,
+                              const QString &contentType, const QString &suggestedFileName,
+                              const QByteArray &body);
 
 private slots:
     void onTransportConnected();
@@ -90,6 +114,7 @@ private:
     MsrpTransactionStore m_transactions;
 
     int m_chunkSizeBytes{2048};
+    qint64 m_maxMessageBytes{2 * 1024 * 1024};
     bool m_requestReports{true};
     bool m_tlsVerifyPeer{true};
     QString m_tlsCaCertificatePath;
