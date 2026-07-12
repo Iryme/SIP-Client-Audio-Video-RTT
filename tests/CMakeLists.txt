@@ -59,6 +59,13 @@ set(CALL_SOURCES
     # (SipAccount.cpp's Buddy subscription API needs no further .cpp — it
     # only uses PresenceInfo.h, header-only).
     ${CMAKE_SOURCE_DIR}/src/sip/PresenceStore.cpp
+    # Task W100: SipCall.cpp's onCallSdpCreated calls
+    # MsrpSipIntegration::detectFromSdp() directly (read-only SDP detection,
+    # never live SDP injection — see MsrpSipIntegration.h).
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSipIntegration.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSdpNegotiator.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpPath.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSessionStore.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -106,6 +113,12 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     # calls PidfParser::parse().
     ${CMAKE_SOURCE_DIR}/src/sip/PidfParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/PresenceDiagnosticsStore.cpp
+    # Task W100: InteropTraceExporter.cpp's no-arg exportToJson() overload
+    # also calls MsrpSessionStore::instance()/MsrpDiagnosticsStore::instance()
+    # directly — both are lightweight, Qt-Network-free singletons (no
+    # transport code), so no further dependency is needed.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSessionStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDiagnosticsStore.cpp
 )
 
 # SIP MESSAGE Foundation sources (Task W092) — composer + CPIM builder, plus
@@ -852,6 +865,128 @@ target_link_libraries(test_xcap_url_redactor PRIVATE
 )
 
 add_test(NAME test_xcap_url_redactor COMMAND test_xcap_url_redactor)
+
+# ---- MSRP Foundation sources (Task W100) -----------------------------------
+set(MSRP_PROTOCOL_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpPath.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSdpNegotiator.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFrameParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFrameSerializer.cpp
+)
+
+# ---- test_msrp_path (Task W100) --------------------------------------------
+qt_add_executable(test_msrp_path
+    test_msrp_path.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpPath.cpp
+)
+target_include_directories(test_msrp_path PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_path PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_path COMMAND test_msrp_path)
+
+# ---- test_msrp_sdp_negotiator (Task W100) ----------------------------------
+qt_add_executable(test_msrp_sdp_negotiator
+    test_msrp_sdp_negotiator.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpPath.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSdpNegotiator.cpp
+)
+target_include_directories(test_msrp_sdp_negotiator PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_sdp_negotiator PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_sdp_negotiator COMMAND test_msrp_sdp_negotiator)
+
+# ---- test_msrp_frame_parser (Task W100) ------------------------------------
+qt_add_executable(test_msrp_frame_parser
+    test_msrp_frame_parser.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFrameParser.cpp
+)
+target_include_directories(test_msrp_frame_parser PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_frame_parser PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_frame_parser COMMAND test_msrp_frame_parser)
+
+# ---- test_msrp_frame_serializer (Task W100) --------------------------------
+qt_add_executable(test_msrp_frame_serializer
+    test_msrp_frame_serializer.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFrameParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFrameSerializer.cpp
+)
+target_include_directories(test_msrp_frame_serializer PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_frame_serializer PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_frame_serializer COMMAND test_msrp_frame_serializer)
+
+# ---- test_msrp_chunker (Task W100) -----------------------------------------
+qt_add_executable(test_msrp_chunker
+    test_msrp_chunker.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpMessageChunker.cpp
+)
+target_include_directories(test_msrp_chunker PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_chunker PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_chunker COMMAND test_msrp_chunker)
+
+# ---- test_msrp_chunk_assembler (Task W100) ---------------------------------
+qt_add_executable(test_msrp_chunk_assembler
+    test_msrp_chunk_assembler.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpChunkAssembler.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpMessageChunker.cpp
+)
+target_include_directories(test_msrp_chunk_assembler PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_chunk_assembler PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_chunk_assembler COMMAND test_msrp_chunk_assembler)
+
+# ---- test_msrp_transaction_store (Task W100) -------------------------------
+qt_add_executable(test_msrp_transaction_store
+    test_msrp_transaction_store.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransactionStore.cpp
+)
+target_include_directories(test_msrp_transaction_store PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_transaction_store PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_transaction_store COMMAND test_msrp_transaction_store)
+
+# ---- test_messaging_transport_policy (Task W100) ---------------------------
+qt_add_executable(test_messaging_transport_policy
+    test_messaging_transport_policy.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MessagingTransportPolicy.cpp
+)
+target_include_directories(test_messaging_transport_policy PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_messaging_transport_policy PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_messaging_transport_policy COMMAND test_messaging_transport_policy)
+
+# ---- test_msrp_payload_dispatcher (Task W100) ------------------------------
+# Reuses the existing CPIM/IMDN/is-composing parsers and MessageHistoryStore
+# directly — no duplicated parsing (task requirement 8).
+qt_add_executable(test_msrp_payload_dispatcher
+    test_msrp_payload_dispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpPayloadDispatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/MessagingContentKind.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/CpimParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/ImdnParser.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/IsComposingParser.cpp
+    ${SIP_MESSAGE_FOUNDATION_SOURCES}
+    ${MESSAGE_HISTORY_SOURCES}
+)
+target_include_directories(test_msrp_payload_dispatcher PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_payload_dispatcher PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_payload_dispatcher COMMAND test_msrp_payload_dispatcher)
+
+# ---- test_msrp_session_harness (Task W100, section U) ----------------------
+# Local integration harness: two MsrpSession instances (active + passive)
+# exchanging real MSRP frames over 127.0.0.1 with an OS-assigned ephemeral
+# port — no dependency on any real MSRP relay/server.
+qt_add_executable(test_msrp_session_harness
+    test_msrp_session_harness.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransport.h
+    ${MSRP_PROTOCOL_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpChunkAssembler.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransactionStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSessionStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDiagnosticsStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpMessageChunker.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSession.cpp
+)
+target_include_directories(test_msrp_session_harness PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_session_harness PRIVATE Qt6::Core Qt6::Test Qt6::Network)
+add_test(NAME test_msrp_session_harness COMMAND test_msrp_session_harness)
 
 # ---- test_xcap_xml_validator (Task W099) -----------------------------------
 qt_add_executable(test_xcap_xml_validator
