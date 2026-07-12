@@ -9,6 +9,11 @@
 > implemented for the offerer path — see the linked doc for the full audit
 > and proof. The rest of this document (protocol stack, transport, frame
 > codec) is still accurate and unchanged.
+>
+> **Task W102 extension**: the answer path (responding to a peer-initiated
+> `m=message` offer, with real active/passive role negotiation) is now also
+> implemented — see [msrp-offer-answer.md](msrp-offer-answer.md) and
+> [msrp-live-interoperability.md](msrp-live-interoperability.md).
 
 A complete, independently-testable MSRP (RFC 4975/4976) protocol stack for
 the Windows client: SDP negotiation model, path parsing, session lifecycle,

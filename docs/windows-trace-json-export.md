@@ -27,6 +27,17 @@ new top-level `xcapEvents` array, entirely independent of both `events` and
 `presenceEvents` — XCAP is plain HTTP, not SIP, so its diagnostics never
 mix with either SIP-trace-based array. Again purely additive, so
 `schemaVersion` stays `2`. See [xcap.md](xcap.md).
+**Task W102** — Extended in branch `feature/w102-msrp-live-interoperability`:
+bumps `schemaVersion` 2 → 3. Every `msrpSessions` entry gains `role`
+(active-connector/passive-listener, real — set by which of
+`MsrpSession::connectAsActive`/`listenAsPassive` actually ran),
+`remoteSetup`, `negotiationState` (the previously-unexported
+`offerAnswerState`), and a `peerAssociation` object
+`{method, mediaIndex, sipHeaderCallId, confidence}`. All v2 fields are
+unchanged. See [msrp-live-interoperability.md](msrp-live-interoperability.md)
+for what else W102 did and did not add to the schema (msrpTransactions/
+fallbackEvents/interopValidation/tlsDiagnostics were considered and
+deliberately deferred — see that document's "Not yet added" note).
 **Task W100** — Extended in branch `feature/w100-msrp-foundation`: adds two
 new top-level arrays, `msrpSessions` (from `MsrpSessionStore`) and
 `msrpEvents` (from `MsrpDiagnosticsStore`), plus four additive fields on

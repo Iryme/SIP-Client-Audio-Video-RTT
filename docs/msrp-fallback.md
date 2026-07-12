@@ -1,5 +1,12 @@
 # MSRP Transport Policy & Fallback (Task W101, Phases 5 & 7)
 
+> **Task W102 review (Phase 8)**: this file's logic was re-audited against
+> W102's explicit recovery/no-duplicate requirements and found unchanged/
+> still correct — `sendSipMessage()` recomputes the decision fresh on every
+> call with no cached/sticky fallback state, so "revenire pe MSRP" is a
+> structural consequence, and no code changes were needed here. See
+> [msrp-live-interoperability.md](msrp-live-interoperability.md).
+
 ## Wiring (Phase 5)
 
 `SipManager::sendSipMessage()` (`src/sip/SipManager.cpp`) is the single

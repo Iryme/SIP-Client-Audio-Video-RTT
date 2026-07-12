@@ -1,7 +1,19 @@
-# MSRP Peer Association (Task W101, Phase 4)
+# MSRP Peer Association (Task W101 Phase 4, updated W102 Phase 4)
 
 How this client correlates a live SIP dialog with its MSRP session,
 without relying solely on IP/port/peer-URI.
+
+> **Task W102 update**: `MsrpSessionInfo::role` (`ActiveConnector` /
+> `PassiveListener`) is now always real — set by whichever of
+> `MsrpSession::connectAsActive`/`listenAsPassive` was actually called,
+> which itself now depends on the negotiated `a=setup` role for
+> peer-initiated offers (see [msrp-offer-answer.md](msrp-offer-answer.md))
+> rather than always being passive. `role` is exported in schemaVersion 3
+> (see [windows-trace-json-export.md](windows-trace-json-export.md)) and
+> shown in the MSRP page's session table. The "what is not yet implemented"
+> section below (inbound connection validation against To-Path/session-id)
+> is **still not implemented in W102** — see the final report's
+> limitations section for why it was not prioritized this pass either.
 
 ## Identity fields
 

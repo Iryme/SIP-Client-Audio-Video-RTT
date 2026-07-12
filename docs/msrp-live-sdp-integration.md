@@ -1,5 +1,12 @@
 # Live MSRP SDP Integration (Task W101)
 
+> **Task W102 extension**: this document covers only the *offerer* path
+> (this client's own INVITE/re-INVITE/UPDATE). The *answer* path — replying
+> to a peer-initiated `m=message` offer — is covered separately in
+> [msrp-offer-answer.md](msrp-offer-answer.md), including why it needed a
+> different injector function (`answerMessageMediaAtIndex`, replacing a
+> section in place rather than appending).
+
 Supersedes the "`Call::onCallSdpCreated` is read-only" conclusion in
 `docs/msrp-foundation.md` §0 (Task W100). That conclusion was incorrect —
 this task re-audited the vendored pjproject source directly (not just

@@ -6,6 +6,11 @@ Covers `MsrpFrame`, `MsrpFrameParser`, `MsrpFrameSerializer`,
 the overall architecture and [msrp-transport.md](msrp-transport.md) for
 the transport layer these build on.
 
+> **Task W102 note**: none of the types on this page changed in W102 — the
+> frame/chunking/transaction layer is unchanged. W102's work was entirely
+> at the SDP offer/answer and session-role layer above this one; see
+> [msrp-offer-answer.md](msrp-offer-answer.md).
+
 ## Frame model
 
 `MsrpFrame` (`src/msrp/MsrpFrame.h`) — plain struct: `isRequest`,

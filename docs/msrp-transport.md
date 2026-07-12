@@ -9,6 +9,14 @@ Covers `MsrpTransport`/`MsrpTcpTransport`/`MsrpTlsTransport`. See
 > [msrp-live-sdp-integration.md](msrp-live-sdp-integration.md) and
 > [msrp-peer-association.md](msrp-peer-association.md). The transport
 > classes themselves are unchanged from W100.
+>
+> **Task W102 update**: `MsrpSession::connectAsActive` is now actually
+> invoked for peer-initiated offers that negotiate this client into the
+> active (connecting) role — see
+> [msrp-offer-answer.md](msrp-offer-answer.md) and
+> [msrp-tls.md](msrp-tls.md) for the TLS-specific review. The transport
+> classes' own code is still unchanged; only which role is chosen, and by
+> what code path, changed.
 
 ## Threading
 

@@ -6,6 +6,15 @@
 > parses a real base SDP with `pjmedia_sdp_parse()`, injects via the exact
 > code path `SipCall` uses, and asserts the `pjmedia_sdp_print()` output
 > (not an internal model) contains the expected `m=message` bytes.
+>
+> **Task W102 additions**: `test_msrp_sip_media_injector` gained 3 more
+> cases proving the *answer* path (`answerMessageMediaAtIndex`) at the same
+> wire-bytes level — see [msrp-offer-answer.md](msrp-offer-answer.md). A new
+> `test_trace_comparator` target (8 tests, no PJSIP dependency) covers the
+> client/server trace comparator — see
+> [client-server-trace-comparison.md](client-server-trace-comparison.md).
+> `test_windows_trace_json_export` gained a case for the new schemaVersion 3
+> `msrpSessions` fields. 68/68 CTest targets pass, zero regressions.
 
 ## Automated unit/protocol tests
 
