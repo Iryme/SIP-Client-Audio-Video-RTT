@@ -1,8 +1,8 @@
 # Project Status
 
-Last updated: 2026-07-11
-Current task count: 53 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W099 complete)
-Active branch: `feature/w099-xcap-foundation`
+Last updated: 2026-07-12
+Current task count: 54 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W100 complete)
+Active branch: `feature/w100-msrp-foundation`
 
 ---
 
@@ -179,6 +179,7 @@ Active branch: `feature/w099-xcap-foundation`
 | Active is-composing (generation, typing state machine, indicator) | COMPLETE | Task W097 — RFC 3994 notification generation, debounced/throttled local typing state machine, Message History typing rows + auto-expiring live indicator, Enable is-composing/Auto typing notifications (default ON); MSRP/Presence/XCAP untouched; see [is-composing.md](is-composing.md) |
 | SIP Presence Foundation (SUBSCRIBE/NOTIFY/PIDF) | COMPLETE (foundation) | Task W098 — PIDF parser + presence model, live pjsua2-Buddy subscribe/unsubscribe/refresh lifecycle with auto-resubscribe backoff, dedicated `PresenceStore`, new "Presence" nav page, SIP Ladder badges, `presenceEvents` in Interop JSON export; own-status Publish is experimental (needs re-registration, depends on server PUBLISH support); everything disabled by default; XCAP/resource lists explicitly out of scope (Task W099); MSRP untouched; see [presence.md](presence.md) |
 | XCAP Foundation (client + diagnostics) | COMPLETE (foundation) | Task W099 — asynchronous RFC 4825 GET/PUT/DELETE/HEAD via `QNetworkAccessManager`, generic-XML validation before PUT, Basic auth (proactive header) + Digest auth (via Qt's built-in challenge/response), passwords via `CredentialStore` (never stored/logged in clear), URL-redacted "XCAP" nav page + operation log, `xcapEvents` in Interop JSON export; every AUID (pres-rules/resource-lists/rls-services/xcap-caps) treated as generic XML — no Resource Lists/policy semantics yet; disabled by default; plain HTTP, never drawn as SIP traffic in the Ladder; MSRP untouched; see [xcap.md](xcap.md) |
+| MSRP Foundation (protocol stack + transport) | COMPLETE (foundation) | Task W100 — full RFC 4975/4976 protocol stack built in Qt (`QTcpSocket`/`QSslSocket`), independent of pjsua2 (no MSRP support in this pjproject build): SDP negotiation model, path parser/builder, session state machine, incremental binary-safe frame parser/serializer, TCP+TLS transport, SEND/response/REPORT with transaction tracking, chunking + Byte-Range reassembly, payload dispatch reusing CpimParser/ImdnParser/IsComposingParser/MessageHistoryStore unchanged, `MessagingTransportPolicy` (SIP-MESSAGE-only/MSRP-preferred/MSRP-required/automatic with fallback), new "MSRP" nav page, `msrpSessions`/`msrpEvents` in Interop JSON export; disabled by default; **live outbound SDP injection into a real INVITE is not implemented** (pjsua2's `onCallSdpCreated` is read-only in this version — see docs/msrp-foundation.md §0) — only read-only SDP detection is wired into the live call path, and `MessagingTransportPolicy` is not yet wired into the actual send path; local client/server test harness over loopback TCP passes; no live SIP-Server-RTT interop test executed (no server available); LMPE remains for Task W101; see [msrp-foundation.md](msrp-foundation.md) |
 | MSRP diagnostics (SDP detection) | COMPLETE | Task W090 — detection only, no real MSRP session, see [msrp-diagnostics.md](msrp-diagnostics.md) |
 | MSRP session (real transport) | NOT STARTED | Explicitly out of scope for Task W090 |
 | ETSI TS 103 479 | NOT STARTED | Blocked on Task 37–38 |

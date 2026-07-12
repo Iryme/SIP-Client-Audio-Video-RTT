@@ -1,5 +1,10 @@
 # IMDN Foundation (RFC 5438)
 
+**Task W100** — [MSRP Foundation](msrp-foundation.md) (branch
+`feature/w100-msrp-foundation`) reuses `ImdnParser`/`ImdnGenerator`
+unchanged for IMDN reports carried inside an MSRP SEND body
+(`message/imdn+xml`), via `MsrpPayloadDispatcher` — no IMDN parsing logic
+is duplicated for the MSRP transport.
 **Task W096** — Added in branch `feature/w096-imdn-foundation`, built on top of
 [SIP MESSAGE Foundation (W092)](sip-message.md), [Message History
 (W093)](message-history.md), and the read-only IMDN *parsing* support

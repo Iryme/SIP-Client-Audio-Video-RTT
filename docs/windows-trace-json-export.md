@@ -27,6 +27,16 @@ new top-level `xcapEvents` array, entirely independent of both `events` and
 `presenceEvents` — XCAP is plain HTTP, not SIP, so its diagnostics never
 mix with either SIP-trace-based array. Again purely additive, so
 `schemaVersion` stays `2`. See [xcap.md](xcap.md).
+**Task W100** — Extended in branch `feature/w100-msrp-foundation`: adds two
+new top-level arrays, `msrpSessions` (from `MsrpSessionStore`) and
+`msrpEvents` (from `MsrpDiagnosticsStore`), plus four additive fields on
+every existing `events` entry — `selectedTransport`, `actualTransport`,
+`fallbackUsed`, `fallbackReason` (currently always `"sip-message"`/
+`"sip-message"`/`false`/empty, since per-message MSRP transport selection
+is not yet wired into the live send path — see
+[msrp-foundation.md](msrp-foundation.md) §12). No existing field's meaning
+changes, so `schemaVersion` stays `2`. See [msrp-foundation.md](msrp-foundation.md)
+and [msrp-protocol.md](msrp-protocol.md).
 
 ## Overview
 
@@ -71,9 +81,11 @@ parsing is duplicated anywhere in this task.
   "schemaVersion": 2,
   "source": "windows-client",
   "exportedAt": "<ISO-8601 UTC timestamp of the export itself>",
-  "events": [ { ...one object per MessagingTraceEntry... } ],
+  "events": [ { ...one object per MessagingTraceEntry, now with selectedTransport/actualTransport/fallbackUsed/fallbackReason, Task W100... } ],
   "presenceEvents": [ { ...one object per PresenceTraceEntry, Task W098... } ],
-  "xcapEvents": [ { ...one object per XcapResult, Task W099... } ]
+  "xcapEvents": [ { ...one object per XcapResult, Task W099... } ],
+  "msrpSessions": [ { ...one object per MsrpSessionInfo, Task W100... } ],
+  "msrpEvents": [ { ...one object per MsrpDiagnosticsEvent, Task W100... } ]
 }
 ```
 
@@ -127,6 +139,28 @@ never drawn as SIP traffic. Each entry:
 | `warnings` | XML validation warnings, if any |
 | `networkError` | `true` if the request failed at the transport level (timeout, connection refused, TLS failure, ...) |
 | `errorString` | present only when `networkError` is `true` |
+
+### `msrpSessions` / `msrpEvents` (Task W100)
+
+`msrpSessions` — one object per `MsrpSessionInfo` (from `MsrpSessionStore`):
+`eventId`, `sessionKey`, `sipCallId`, `localSessionId`, `remoteSessionId`,
+`localPathRedacted`/`remotePathRedacted` (transport label only — no raw
+path), `transport`, `setup`, `connection`, `direction`, `acceptTypes`,
+`negotiated`/`connected`/`established` (booleans, distinct per task
+requirement C — a session is never `established` merely because SDP
+negotiation looked complete), `state`, `createdAt`/`updatedAt`/
+`connectedAt`/`closedAt`, `bytesSent`/`bytesReceived`/`framesSent`/
+`framesReceived`/`messagesCompleted`, `warnings`, `lastError`.
+
+`msrpEvents` — one object per `MsrpDiagnosticsEvent` (from
+`MsrpDiagnosticsStore`): `eventId`, `timestamp`, `direction`, `sessionKey`,
+`transactionId`, `messageId`, `method`, `responseCode`, `statusHeader`,
+`toPathRedacted`/`fromPathRedacted`, `contentType`, `byteRange`,
+`continuation`, `bodyPreview`, `bodyLength`, `rawFrameRedacted`,
+`transport`, `parseStatus`, `warnings`.
+
+Both arrays are independent of `events`/`presenceEvents`/`xcapEvents` —
+MSRP is plain TCP protocol traffic, never drawn as SIP traffic.
 
 ### schemaVersion 1 → 2 migration (Task W095)
 

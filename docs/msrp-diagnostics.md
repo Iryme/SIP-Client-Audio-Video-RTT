@@ -7,6 +7,16 @@ JSON export that includes these same `SdpMsrpInfo` fields (nested under an
 `"msrp"` key) alongside SIP MESSAGE/CPIM/IMDN/is-composing events, for
 diffing against a SIP-Server-RTT server-side trace. It reads the fields
 described below as-is — no new MSRP parsing or detection logic was added.
+**Task W100** — [MSRP Foundation](msrp-foundation.md) (branch
+`feature/w100-msrp-foundation`) adds a real, independent MSRP protocol
+stack (SDP negotiation, session lifecycle, TCP/TLS transport, frame parser/
+serializer, chunking, payload dispatch) alongside this detection-only
+document, which remains accurate for `SdpMsrpDiagnosticsParser`/
+`SdpMsrpInfo` and the pre-existing Messaging Diagnostics trace path — that
+pipeline is completely untouched by Task W100. The new MSRP session
+lifecycle is a separate pipeline (`MsrpSdpNegotiator`,
+`MsrpSessionStore`/`MsrpDiagnosticsStore`) with its own "MSRP" nav page;
+see msrp-foundation.md for how the two relate.
 
 ## Overview
 

@@ -31,6 +31,17 @@ for outbound RFC 3994 typing notifications, again reusing this document's
 send path unchanged, plus a local `TypingIndicatorController` state machine
 driving when active/idle/gone notifications are sent from the compose
 editor.
+**Task W100** — [MSRP Foundation](msrp-foundation.md) (branch
+`feature/w100-msrp-foundation`) adds a **separate transport**: MSRP SEND
+carries the same payload kinds this document's SIP MESSAGE path does
+(text/plain, CPIM, IMDN, is-composing), reusing the exact same
+`CpimParser`/`ImdnParser`/`IsComposingParser`/`MessageHistoryStore` calls
+via `MsrpPayloadDispatcher` — but the transport itself (MSRP frames over
+TCP/TLS) is entirely independent of `SipMessageComposer`/
+`SipAccount::sendMessage()`. `MessagingTransportPolicy` decides which
+transport a given send should use (SIP MESSAGE only / MSRP preferred /
+MSRP required / automatic with fallback), but is not yet wired into the
+actual compose-and-send call path — see msrp-foundation.md §12.
 **Task W098** — [SIP Presence](presence.md) (branch
 `feature/w098-presence-foundation`) is a **separate transport** from
 everything in this document: SUBSCRIBE/NOTIFY/PIDF presence exchanges never
