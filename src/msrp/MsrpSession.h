@@ -56,6 +56,14 @@ signals:
     void payloadReceived(const QString &sessionKey, const QString &messageId,
                          const QString &contentType, const QByteArray &body);
 
+    // Task W101 Phase 6: fires once this outbound message's delivery is
+    // known — either from the MSRP response to SEND (when no REPORT was
+    // requested) or from a subsequent REPORT frame. Never fires twice for
+    // the same messageId with a "final" outcome from the SEND response
+    // path if a REPORT is still pending for it.
+    void messageDeliveryStatusChanged(const QString &sessionKey, const QString &messageId,
+                                      bool success, const QString &statusText);
+
 private slots:
     void onTransportConnected();
     void onTransportBytes(const QByteArray &data);

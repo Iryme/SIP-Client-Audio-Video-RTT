@@ -164,6 +164,14 @@ signals:
     void callDisconnected(const QString &remoteUri, const QString &reason, int statusCode);
     void callFailed(const QString &remoteUri, const QString &reason, int statusCode);
 
+    // Task W101 Phase 6: relayed from this call's own MsrpSession — SipCall
+    // owns the session, but message history/diagnostics live in SipManager,
+    // matching the existing callConnected/callDisconnected relay pattern.
+    void msrpPayloadReceived(const QString &contentType, const QByteArray &body,
+                             const QString &msrpMessageId);
+    void msrpDeliveryStatusChanged(const QString &msrpMessageId, bool success,
+                                   const QString &statusText);
+
     // Emitted when the PJSIP audio bridge is wired (CONFIRMED + media active).
     // In stub mode emitted when state reaches Active.
     void audioMediaConnected();

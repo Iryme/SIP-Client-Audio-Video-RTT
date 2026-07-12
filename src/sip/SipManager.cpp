@@ -1097,6 +1097,30 @@ void SipManager::wireActiveCall(SipCall *call)
             this, &SipManager::rttMediaDisconnected);
     connect(call, &SipCall::rttTextReceived,
             this, &SipManager::rttTextReceived);
+    // Task W101 Phase 6: MSRP payload received on this call's own session
+    // becomes its own Message History row, same shape as an inbound SIP
+    // MESSAGE (appendInbound already dedups, so a retransmitted MSRP SEND
+    // for the same messageId never produces two rows).
+    connect(call, &SipCall::msrpPayloadReceived, this,
+        [this, call](const QString &contentType, const QByteArray &body, const QString &msrpMessageId) {
+            const SipProfile cp = SipProfileManager::instance().activeProfile();
+            const QString toUri = cp.isNull() ? QString() : cp.effectiveSipUri();
+            MessageHistoryStore::instance().appendInbound(
+                call->remoteUri(), toUri, call->remoteUri(), contentType,
+                QString::fromUtf8(body), call->callId(), cp.profileId, msrpMessageId);
+        });
+    // MSRP delivery status (SEND response / REPORT) is logged but not yet
+    // correlated into MessageHistoryStore: that store's correlateDelivery()
+    // matches against the SIP MESSAGE Message-ID header space, and MSRP
+    // Message-IDs are a distinct identifier space (never assume they're
+    // interchangeable) — wiring this correctly needs its own correlation
+    // field, left for a follow-up rather than risking a wrong match here.
+    connect(call, &SipCall::msrpDeliveryStatusChanged, this,
+        [](const QString &msrpMessageId, bool success, const QString &statusText) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("MSRP delivery status: msrpMessageId=%1 success=%2 status=%3")
+                    .arg(msrpMessageId).arg(success).arg(statusText));
+        });
     connect(call, &SipCall::callStateChanged,
             this, &SipManager::refreshRtpStats);
     connect(call, &SipCall::audioMediaConnected,

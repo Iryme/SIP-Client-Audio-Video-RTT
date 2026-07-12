@@ -200,6 +200,7 @@ void MsrpSession::handleFrame(const MsrpFrame &frame)
             if (t.messageId == frame.messageId && t.outbound) {
                 const bool success = frame.status.contains(QStringLiteral("200"));
                 m_transactions.applyReport(t.transactionId, frame.status, success);
+                emit messageDeliveryStatusChanged(m_sessionKey, frame.messageId, success, frame.status);
                 break;
             }
         }
@@ -219,6 +220,22 @@ void MsrpSession::handleFrame(const MsrpFrame &frame)
         m_transactions.updateStatus(frame.transactionId,
             success ? MsrpTransactionStatus::Accepted : MsrpTransactionStatus::Failed,
             frame.responseCode, frame.responseComment);
+
+        // A SEND response is only the *final* delivery outcome when no
+        // REPORT was requested for it — otherwise the REPORT above is the
+        // authoritative status and this would double-report. A failed
+        // response, though, is always final (the peer never received the
+        // message well enough to send a later REPORT).
+        if (!m_requestReports || !success) {
+            for (const auto &t : m_transactions.all()) {
+                if (t.transactionId == frame.transactionId && t.outbound
+                        && t.method == MsrpMethod::Send && !t.messageId.isEmpty()) {
+                    emit messageDeliveryStatusChanged(m_sessionKey, t.messageId, success,
+                        QStringLiteral("%1 %2").arg(frame.responseCode).arg(frame.responseComment));
+                    break;
+                }
+            }
+        }
         publishInfo();
     }
 }

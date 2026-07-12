@@ -964,8 +964,25 @@ struct SipCall::Impl
 
         const QString sessionKey = q ? q->callId() : QUuid::createUuid().toString();
         msrpSession = new MsrpSession(sessionKey, nullptr);
-        if (q)
+        if (q) {
             msrpSession->setSipCallId(q->callId());
+            // Relay to SipManager, which owns message history/diagnostics —
+            // mirrors the existing callConnected/callDisconnected pattern
+            // rather than having SipCall reach into those stores directly.
+            QPointer<SipCall> self = q;
+            QObject::connect(msrpSession, &MsrpSession::payloadReceived, q,
+                [self](const QString &, const QString &messageId,
+                       const QString &contentType, const QByteArray &body) {
+                    if (self)
+                        emit self->msrpPayloadReceived(contentType, body, messageId);
+                });
+            QObject::connect(msrpSession, &MsrpSession::messageDeliveryStatusChanged, q,
+                [self](const QString &, const QString &messageId, bool success,
+                       const QString &statusText) {
+                    if (self)
+                        emit self->msrpDeliveryStatusChanged(messageId, success, statusText);
+                });
+        }
         msrpSession->setChunkSizeBytes(AppSettings::msrpChunkSizeBytes());
         msrpSession->setRequestReports(AppSettings::msrpRequestReports());
         msrpSession->setMaxFrameBytes(AppSettings::msrpMaxFrameBytes());
