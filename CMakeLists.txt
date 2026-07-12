@@ -220,6 +220,11 @@ set(SOURCES
     src/emergency/EmergencyMultipartBuilder.cpp
     src/emergency/PidfLoBuilder.cpp
     src/emergency/StaticLocationProvider.cpp
+    # ETSI/LMPE module (Task W103) — header-only neutral seam only; the real
+    # ETSI TS 103 698 codec is BLOCKED pending a confirmed wire format. See
+    # docs/agent-results/W103-lmpe-foundation-result.md.
+    src/etsi/LmpeCodec.h
+    src/etsi/UnconfirmedLmpeCodec.h
 )
 
 set(HEADERS
