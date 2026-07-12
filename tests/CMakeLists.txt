@@ -81,6 +81,10 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDiagnosticsStore.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
+    # Task W101 Phase 5: SipManager.cpp's sendSipMessage() now calls
+    # MessagingTransportPolicy::decideInitialTransport/
+    # decideFallbackAfterMsrpFailure directly.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MessagingTransportPolicy.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.

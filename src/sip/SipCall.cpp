@@ -1101,6 +1101,28 @@ SipCall::~SipCall()
     delete m_impl;
 }
 
+bool SipCall::isMsrpEstablished() const
+{
+#ifdef HAVE_PJSIP
+    return m_impl->msrpSession && m_impl->msrpSession->info().isEstablished();
+#else
+    return false;
+#endif
+}
+
+QString SipCall::sendMsrpMessage(const QString &contentType, const QByteArray &body)
+{
+#ifdef HAVE_PJSIP
+    if (!isMsrpEstablished())
+        return QString();
+    return m_impl->msrpSession->sendMessage(contentType, body);
+#else
+    Q_UNUSED(contentType)
+    Q_UNUSED(body)
+    return QString();
+#endif
+}
+
 bool SipCall::makeCall(const QString &remoteUri)
 {
     return makeCallWithOptions(remoteUri, SipCallOptions{});

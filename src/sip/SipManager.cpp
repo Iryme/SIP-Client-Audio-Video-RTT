@@ -24,6 +24,7 @@
 #include "sip/PresenceResubscribePolicy.h"
 #include "sip/PresenceStore.h"
 #include "core/AppSettings.h"
+#include "msrp/MessagingTransportPolicy.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -1265,6 +1266,60 @@ bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
         MessageHistoryStore::instance().updateOutboundStatus(
             historyId, MessageHistoryEntry::OutboundStatus::Failed);
         return false;
+    }
+
+    // Task W101 Phase 5: route through MessagingTransportPolicy instead of
+    // always composing a SIP MESSAGE. "MSRP established" means this specific
+    // call's own MsrpSession has actually reached Established — never
+    // inferred from SDP negotiation alone. Single active-call model, so the
+    // only candidate session is m_activeCall, and only when it's actually
+    // talking to this message's peer (never assumed from IP/port).
+    const MessagingTransportMode mode = messagingTransportModeFromString(
+        AppSettings::messagingTransportMode());
+    const bool allowFallback = AppSettings::allowSipMessageFallback();
+    const bool msrpCandidate = m_activeCall
+        && m_activeCall->isMsrpEstablished()
+        && m_activeCall->remoteUri().compare(msg.toUri, Qt::CaseInsensitive) == 0;
+
+    const MessagingTransportPolicy::Decision decision =
+        MessagingTransportPolicy::decideInitialTransport(mode, msrpCandidate, allowFallback);
+
+    if (!decision.allowed) {
+        error = decision.reason;
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("sendSipMessage rejected by transport policy: %1").arg(decision.reason));
+        MessageHistoryStore::instance().updateOutboundStatus(
+            historyId, MessageHistoryEntry::OutboundStatus::Failed);
+        return false;
+    }
+
+    if (decision.transport == MessagingActualTransport::Msrp) {
+        const QString msrpMessageId = m_activeCall->sendMsrpMessage(msg.contentType, msg.body.toUtf8());
+        if (!msrpMessageId.isEmpty()) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("Message sent via MSRP: msrpMessageId=%1").arg(msrpMessageId));
+            // "Submitted": MSRP SEND has gone out; the 200/REPORT that
+            // upgrades this to Sent/Failed arrives asynchronously via
+            // MsrpSession's own transaction tracking (Phase 6).
+            MessageHistoryStore::instance().updateOutboundStatus(
+                historyId, MessageHistoryEntry::OutboundStatus::Submitted);
+            return true;
+        }
+        // MSRP send attempt failed (e.g. session dropped between the
+        // established check and the send) — decide whether a fallback SIP
+        // MESSAGE is permitted; never both (no dual-send).
+        const MessagingTransportPolicy::Decision fallback =
+            MessagingTransportPolicy::decideFallbackAfterMsrpFailure(mode, allowFallback);
+        if (!fallback.allowed) {
+            error = fallback.reason;
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("MSRP send failed and no fallback permitted: %1").arg(fallback.reason));
+            MessageHistoryStore::instance().updateOutboundStatus(
+                historyId, MessageHistoryEntry::OutboundStatus::Failed);
+            return false;
+        }
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("MSRP send failed; falling back to SIP MESSAGE"));
     }
 
     const bool ok = m_account->sendMessage(msg.toUri, msg.contentType, msg.body,

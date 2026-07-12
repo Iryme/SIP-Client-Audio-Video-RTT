@@ -145,6 +145,17 @@ public:
     // when unavailable (stub mode, no media, or call not connected).
     QString remoteMediaAddress() const;
 
+    // Task W101 Phase 5/6: true only once this call's own MSRP session (see
+    // onCallSdpCreated) has reached the Established state — never inferred
+    // just from m=message appearing in negotiated SDP.
+    bool isMsrpEstablished() const;
+
+    // Sends contentType/body over this call's established MSRP session.
+    // Returns the MSRP Message-ID on success, or an empty string if no
+    // session is established — callers should check isMsrpEstablished()
+    // first, or treat an empty return as failure.
+    QString sendMsrpMessage(const QString &contentType, const QByteArray &body);
+
     CallStateMachine &stateMachine();
 
 signals:
