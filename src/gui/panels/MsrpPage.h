@@ -36,6 +36,7 @@ private slots:
     void onStartActiveClicked();
     void onStartPassiveClicked();
     void onSendTestMessageClicked();
+    void onSendFileClicked();
     void onDisconnectClicked();
     void onClearDiagnosticsClicked();
     void onExportJsonClicked();
@@ -46,6 +47,7 @@ private slots:
     void onDiagnosticEvent(const MsrpDiagnosticsEvent &event);
 
 private:
+    void wireTestSessionSignals();
     void addOrUpdateSessionRow(const MsrpSessionInfo &info);
     void addDiagnosticRow(const MsrpDiagnosticsEvent &event);
     void rebuildSessionTable();
@@ -71,6 +73,7 @@ private:
     QPushButton *m_startPassiveBtn{nullptr};
     QPlainTextEdit *m_testMessageEdit{nullptr};
     QPushButton *m_sendTestBtn{nullptr};
+    QPushButton *m_sendFileBtn{nullptr};
     QPushButton *m_disconnectBtn{nullptr};
     QLabel      *m_statusLabel{nullptr};
 

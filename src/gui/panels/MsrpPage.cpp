@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -22,6 +23,7 @@
 
 #include "core/AppSettings.h"
 #include "msrp/MsrpDiagnosticsStore.h"
+#include "msrp/MsrpFileReceiver.h"
 #include "msrp/MsrpSession.h"
 #include "msrp/MsrpSessionStore.h"
 #include "sip/InteropTraceExporter.h"
@@ -178,8 +180,11 @@ MsrpPage::MsrpPage(QWidget *parent) : QWidget(parent)
     msgLayout->addWidget(m_testMessageEdit, 1);
     m_sendTestBtn = new QPushButton(tr("Send"), testBox);
     msgLayout->addWidget(m_sendTestBtn);
+    m_sendFileBtn = new QPushButton(tr("Send File…"), testBox);
+    msgLayout->addWidget(m_sendFileBtn);
     root->addLayout(msgLayout);
     connect(m_sendTestBtn, &QPushButton::clicked, this, &MsrpPage::onSendTestMessageClicked);
+    connect(m_sendFileBtn, &QPushButton::clicked, this, &MsrpPage::onSendFileClicked);
 
     m_statusLabel = new QLabel(this);
     root->addWidget(m_statusLabel);
@@ -269,14 +274,38 @@ void MsrpPage::onConfigFieldChanged()
     AppSettings::setMsrpPortMode(m_portModeCombo->currentData().toString());
 }
 
-void MsrpPage::onStartActiveClicked()
+void MsrpPage::wireTestSessionSignals()
 {
-    delete m_testSession;
-    m_testSession = new MsrpSession(QStringLiteral("manual-test"), this);
     connect(m_testSession, &MsrpSession::payloadReceived, this,
             [this](const QString &, const QString &, const QString &contentType, const QByteArray &body) {
         m_statusLabel->setText(tr("Received %1 bytes (%2)").arg(body.size()).arg(contentType));
     });
+    // Task W104: fires in addition to payloadReceived above (never instead
+    // of it) for inbound messages whose Content-Disposition marks them as a
+    // file transfer (RFC 5547). The save location is always the user's own
+    // choice via this dialog — the peer-supplied name is only ever used as
+    // a suggested default (already sanitized by MsrpSession).
+    connect(m_testSession, &MsrpSession::fileTransferReceived, this,
+            [this](const QString &, const QString &, const QString &, const QString &suggestedFileName,
+                   const QByteArray &body) {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save received file"), suggestedFileName);
+        if (path.isEmpty()) {
+            m_statusLabel->setText(tr("Received file (%1 bytes) — save skipped").arg(body.size()));
+            return;
+        }
+        const auto result = MsrpFileReceiver::saveToPath(body, path);
+        if (result.ok)
+            m_statusLabel->setText(tr("Saved received file: %1 (%2 bytes)").arg(path).arg(result.bytesWritten));
+        else
+            QMessageBox::warning(this, tr("Save failed"), result.error);
+    });
+}
+
+void MsrpPage::onStartActiveClicked()
+{
+    delete m_testSession;
+    m_testSession = new MsrpSession(QStringLiteral("manual-test"), this);
+    wireTestSessionSignals();
 
     const QString host = m_remoteHostEdit->text().trimmed().isEmpty()
         ? QStringLiteral("127.0.0.1") : m_remoteHostEdit->text().trimmed();
@@ -298,10 +327,7 @@ void MsrpPage::onStartPassiveClicked()
 {
     delete m_testSession;
     m_testSession = new MsrpSession(QStringLiteral("manual-test"), this);
-    connect(m_testSession, &MsrpSession::payloadReceived, this,
-            [this](const QString &, const QString &, const QString &contentType, const QByteArray &body) {
-        m_statusLabel->setText(tr("Received %1 bytes (%2)").arg(body.size()).arg(contentType));
-    });
+    wireTestSessionSignals();
 
     const int port = AppSettings::msrpPortMode() == QStringLiteral("fixed") ? m_fixedPortSpin->value() : 0;
     m_testSession->setLocalUri(MsrpPath::buildUri(m_enableTlsCheck->isChecked(),
@@ -321,6 +347,24 @@ void MsrpPage::onSendTestMessageClicked()
     const QString msgId = m_testSession->sendMessage(QStringLiteral("text/plain"),
                                                      m_testMessageEdit->toPlainText().toUtf8());
     m_statusLabel->setText(tr("Sent message %1").arg(msgId));
+}
+
+void MsrpPage::onSendFileClicked()
+{
+    if (!m_testSession) {
+        m_statusLabel->setText(tr("Start a test session first."));
+        return;
+    }
+    const QString filePath = QFileDialog::getOpenFileName(this, tr("Select file to send"));
+    if (filePath.isEmpty())
+        return;
+
+    const auto result = m_testSession->sendFile(filePath, QStringLiteral("application/octet-stream"));
+    if (result.ok)
+        m_statusLabel->setText(tr("Sending file %1 (%2 bytes, message %3)")
+            .arg(QFileInfo(filePath).fileName()).arg(result.fileSize).arg(result.messageId));
+    else
+        QMessageBox::warning(this, tr("Send file failed"), result.error);
 }
 
 void MsrpPage::onDisconnectClicked()
