@@ -1,6 +1,12 @@
 # ETSI TS 103 698 — LMPE Feature Mapping
 
-**Status:** NOT STARTED
+**Status:** BLOCKED (Task W103) — real wire format not confirmed. No
+`SIP-Server-RTT` repository is reachable from this environment (not a
+configured remote, not a local sibling, 404 on GitHub) and no other
+authoritative LMPE format source exists in this workspace. See
+[../lmpe.md](../lmpe.md) and
+[../agent-results/W103-lmpe-foundation-result.md](../agent-results/W103-lmpe-foundation-result.md)
+for the full audit.
 
 ## Overview
 
