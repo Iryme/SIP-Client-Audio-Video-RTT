@@ -32,10 +32,16 @@ constexpr int kSessColCallId = 1;
 constexpr int kSessColTransport = 2;
 constexpr int kSessColRole = 3;
 constexpr int kSessColState = 4;
-constexpr int kSessColBytes = 5;
-constexpr int kSessColFrames = 6;
-constexpr int kSessColLastError = 7;
-constexpr int kSessColCount = 8;
+// Task W102 Phase 9: negotiation state and peer-association result, made
+// directly visible rather than only present in the JSON export — both
+// read straight from MsrpSessionInfo (offerAnswerState / mediaIndex+
+// sipHeaderCallId), never re-derived or guessed here.
+constexpr int kSessColNegotiation = 5;
+constexpr int kSessColPeerAssoc = 6;
+constexpr int kSessColBytes = 7;
+constexpr int kSessColFrames = 8;
+constexpr int kSessColLastError = 9;
+constexpr int kSessColCount = 10;
 
 constexpr int kDiagColTime = 0;
 constexpr int kDiagColDir = 1;
@@ -184,7 +190,8 @@ MsrpPage::MsrpPage(QWidget *parent) : QWidget(parent)
     m_sessionsTable = new QTableWidget(0, kSessColCount, splitter);
     m_sessionsTable->setHorizontalHeaderLabels({
         tr("Session"), tr("SIP Call-ID"), tr("Transport"), tr("Role"),
-        tr("State"), tr("Bytes S/R"), tr("Frames S/R"), tr("Last Error")
+        tr("State"), tr("Negotiation"), tr("Peer Association"),
+        tr("Bytes S/R"), tr("Frames S/R"), tr("Last Error")
     });
     m_sessionsTable->horizontalHeader()->setStretchLastSection(true);
     m_sessionsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -421,6 +428,13 @@ void MsrpPage::addOrUpdateSessionRow(const MsrpSessionInfo &info)
     m_sessionsTable->item(row, kSessColTransport)->setText(msrpTransportProtocolToString(info.localTransport));
     m_sessionsTable->item(row, kSessColRole)->setText(msrpRoleToString(info.role));
     m_sessionsTable->item(row, kSessColState)->setText(msrpSessionStateToString(info.state));
+    m_sessionsTable->item(row, kSessColNegotiation)->setText(
+        info.offerAnswerState.isEmpty() ? tr("(unknown)") : info.offerAnswerState);
+    {
+        const bool exact = info.mediaIndex >= 0 && !info.sipHeaderCallId.isEmpty();
+        m_sessionsTable->item(row, kSessColPeerAssoc)->setText(
+            exact ? tr("exact (media #%1)").arg(info.mediaIndex) : tr("unknown"));
+    }
     m_sessionsTable->item(row, kSessColBytes)->setText(
         QStringLiteral("%1 / %2").arg(info.bytesSent).arg(info.bytesReceived));
     m_sessionsTable->item(row, kSessColFrames)->setText(
