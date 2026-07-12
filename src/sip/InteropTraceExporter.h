@@ -2,6 +2,8 @@
 #include <QList>
 #include <QString>
 
+#include "msrp/MsrpDiagnosticsEvent.h"
+#include "msrp/MsrpSessionInfo.h"
 #include "sip/MessagingTraceEntry.h"
 #include "sip/PresenceTraceEntry.h"
 #include "sip/XcapModels.h"
@@ -49,19 +51,33 @@ namespace InteropTraceExporter {
 // from XcapResult rows (completed GET/PUT/DELETE/HEAD operations, plain
 // HTTP — independent of both "events" and "presenceEvents") — again purely
 // additive, kSchemaVersion stays 2.
+//
+// Task W100 (MSRP Foundation) adds two top-level arrays, "msrpSessions"
+// (from MsrpSessionStore) and "msrpEvents" (from MsrpDiagnosticsStore), plus
+// four additive fields on every existing "events" entry (selectedTransport/
+// actualTransport/fallbackUsed/fallbackReason — msrpTransactionId/
+// msrpMessageId/msrpResponseStatus/msrpReportStatus are populated only when
+// that specific SIP-MESSAGE-fallback event was correlated with an MSRP
+// attempt; absent otherwise). No existing field's meaning changes, so
+// kSchemaVersion stays 2 — see docs/msrp-foundation.md for the explicit
+// decision record.
 constexpr int kSchemaVersion = 2;
 
 // Pure function: builds the full JSON document text from an explicit list
 // of trace entries (event ids assigned 1-based by position). Fully
 // unit-testable without a live MessagingDiagnosticsStore/SipTraceLogger
-// signal chain. presenceEntries/xcapEntries are optional — pass an empty
-// list (the default) for callers that don't care about that section.
+// signal chain. presenceEntries/xcapEntries/msrpSessions/msrpEvents are
+// optional — pass an empty list (the default) for callers that don't care
+// about that section.
 QString exportToJson(const QList<MessagingTraceEntry> &entries,
                       const QList<PresenceTraceEntry> &presenceEntries = QList<PresenceTraceEntry>(),
-                      const QList<XcapResult> &xcapEntries = QList<XcapResult>());
+                      const QList<XcapResult> &xcapEntries = QList<XcapResult>(),
+                      const QList<MsrpSessionInfo> &msrpSessions = QList<MsrpSessionInfo>(),
+                      const QList<MsrpDiagnosticsEvent> &msrpEvents = QList<MsrpDiagnosticsEvent>());
 
 // Convenience overload: exports the live MessagingDiagnosticsStore's,
-// PresenceDiagnosticsStore's, and XcapDiagnosticsStore's current entries.
+// PresenceDiagnosticsStore's, XcapDiagnosticsStore's, MsrpSessionStore's,
+// and MsrpDiagnosticsStore's current entries.
 QString exportToJson();
 
 } // namespace InteropTraceExporter

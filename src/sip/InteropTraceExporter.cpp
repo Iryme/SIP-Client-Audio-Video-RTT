@@ -8,6 +8,8 @@
 #include "sip/MessagingDiagnosticsStore.h"
 #include "sip/MessagingEvent.h"
 #include "sip/MessagingEventStore.h"
+#include "msrp/MsrpDiagnosticsStore.h"
+#include "msrp/MsrpSessionStore.h"
 #include "sip/PresenceDiagnosticsStore.h"
 #include "sip/UrlRedactor.h"
 #include "sip/XcapDiagnosticsStore.h"
@@ -146,6 +148,18 @@ QJsonObject buildEvent(const MessagingTraceEntry &entry, qint64 eventId)
         obj[QStringLiteral("rcsFileTransfer")] = rcs;
     }
 
+    // MSRP transport-selection fields (Task W100) — additive. Per-message
+    // MSRP correlation is not yet wired into the live send path (see
+    // docs/msrp-foundation.md), so every SIP MESSAGE trace entry is
+    // definitionally "sip-message" with no fallback at this stage; the
+    // remaining msrpTransactionId/msrpMessageId/msrpResponseStatus/
+    // msrpReportStatus fields are only ever populated once that
+    // correlation exists and are omitted here.
+    obj[QStringLiteral("selectedTransport")] = messagingActualTransportToString(MessagingActualTransport::SipMessage);
+    obj[QStringLiteral("actualTransport")]   = messagingActualTransportToString(MessagingActualTransport::SipMessage);
+    obj[QStringLiteral("fallbackUsed")]      = false;
+    obj[QStringLiteral("fallbackReason")]    = QString();
+
     return obj;
 }
 
@@ -229,11 +243,98 @@ QJsonObject buildXcapEvent(const XcapResult &result, qint64 eventId)
     return obj;
 }
 
+// MSRP (Task W100): built directly from MsrpSessionInfo — plain
+// session-level summary, independent of "events"/"presenceEvents"/
+// "xcapEvents".
+QJsonObject buildMsrpSessionEvent(const MsrpSessionInfo &info, qint64 eventId)
+{
+    QJsonObject obj;
+    obj[QStringLiteral("eventId")] = static_cast<double>(eventId);
+    obj[QStringLiteral("sessionKey")] = info.sessionKey;
+    obj[QStringLiteral("sipCallId")] = info.sipCallId;
+    obj[QStringLiteral("localSessionId")] = info.localSessionId;
+    obj[QStringLiteral("remoteSessionId")] = info.remoteSessionId;
+    // Full paths carry host/session-id chains; only a redacted transport
+    // label is exported, never the raw msrp(s):// URI list.
+    obj[QStringLiteral("localPathRedacted")] = msrpTransportProtocolToString(info.localTransport);
+    obj[QStringLiteral("remotePathRedacted")] = msrpTransportProtocolToString(info.remoteTransport);
+    obj[QStringLiteral("transport")] = msrpTransportProtocolToString(info.localTransport);
+    obj[QStringLiteral("setup")] = msrpSetupToString(info.localSetup);
+    obj[QStringLiteral("connection")] = info.connectionMode;
+    obj[QStringLiteral("direction")] = msrpDirectionToString(info.localDirection);
+
+    QJsonArray acceptTypes;
+    for (const QString &t : info.acceptTypes) acceptTypes.append(t);
+    obj[QStringLiteral("acceptTypes")] = acceptTypes;
+
+    obj[QStringLiteral("negotiated")] = info.state >= MsrpSessionState::Negotiated
+        && info.state != MsrpSessionState::Failed;
+    obj[QStringLiteral("connected")] = info.state == MsrpSessionState::Connected
+        || info.state == MsrpSessionState::Established;
+    obj[QStringLiteral("established")] = info.isEstablished();
+    obj[QStringLiteral("state")] = msrpSessionStateToString(info.state);
+
+    obj[QStringLiteral("createdAt")] = info.createdAt.toString(Qt::ISODateWithMs);
+    obj[QStringLiteral("updatedAt")] = info.updatedAt.toString(Qt::ISODateWithMs);
+    if (info.connectedAt.isValid())
+        obj[QStringLiteral("connectedAt")] = info.connectedAt.toString(Qt::ISODateWithMs);
+    if (info.closedAt.isValid())
+        obj[QStringLiteral("closedAt")] = info.closedAt.toString(Qt::ISODateWithMs);
+
+    obj[QStringLiteral("bytesSent")] = static_cast<double>(info.bytesSent);
+    obj[QStringLiteral("bytesReceived")] = static_cast<double>(info.bytesReceived);
+    obj[QStringLiteral("framesSent")] = static_cast<double>(info.framesSent);
+    obj[QStringLiteral("framesReceived")] = static_cast<double>(info.framesReceived);
+    obj[QStringLiteral("messagesCompleted")] = static_cast<double>(info.messagesCompleted);
+
+    QJsonArray warnings;
+    for (const QString &w : info.warnings) warnings.append(w);
+    obj[QStringLiteral("warnings")] = warnings;
+    obj[QStringLiteral("lastError")] = info.lastError;
+
+    return obj;
+}
+
+QJsonObject buildMsrpFrameEvent(const MsrpDiagnosticsEvent &ev, qint64 eventId)
+{
+    QJsonObject obj;
+    obj[QStringLiteral("eventId")] = static_cast<double>(eventId);
+    obj[QStringLiteral("timestamp")] = ev.timestamp.toString(Qt::ISODateWithMs);
+    obj[QStringLiteral("direction")] = ev.direction == MsrpDiagnosticsEvent::Direction::Outbound
+        ? QStringLiteral("outbound") : QStringLiteral("inbound");
+    obj[QStringLiteral("sessionKey")] = ev.sessionKey;
+    obj[QStringLiteral("transactionId")] = ev.transactionId;
+    obj[QStringLiteral("messageId")] = ev.messageId;
+    obj[QStringLiteral("method")] = ev.method;
+    obj[QStringLiteral("responseCode")] = ev.responseCode;
+    obj[QStringLiteral("statusHeader")] = ev.statusHeader;
+    obj[QStringLiteral("toPathRedacted")] = ev.toPathRedacted;
+    obj[QStringLiteral("fromPathRedacted")] = ev.fromPathRedacted;
+    obj[QStringLiteral("contentType")] = ev.contentType;
+    obj[QStringLiteral("byteRange")] = ev.byteRangeText;
+    obj[QStringLiteral("continuation")] = QString(msrpContinuationToChar(ev.continuation));
+    obj[QStringLiteral("bodyPreview")] = ev.bodyPreview;
+    obj[QStringLiteral("bodyLength")] = static_cast<double>(ev.bodyLength);
+    // rawFrameRedacted mirrors bodyPreview at this stage (no full wire-frame
+    // capture is retained beyond the already-redacted preview fields).
+    obj[QStringLiteral("rawFrameRedacted")] = ev.bodyPreview;
+    obj[QStringLiteral("transport")] = msrpTransportProtocolToString(ev.transport);
+    obj[QStringLiteral("parseStatus")] = msrpParseStatusToString(ev.parseStatus);
+
+    QJsonArray warnings;
+    for (const QString &w : ev.warnings) warnings.append(w);
+    obj[QStringLiteral("warnings")] = warnings;
+
+    return obj;
+}
+
 } // namespace
 
 QString exportToJson(const QList<MessagingTraceEntry> &entries,
                       const QList<PresenceTraceEntry> &presenceEntries,
-                      const QList<XcapResult> &xcapEntries)
+                      const QList<XcapResult> &xcapEntries,
+                      const QList<MsrpSessionInfo> &msrpSessions,
+                      const QList<MsrpDiagnosticsEvent> &msrpEvents)
 {
     QJsonArray events;
     qint64 id = 1;
@@ -250,6 +351,16 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
     for (const XcapResult &result : xcapEntries)
         xcapEvents.append(buildXcapEvent(result, xcapId++));
 
+    QJsonArray msrpSessionsArray;
+    qint64 msrpSessionId = 1;
+    for (const MsrpSessionInfo &info : msrpSessions)
+        msrpSessionsArray.append(buildMsrpSessionEvent(info, msrpSessionId++));
+
+    QJsonArray msrpEventsArray;
+    qint64 msrpEventId = 1;
+    for (const MsrpDiagnosticsEvent &ev : msrpEvents)
+        msrpEventsArray.append(buildMsrpFrameEvent(ev, msrpEventId++));
+
     QJsonObject root;
     root[QStringLiteral("schemaVersion")]  = kSchemaVersion;
     root[QStringLiteral("source")]         = QStringLiteral("windows-client");
@@ -257,6 +368,8 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
     root[QStringLiteral("events")]         = events;
     root[QStringLiteral("presenceEvents")] = presenceEvents;
     root[QStringLiteral("xcapEvents")]     = xcapEvents;
+    root[QStringLiteral("msrpSessions")]   = msrpSessionsArray;
+    root[QStringLiteral("msrpEvents")]     = msrpEventsArray;
 
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
@@ -265,7 +378,9 @@ QString exportToJson()
 {
     return exportToJson(MessagingDiagnosticsStore::instance().entries(),
                         PresenceDiagnosticsStore::instance().entries(),
-                        XcapDiagnosticsStore::instance().entries());
+                        XcapDiagnosticsStore::instance().entries(),
+                        MsrpSessionStore::instance().snapshot(),
+                        MsrpDiagnosticsStore::instance().entries());
 }
 
 } // namespace InteropTraceExporter
