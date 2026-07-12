@@ -647,8 +647,26 @@ struct SipCall::Impl
             // handling of media types it doesn't recognize needs a separate
             // audit before an automatic accept/reject splice at the
             // matching index can be trusted not to corrupt the SDP).
-            const bool isOfferer = prm.remSdp.wholeSdp.empty()
-                                 && prm.remSdp.pjSdpSession == nullptr;
+            //
+            // Bug fix (found via live manual testing, 2026-07-12): pjsua2's
+            // pj::SdpSession::pjSdpSession is a plain "void *pjSdpSession;"
+            // with no initializer (.deps/pjsip-msvc-install/include/pjsua2/
+            // call.hpp) — it is only ever assigned by SdpSession::fromPj(),
+            // never zeroed otherwise. On an outgoing call (no remote offer),
+            // prm.remSdp is a default-constructed SdpSession: wholeSdp (a
+            // std::string) is reliably empty, but pjSdpSession is
+            // indeterminate stack garbage, NOT guaranteed null — comparing
+            // it to nullptr is undefined behavior and, in this Debug build,
+            // reliably false (MSVC fills uninitialized stack with 0xCC,
+            // which is never exactly 0). That made isOfferer wrongly false
+            // on outgoing calls, and the !isOfferer branch below then
+            // dereferenced that garbage pointer via
+            // extractRemoteMessageBlocks() — a real, reproducible crash
+            // (SIPClient!extractRemoteMessageBlocks, access violation on an
+            // 0xCCCCCCCC-pattern pointer) on any outgoing call once MSRP is
+            // enabled. wholeSdp.empty() alone is the reliable signal — never
+            // trust pjSdpSession's nullness on its own.
+            const bool isOfferer = prm.remSdp.wholeSdp.empty();
             if (isOfferer && m_impl
                     && AppSettings::enableMsrp()
                     && (AppSettings::enableMsrpTcp() || AppSettings::enableMsrpTls())) {
@@ -733,7 +751,11 @@ struct SipCall::Impl
             // accepted section — audio/video/RTT sections elsewhere in the
             // same SDP are untouched either way, so rejecting or accepting
             // MSRP here never affects the rest of the call.
-            if (!isOfferer && m_impl
+            // Defense in depth alongside the isOfferer fix above: never
+            // trust prm.remSdp.pjSdpSession at all unless wholeSdp is
+            // actually non-empty (the only reliable "a real remote SDP was
+            // supplied" signal — see the isOfferer comment).
+            if (!isOfferer && !prm.remSdp.wholeSdp.empty() && m_impl
                     && AppSettings::enableMsrp()
                     && (AppSettings::enableMsrpTcp() || AppSettings::enableMsrpTls())) {
                 const auto *remSdp = static_cast<const pjmedia_sdp_session *>(prm.remSdp.pjSdpSession);
