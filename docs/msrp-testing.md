@@ -15,6 +15,13 @@
 > [client-server-trace-comparison.md](client-server-trace-comparison.md).
 > `test_windows_trace_json_export` gained a case for the new schemaVersion 3
 > `msrpSessions` fields. 68/68 CTest targets pass, zero regressions.
+>
+> **Task W104 additions**: two new targets, `test_msrp_file_selector` (RFC
+> 5547 `file-selector` attribute parse/build) and `test_msrp_file_receiver`
+> (atomic save + hash verification) — see
+> [msrp-file-transfer.md](msrp-file-transfer.md).
+> `test_msrp_session_harness` gained `sendsAndReceivesFileTransfer` and
+> `sendFileRejectsMissingFile`. 71/71 CTest targets pass, zero regressions.
 
 ## Automated unit/protocol tests
 
@@ -29,7 +36,9 @@
 | `test_msrp_transaction_store` | Queued→Accepted, REPORT success/failure correlation, unknown transaction-id no-op, pending-count exclusion of terminal states, clear |
 | `test_messaging_transport_policy` | All four modes' initial-transport decisions, post-failure fallback rules (including MsrpRequired's "never fallback") |
 | `test_msrp_payload_dispatcher` | text/plain, text/html, CPIM-unwrapped text, IMDN correlation, is-composing, binary-content-not-added-to-history, unknown-but-text-like-content-added |
-| `test_msrp_session_harness` | Real client(active)↔server(passive) exchange over 127.0.0.1 (see below) |
+| `test_msrp_session_harness` | Real client(active)↔server(passive) exchange over 127.0.0.1 (see below); Task W104: also a real file transfer + missing-file rejection |
+| `test_msrp_file_selector` | RFC 5547 `file-selector` attribute parse/build round-trip, malformed/missing-field tolerance, filename sanitization |
+| `test_msrp_file_receiver` | Atomic disk save (no partial file on failure), SHA-1 hash verification (match/mismatch/empty/unknown-algorithm) |
 
 Plus the full existing suite (W090–W099) runs unchanged as the regression
 gate.

@@ -14,6 +14,11 @@
 > `m=message` offer, with real active/passive role negotiation) is now also
 > implemented — see [msrp-offer-answer.md](msrp-offer-answer.md) and
 > [msrp-live-interoperability.md](msrp-live-interoperability.md).
+>
+> **Task W104 extension**: RFC 5547 file transfer (send/receive a real
+> file over an established MSRP session, reusing this stack's existing
+> chunker/assembler/session lifecycle unchanged) is now implemented — see
+> [msrp-file-transfer.md](msrp-file-transfer.md).
 
 A complete, independently-testable MSRP (RFC 4975/4976) protocol stack for
 the Windows client: SDP negotiation model, path parsing, session lifecycle,
