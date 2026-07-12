@@ -165,6 +165,68 @@ public:
     static bool xcapVerifyTls()            { return settings().value(QStringLiteral("xcap/verifyTls"), true).toBool(); }
     static void setXcapVerifyTls(bool on)  { settings().setValue(QStringLiteral("xcap/verifyTls"), on); }
 
+    // MSRP Foundation (Task W100) — disabled by default; TCP/TLS only
+    // become usable once enableMsrp + the specific transport flag are both
+    // on. Fallback to SIP MESSAGE defaults ON so messaging never silently
+    // stops working while MSRP is being trialled. No bind/advertised host
+    // is ever assumed. TLS peer verification defaults ON.
+    static bool enableMsrp()               { return settings().value(QStringLiteral("msrp/enable"), false).toBool(); }
+    static void setEnableMsrp(bool on)     { settings().setValue(QStringLiteral("msrp/enable"), on); }
+    static bool enableMsrpTcp()            { return settings().value(QStringLiteral("msrp/enableTcp"), false).toBool(); }
+    static void setEnableMsrpTcp(bool on)  { settings().setValue(QStringLiteral("msrp/enableTcp"), on); }
+    static bool enableMsrpTls()            { return settings().value(QStringLiteral("msrp/enableTls"), false).toBool(); }
+    static void setEnableMsrpTls(bool on)  { settings().setValue(QStringLiteral("msrp/enableTls"), on); }
+    static bool preferMsrp()               { return settings().value(QStringLiteral("msrp/prefer"), false).toBool(); }
+    static void setPreferMsrp(bool on)     { settings().setValue(QStringLiteral("msrp/prefer"), on); }
+    static bool allowSipMessageFallback()  { return settings().value(QStringLiteral("msrp/allowSipMessageFallback"), true).toBool(); }
+    static void setAllowSipMessageFallback(bool on) { settings().setValue(QStringLiteral("msrp/allowSipMessageFallback"), on); }
+    // messagingTransportMode: one of sip-message-only / msrp-preferred / msrp-required / automatic.
+    static QString messagingTransportMode()        { return settings().value(QStringLiteral("msrp/transportMode"), QStringLiteral("automatic")).toString(); }
+    static void setMessagingTransportMode(const QString &mode) { settings().setValue(QStringLiteral("msrp/transportMode"), mode); }
+
+    static QString msrpLocalBindAddress()  { return settings().value(QStringLiteral("msrp/localBindAddress"), QString()).toString(); }
+    static void setMsrpLocalBindAddress(const QString &addr) { settings().setValue(QStringLiteral("msrp/localBindAddress"), addr); }
+    static QString msrpAdvertisedHost()    { return settings().value(QStringLiteral("msrp/advertisedHost"), QString()).toString(); }
+    static void setMsrpAdvertisedHost(const QString &host) { settings().setValue(QStringLiteral("msrp/advertisedHost"), host); }
+    // msrpPortMode: "automatic" (OS-assigned ephemeral port) or "fixed" (msrpFixedPort).
+    static QString msrpPortMode()          { return settings().value(QStringLiteral("msrp/portMode"), QStringLiteral("automatic")).toString(); }
+    static void setMsrpPortMode(const QString &mode) { settings().setValue(QStringLiteral("msrp/portMode"), mode); }
+    static int  msrpFixedPort()            { return settings().value(QStringLiteral("msrp/fixedPort"), 0).toInt(); }
+    static void setMsrpFixedPort(int port) { settings().setValue(QStringLiteral("msrp/fixedPort"), port); }
+
+    static int  msrpConnectionTimeoutMs()  { return settings().value(QStringLiteral("msrp/connectionTimeoutMs"), 10000).toInt(); }
+    static void setMsrpConnectionTimeoutMs(int ms) { settings().setValue(QStringLiteral("msrp/connectionTimeoutMs"), ms); }
+    static int  msrpTransactionTimeoutMs() { return settings().value(QStringLiteral("msrp/transactionTimeoutMs"), 30000).toInt(); }
+    static void setMsrpTransactionTimeoutMs(int ms) { settings().setValue(QStringLiteral("msrp/transactionTimeoutMs"), ms); }
+    static int  msrpIdleTimeoutSeconds()   { return settings().value(QStringLiteral("msrp/idleTimeoutSeconds"), 300).toInt(); }
+    static void setMsrpIdleTimeoutSeconds(int s) { settings().setValue(QStringLiteral("msrp/idleTimeoutSeconds"), s); }
+
+    static int  msrpMaxFrameBytes()        { return settings().value(QStringLiteral("msrp/maxFrameBytes"), 16384).toInt(); }
+    static void setMsrpMaxFrameBytes(int n) { settings().setValue(QStringLiteral("msrp/maxFrameBytes"), n); }
+    static int  msrpMaxMessageBytes()      { return settings().value(QStringLiteral("msrp/maxMessageBytes"), 2097152).toInt(); }
+    static void setMsrpMaxMessageBytes(int n) { settings().setValue(QStringLiteral("msrp/maxMessageBytes"), n); }
+    static int  msrpChunkSizeBytes()       { return settings().value(QStringLiteral("msrp/chunkSizeBytes"), 2048).toInt(); }
+    static void setMsrpChunkSizeBytes(int n) { settings().setValue(QStringLiteral("msrp/chunkSizeBytes"), n); }
+    static int  msrpMaxConcurrentSessions(){ return settings().value(QStringLiteral("msrp/maxConcurrentSessions"), 4).toInt(); }
+    static void setMsrpMaxConcurrentSessions(int n) { settings().setValue(QStringLiteral("msrp/maxConcurrentSessions"), n); }
+
+    static bool msrpRequestReports()       { return settings().value(QStringLiteral("msrp/requestReports"), true).toBool(); }
+    static void setMsrpRequestReports(bool on) { settings().setValue(QStringLiteral("msrp/requestReports"), on); }
+    static QString msrpAcceptTypes()       { return settings().value(QStringLiteral("msrp/acceptTypes"), QStringLiteral("text/plain message/cpim")).toString(); }
+    static void setMsrpAcceptTypes(const QString &types) { settings().setValue(QStringLiteral("msrp/acceptTypes"), types); }
+    static QString msrpAcceptWrappedTypes(){ return settings().value(QStringLiteral("msrp/acceptWrappedTypes"), QStringLiteral("text/plain text/html message/imdn+xml application/im-iscomposing+xml")).toString(); }
+    static void setMsrpAcceptWrappedTypes(const QString &types) { settings().setValue(QStringLiteral("msrp/acceptWrappedTypes"), types); }
+
+    static bool msrpTlsVerifyPeer()        { return settings().value(QStringLiteral("msrp/tlsVerifyPeer"), true).toBool(); }
+    static void setMsrpTlsVerifyPeer(bool on) { settings().setValue(QStringLiteral("msrp/tlsVerifyPeer"), on); }
+    static QString msrpTlsCaPath()         { return settings().value(QStringLiteral("msrp/tlsCaPath"), QString()).toString(); }
+    static void setMsrpTlsCaPath(const QString &path) { settings().setValue(QStringLiteral("msrp/tlsCaPath"), path); }
+
+    // Marks experimental sub-features (e.g. the raw-frame diagnostic test
+    // tool) — disabled by default, independent of enableMsrp itself.
+    static bool msrpExperimental()         { return settings().value(QStringLiteral("msrp/experimental"), false).toBool(); }
+    static void setMsrpExperimental(bool on) { settings().setValue(QStringLiteral("msrp/experimental"), on); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {

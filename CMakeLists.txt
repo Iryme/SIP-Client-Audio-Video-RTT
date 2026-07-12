@@ -111,6 +111,7 @@ set(SOURCES
     src/gui/panels/MessagingDiagnosticsPage.cpp
     src/gui/panels/PresencePage.cpp
     src/gui/panels/XcapPage.cpp
+    src/gui/panels/MsrpPage.cpp
     src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
@@ -145,6 +146,21 @@ set(SOURCES
     src/sip/XcapRequestBuilder.cpp
     src/sip/XcapClient.cpp
     src/sip/XcapDiagnosticsStore.cpp
+    src/msrp/MsrpPath.cpp
+    src/msrp/MsrpSdpNegotiator.cpp
+    src/msrp/MsrpFrameParser.cpp
+    src/msrp/MsrpFrameSerializer.cpp
+    src/msrp/MsrpChunkAssembler.cpp
+    src/msrp/MsrpTransactionStore.cpp
+    src/msrp/MsrpSessionStore.cpp
+    src/msrp/MsrpDiagnosticsStore.cpp
+    src/msrp/MsrpTcpTransport.cpp
+    src/msrp/MsrpTlsTransport.cpp
+    src/msrp/MsrpMessageChunker.cpp
+    src/msrp/MsrpSession.cpp
+    src/msrp/MsrpPayloadDispatcher.cpp
+    src/msrp/MessagingTransportPolicy.cpp
+    src/msrp/MsrpSipIntegration.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp
@@ -229,6 +245,7 @@ set(HEADERS
     src/gui/panels/MessagingDiagnosticsPage.h
     src/gui/panels/PresencePage.h
     src/gui/panels/XcapPage.h
+    src/gui/panels/MsrpPage.h
     src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h
@@ -273,6 +290,27 @@ set(HEADERS
     src/sip/XcapRequestBuilder.h
     src/sip/XcapClient.h
     src/sip/XcapDiagnosticsStore.h
+    src/msrp/MsrpTypes.h
+    src/msrp/MsrpSessionInfo.h
+    src/msrp/MsrpPath.h
+    src/msrp/MsrpSdpNegotiator.h
+    src/msrp/MsrpFrame.h
+    src/msrp/MsrpFrameParser.h
+    src/msrp/MsrpFrameSerializer.h
+    src/msrp/MsrpChunkAssembler.h
+    src/msrp/MsrpTransaction.h
+    src/msrp/MsrpTransactionStore.h
+    src/msrp/MsrpSessionStore.h
+    src/msrp/MsrpDiagnosticsEvent.h
+    src/msrp/MsrpDiagnosticsStore.h
+    src/msrp/MsrpTransport.h
+    src/msrp/MsrpTcpTransport.h
+    src/msrp/MsrpTlsTransport.h
+    src/msrp/MsrpMessageChunker.h
+    src/msrp/MsrpSession.h
+    src/msrp/MsrpPayloadDispatcher.h
+    src/msrp/MessagingTransportPolicy.h
+    src/msrp/MsrpSipIntegration.h
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h
