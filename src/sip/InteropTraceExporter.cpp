@@ -274,6 +274,24 @@ QJsonObject buildMsrpSessionEvent(const MsrpSessionInfo &info, qint64 eventId)
     obj[QStringLiteral("established")] = info.isEstablished();
     obj[QStringLiteral("state")] = msrpSessionStateToString(info.state);
 
+    // Task W102 Phase 3/4/10 (schemaVersion 3) — real role/negotiation-state/
+    // peer-association fields, all read from MsrpSessionInfo as already set
+    // by MsrpSession::connectAsActive/listenAsPassive (role) and SipCall's
+    // onCallSdpCreated (mediaIndex/sipHeaderCallId, W101) — never inferred
+    // from IP/port/peer URI alone.
+    obj[QStringLiteral("role")] = msrpRoleToString(info.role);
+    obj[QStringLiteral("remoteSetup")] = msrpSetupToString(info.remoteSetup);
+    obj[QStringLiteral("negotiationState")] = info.offerAnswerState;
+
+    QJsonObject peerAssociation;
+    peerAssociation[QStringLiteral("method")] = QStringLiteral("sip-dialog-mapping");
+    peerAssociation[QStringLiteral("mediaIndex")] = info.mediaIndex;
+    peerAssociation[QStringLiteral("sipHeaderCallId")] = info.sipHeaderCallId;
+    peerAssociation[QStringLiteral("confidence")] =
+        (info.mediaIndex >= 0 && !info.sipHeaderCallId.isEmpty())
+            ? QStringLiteral("exact") : QStringLiteral("unknown");
+    obj[QStringLiteral("peerAssociation")] = peerAssociation;
+
     obj[QStringLiteral("createdAt")] = info.createdAt.toString(Qt::ISODateWithMs);
     obj[QStringLiteral("updatedAt")] = info.updatedAt.toString(Qt::ISODateWithMs);
     if (info.connectedAt.isValid())

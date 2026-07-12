@@ -8,6 +8,7 @@
 #include "sip/MessagingDiagnosticsStore.h"
 #include "sip/PresenceDiagnosticsStore.h"
 #include "sip/SipTraceLogger.h"
+#include "msrp/MsrpSessionInfo.h"
 
 // Tests for InteropTraceExporter — the server-compatible JSON export (Task
 // W094, extended by Task W095) built on top of the existing, unmodified
@@ -59,6 +60,8 @@ private slots:
 
     void exportPresenceEventsSection();
     void presenceEventsDoNotAffectMessagingEventsSchema();
+
+    void exportMsrpSessionV3Fields();
 
 private:
     static void logMessage(const SipMessageTrace &t) { SipTraceLogger::instance().logMessage(t); }
@@ -421,8 +424,9 @@ void TestWindowsTraceJsonExport::exportPresenceEventsSection()
 
 void TestWindowsTraceJsonExport::presenceEventsDoNotAffectMessagingEventsSchema()
 {
-    // A plain SIP MESSAGE export must still work unchanged (schemaVersion
-    // stays 2; "events" is unaffected by the new "presenceEvents" key).
+    // A plain SIP MESSAGE export must still work unchanged ("events" is
+    // unaffected by the new "presenceEvents" key) regardless of which
+    // schemaVersion is current.
     SipMessageTrace t;
     t.method      = QStringLiteral("MESSAGE");
     t.contentType = QStringLiteral("text/plain");
@@ -432,9 +436,52 @@ void TestWindowsTraceJsonExport::presenceEventsDoNotAffectMessagingEventsSchema(
 
     const QString json = InteropTraceExporter::exportToJson();
     const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
-    QCOMPARE(doc.object().value(QStringLiteral("schemaVersion")).toInt(), 2);
+    QCOMPARE(doc.object().value(QStringLiteral("schemaVersion")).toInt(), InteropTraceExporter::kSchemaVersion);
     QVERIFY(doc.object().value(QStringLiteral("events")).toArray().size() >= 1);
     QVERIFY(doc.object().contains(QStringLiteral("presenceEvents")));
+}
+
+void TestWindowsTraceJsonExport::exportMsrpSessionV3Fields()
+{
+    // Task W102 Phase 10 (schemaVersion 3): role/remoteSetup/negotiationState/
+    // peerAssociation on msrpSessions entries, built directly through the
+    // public exportToJson(entries, presence, xcap, msrpSessions, msrpEvents)
+    // overload — no live SipCall/MsrpSession required.
+    MsrpSessionInfo info;
+    info.sessionKey = QStringLiteral("session-1");
+    info.sipHeaderCallId = QStringLiteral("abc123@example.com");
+    info.mediaIndex = 2;
+    info.role = MsrpRole::PassiveListener;
+    info.remoteSetup = MsrpSetup::Active;
+    info.offerAnswerState = QStringLiteral("answer");
+    info.state = MsrpSessionState::Established;
+
+    const QString json = InteropTraceExporter::exportToJson(
+        {}, {}, {}, {info}, {});
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    QCOMPARE(doc.object().value(QStringLiteral("schemaVersion")).toInt(), 3);
+
+    const QJsonArray sessions = doc.object().value(QStringLiteral("msrpSessions")).toArray();
+    QCOMPARE(sessions.size(), 1);
+    const QJsonObject s = sessions.first().toObject();
+    QCOMPARE(s.value(QStringLiteral("role")).toString(), QStringLiteral("passive-listener"));
+    QCOMPARE(s.value(QStringLiteral("remoteSetup")).toString(), QStringLiteral("active"));
+    QCOMPARE(s.value(QStringLiteral("negotiationState")).toString(), QStringLiteral("answer"));
+
+    const QJsonObject peerAssociation = s.value(QStringLiteral("peerAssociation")).toObject();
+    QCOMPARE(peerAssociation.value(QStringLiteral("method")).toString(), QStringLiteral("sip-dialog-mapping"));
+    QCOMPARE(peerAssociation.value(QStringLiteral("mediaIndex")).toInt(), 2);
+    QCOMPARE(peerAssociation.value(QStringLiteral("sipHeaderCallId")).toString(), QStringLiteral("abc123@example.com"));
+    QCOMPARE(peerAssociation.value(QStringLiteral("confidence")).toString(), QStringLiteral("exact"));
+
+    // No mediaIndex/sipHeaderCallId -> confidence must not falsely claim "exact".
+    MsrpSessionInfo unmapped;
+    unmapped.sessionKey = QStringLiteral("session-2");
+    const QString json2 = InteropTraceExporter::exportToJson({}, {}, {}, {unmapped}, {});
+    const QJsonObject s2 = QJsonDocument::fromJson(json2.toUtf8())
+        .object().value(QStringLiteral("msrpSessions")).toArray().first().toObject();
+    QCOMPARE(s2.value(QStringLiteral("peerAssociation")).toObject()
+        .value(QStringLiteral("confidence")).toString(), QStringLiteral("unknown"));
 }
 
 QTEST_GUILESS_MAIN(TestWindowsTraceJsonExport)

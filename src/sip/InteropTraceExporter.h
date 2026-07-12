@@ -61,7 +61,30 @@ namespace InteropTraceExporter {
 // attempt; absent otherwise). No existing field's meaning changes, so
 // kSchemaVersion stays 2 — see docs/msrp-foundation.md for the explicit
 // decision record.
-constexpr int kSchemaVersion = 2;
+//
+// Task W102 (MSRP Live Interoperability) bumps 2 -> 3: every "msrpSessions"
+// entry gains "role" (active-connector/passive-listener/unknown, from
+// MsrpSessionInfo::role — real, set by MsrpSession::connectAsActive/
+// listenAsPassive, not inferred), "remoteSetup", "negotiationState" (the
+// existing offerAnswerState field, not previously exported), and a nested
+// "peerAssociation" object {method, mediaIndex, sipHeaderCallId, confidence}
+// built from the real SIP<->MSRP mapping fields added in W101
+// (MsrpSessionInfo::mediaIndex/sipHeaderCallId) — "confidence" is "exact"
+// only when mediaIndex was actually set by onCallSdpCreated, "unknown"
+// otherwise; never fabricated. See docs/msrp-live-interoperability.md.
+// All v2 fields are unchanged, so a v2-only consumer keeps working.
+//
+// Not yet added in W102 (documented gap, not silently omitted — see
+// docs/msrp-live-interoperability.md "Ce ramane pentru W103"): a top-level
+// "msrpTransactions" array aggregated across all sessions (MsrpTransactionStore
+// is currently per-session, not globally aggregated by any store), a
+// top-level "fallbackEvents" history log (SipManager recomputes the
+// transport decision fresh on every send rather than persisting a log), an
+// "interopValidation" section (would require a real second export from
+// SIP-Server-RTT to compare against — see the comparator tool), and a
+// dedicated "tlsDiagnostics" array beyond the transport label already on
+// each session/frame event.
+constexpr int kSchemaVersion = 3;
 
 // Pure function: builds the full JSON document text from an explicit list
 // of trace entries (event ids assigned 1-based by position). Fully
