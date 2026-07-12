@@ -1,5 +1,9 @@
 #include <QtTest/QtTest>
 
+#include <QCryptographicHash>
+#include <QDir>
+#include <QTemporaryFile>
+
 #include "msrp/MsrpSession.h"
 
 // Local MSRP integration harness (Task W100, section U) — client active
@@ -17,6 +21,8 @@ private slots:
     void sendsAndReceivesPlainText();
     void sendsAndReceivesChunkedMessage();
     void connectionCloseIsObserved();
+    void sendsAndReceivesFileTransfer();
+    void sendFileRejectsMissingFile();
 };
 
 namespace {
@@ -106,6 +112,54 @@ void TestMsrpSessionHarness::connectionCloseIsObserved()
     client.closeSession();
     QTRY_VERIFY_WITH_TIMEOUT(client.info().state == MsrpSessionState::Closed
         || client.info().state == MsrpSessionState::Disconnecting, kWaitMs);
+}
+
+void TestMsrpSessionHarness::sendsAndReceivesFileTransfer()
+{
+    MsrpSession server(QStringLiteral("srv5"));
+    server.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("srv5")));
+    server.listenAsPassive(QStringLiteral("127.0.0.1"), kWaitMs);
+    const int port = server.transportLocalPort();
+
+    MsrpSession client(QStringLiteral("cli5"));
+    client.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("cli5")));
+    client.setRemotePath({MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), port, QStringLiteral("srv5"))});
+    client.setChunkSizeBytes(256);
+
+    QTemporaryFile srcFile(QDir::tempPath() + QStringLiteral("/msrp-w104-test-XXXXXX.bin"));
+    QVERIFY(srcFile.open());
+    const QByteArray content(3000, 'F');
+    QCOMPARE(srcFile.write(content), static_cast<qint64>(content.size()));
+    srcFile.close();
+
+    QSignalSpy payloadSpy(&server, &MsrpSession::payloadReceived);
+    QSignalSpy fileSpy(&server, &MsrpSession::fileTransferReceived);
+    client.connectAsActive(kWaitMs);
+    QTRY_VERIFY_WITH_TIMEOUT(client.info().state == MsrpSessionState::Established, kWaitMs);
+
+    const auto sendResult = client.sendFile(srcFile.fileName(), QStringLiteral("application/octet-stream"));
+    QVERIFY(sendResult.ok);
+    QCOMPARE(sendResult.fileSize, static_cast<qint64>(content.size()));
+    QCOMPARE(sendResult.sha1Hex,
+             QString::fromLatin1(QCryptographicHash::hash(content, QCryptographicHash::Sha1).toHex()));
+
+    QTRY_VERIFY_WITH_TIMEOUT(fileSpy.count() >= 1, kWaitMs);
+    QCOMPARE(payloadSpy.count(), fileSpy.count()); // fileTransferReceived never fires instead of payloadReceived
+
+    const auto args = fileSpy.first();
+    QCOMPARE(args.at(2).toString(), QStringLiteral("application/octet-stream"));
+    QVERIFY(!args.at(3).toString().isEmpty()); // suggested file name recovered from Content-Disposition
+    QCOMPARE(args.at(4).toByteArray(), content);
+}
+
+void TestMsrpSessionHarness::sendFileRejectsMissingFile()
+{
+    MsrpSession client(QStringLiteral("cli6"));
+    client.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("cli6")));
+
+    const auto result = client.sendFile(QStringLiteral("does/not/exist.bin"), QStringLiteral("text/plain"));
+    QVERIFY(!result.ok);
+    QVERIFY(!result.error.isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TestMsrpSessionHarness)
