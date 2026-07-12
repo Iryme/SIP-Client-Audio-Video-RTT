@@ -1,5 +1,12 @@
 # MSRP Testing (Task W100)
 
+> **Task W101 addition**: `test_msrp_sip_media_injector` (only built when
+> `ENABLE_PJSIP=ON`) proves live SDP injection at the wire-bytes level —
+> see [msrp-live-sdp-integration.md](msrp-live-sdp-integration.md). It
+> parses a real base SDP with `pjmedia_sdp_parse()`, injects via the exact
+> code path `SipCall` uses, and asserts the `pjmedia_sdp_print()` output
+> (not an internal model) contains the expected `m=message` bytes.
+
 ## Automated unit/protocol tests
 
 | Test target | Covers |

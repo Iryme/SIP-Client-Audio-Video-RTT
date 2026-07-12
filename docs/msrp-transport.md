@@ -3,6 +3,13 @@
 Covers `MsrpTransport`/`MsrpTcpTransport`/`MsrpTlsTransport`. See
 [msrp-foundation.md](msrp-foundation.md) for the overall architecture.
 
+> **Task W101 update**: `SipCall` now owns one real, call-scoped
+> `MsrpSession` (and therefore one real listener) per call, started before
+> the SDP offer that advertises it — see
+> [msrp-live-sdp-integration.md](msrp-live-sdp-integration.md) and
+> [msrp-peer-association.md](msrp-peer-association.md). The transport
+> classes themselves are unchanged from W100.
+
 ## Threading
 
 Both transports are built entirely on Qt's own async socket classes

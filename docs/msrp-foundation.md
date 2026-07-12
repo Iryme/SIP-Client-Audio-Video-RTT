@@ -1,5 +1,15 @@
 # MSRP Foundation (Task W100)
 
+> **Superseded by Task W101** (`docs/msrp-live-sdp-integration.md`): the
+> "`Call::onCallSdpCreated` is read-only" conclusion in §0 below was
+> incorrect. W101 re-audited the vendored pjproject source directly and
+> found a safe, public-API way to splice a real `m=message` section into
+> the live `pjmedia_sdp_session` (mutating `OnCallSdpCreatedParam::
+> sdp.pjSdpSession` in place, never `wholeSdp`). Live SDP injection is now
+> implemented for the offerer path — see the linked doc for the full audit
+> and proof. The rest of this document (protocol stack, transport, frame
+> codec) is still accurate and unchanged.
+
 A complete, independently-testable MSRP (RFC 4975/4976) protocol stack for
 the Windows client: SDP negotiation model, path parsing, session lifecycle,
 frame parser/serializer, TCP/TLS transport, transactions, chunking, and
