@@ -1,5 +1,7 @@
 #include "MsrpSipMediaInjector.h"
 
+#include <cstring>
+
 #ifdef HAVE_PJSIP
 #include <pjlib.h>
 #include <pjmedia/sdp.h>
@@ -10,6 +12,36 @@ namespace MsrpSipMediaInjector {
 #ifdef HAVE_PJSIP
 
 namespace {
+
+// Bug fix (found via live manual testing, 2026-07-12): pjmedia_sdp_validate
+// (called by pjsip_inv_create_uac for every outgoing call, always in strict
+// mode) requires every m= section to carry its own "c=" line whenever the
+// session-level "c=" is absent — and in this app's actual pjsua-generated
+// offers, the session-level "c=" is not reliably present. The original code
+// left m->conn == nullptr, assuming a session-level fallback that isn't
+// guaranteed to exist, which made pjmedia_sdp_validate return
+// PJMEDIA_SDP_EMISSINGCONN — a hard PJ_ASSERT_RETURN in this Debug build,
+// crashing the app on every outgoing call once MSRP is enabled. Always
+// giving the injected section its own "c=" removes the dependency on that
+// assumption entirely.
+pjmedia_sdp_conn *buildConnInfo(pj_pool_t *pool, const MsrpUri &localUri)
+{
+    auto *conn = PJ_POOL_ZALLOC_T(pool, pjmedia_sdp_conn);
+    conn->net_type = pj_str(const_cast<char *>("IN"));
+    conn->addr_type = localUri.hostIsIpv6 ? pj_str(const_cast<char *>("IP6"))
+                                           : pj_str(const_cast<char *>("IP4"));
+
+    // 0.0.0.0 placeholder only when no real host is known yet (e.g. a
+    // rejected port-0 section) — never left empty, since pjmedia_sdp_validate
+    // requires a non-empty addr regardless of whether the section is active.
+    const QString addr = localUri.host.isEmpty() ? QStringLiteral("0.0.0.0") : localUri.host;
+    const QByteArray addrUtf8 = addr.toUtf8();
+    char *addrCopy = static_cast<char *>(pj_pool_alloc(pool, addrUtf8.size() + 1));
+    memcpy(addrCopy, addrUtf8.constData(), static_cast<size_t>(addrUtf8.size()) + 1);
+    conn->addr = pj_str(addrCopy);
+
+    return conn;
+}
 
 pjmedia_sdp_media *buildMessageMedia(pj_pool_t *pool, const MsrpUri &localUri, MsrpSetup setup,
                                       const QStringList &acceptTypes,
@@ -25,7 +57,8 @@ pjmedia_sdp_media *buildMessageMedia(pj_pool_t *pool, const MsrpUri &localUri, M
                                 : pj_str(const_cast<char *>("TCP/MSRP"));
     m->desc.fmt_count = 1;
     m->desc.fmt[0] = pj_str(const_cast<char *>("*"));
-    m->conn = nullptr;
+    // Never nullptr — see buildConnInfo's comment above.
+    m->conn = buildConnInfo(pool, localUri);
     m->bandw_count = 0;
     m->attr_count = 0;
 

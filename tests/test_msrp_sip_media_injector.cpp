@@ -48,6 +48,27 @@ const char *kAnswerWithRejectedMessagePlaceholder =
     "a=rtpmap:96 H264/90000\r\n"
     "m=message 0 TCP/MSRP *\r\n";
 
+// Bug fix regression fixture (found via live manual testing, 2026-07-12):
+// no session-level "c=" line, only per-media ones — the shape actually
+// produced by this app's real pjsua-generated offers in the field, which
+// the original injectMessageMedia() (m->conn == nullptr, relying on an
+// assumed session-level fallback) did not handle: pjmedia_sdp_validate()
+// requires every m= section to carry its own "c=" when the session-level
+// one is absent, so the injected message section without one made every
+// outgoing call fail SDP validation (PJMEDIA_SDP_EMISSINGCONN) and abort()
+// in this Debug build. See MsrpSipMediaInjector::buildConnInfo.
+const char *kBaseSdpNoSessionLevelConn =
+    "v=0\r\n"
+    "o=- 123456 654321 IN IP4 192.0.2.10\r\n"
+    "s=-\r\n"
+    "t=0 0\r\n"
+    "m=audio 49170 RTP/AVP 0\r\n"
+    "c=IN IP4 192.0.2.10\r\n"
+    "a=rtpmap:0 PCMU/8000\r\n"
+    "m=video 51372 RTP/AVP 96\r\n"
+    "c=IN IP4 192.0.2.10\r\n"
+    "a=rtpmap:96 H264/90000\r\n";
+
 } // namespace
 
 class TestMsrpSipMediaInjector : public QObject
@@ -106,6 +127,51 @@ private slots:
         QVERIFY(wire.contains(QStringLiteral("a=setup:actpass")));
         QVERIFY(wire.contains(QStringLiteral("a=accept-types:text/plain message/cpim")));
         QVERIFY(wire.contains(QStringLiteral("a=accept-wrapped-types:text/plain")));
+
+        // The injected section must carry its own "c=" line — never rely on
+        // an assumed session-level fallback (see the bug this guards against
+        // in injectedMediaValidatesWithoutSessionLevelConn below).
+        QVERIFY(wire.contains(QStringLiteral("c=IN IP4 192.0.2.10")));
+    }
+
+    // Direct regression test for the live crash (2026-07-12): builds an
+    // offer with NO session-level "c=" line (the shape this app's real
+    // pjsua-generated offers actually have), injects the message media, and
+    // asserts pjmedia_sdp_validate() — the exact call pjsip_inv_create_uac
+    // makes for every outgoing call — succeeds. Before the fix this failed
+    // with PJMEDIA_SDP_EMISSINGCONN and hard-aborted the whole app.
+    void injectedMediaValidatesWithoutSessionLevelConn()
+    {
+        pjmedia_sdp_session *sdp = parseBaseNoSessionLevelConn();
+        QVERIFY(sdp != nullptr);
+        QVERIFY(sdp->conn == nullptr); // sanity: fixture really has no session-level c=
+
+        const MsrpUri uri = MsrpPath::buildUri(false, QStringLiteral("192.0.2.10"), 2855,
+                                                QStringLiteral("abc123sessionid"));
+        const auto result = MsrpSipMediaInjector::injectMessageMedia(
+            sdp, m_attrPool, uri, MsrpSetup::ActPass,
+            {QStringLiteral("text/plain")}, {}, 2855);
+        QVERIFY(result.injected);
+
+        QCOMPARE(pjmedia_sdp_validate(sdp), PJ_SUCCESS);
+    }
+
+    // Same fixture, but a rejected (port 0) section — still must validate,
+    // since pjmedia_sdp_validate is always called in strict mode regardless
+    // of whether the section is active.
+    void rejectedMediaValidatesWithoutSessionLevelConn()
+    {
+        pjmedia_sdp_session *sdp = parseBaseNoSessionLevelConn();
+        QVERIFY(sdp != nullptr);
+
+        const MsrpUri uri = MsrpPath::buildUri(false, QStringLiteral("192.0.2.10"), 0,
+                                                QStringLiteral("unused"));
+        const auto result = MsrpSipMediaInjector::injectMessageMedia(
+            sdp, m_attrPool, uri, MsrpSetup::ActPass,
+            {QStringLiteral("text/plain")}, {}, 0);
+        QVERIFY(result.injected);
+
+        QCOMPARE(pjmedia_sdp_validate(sdp), PJ_SUCCESS);
     }
 
     void injectsTlsSchemeAndProto()
@@ -236,6 +302,18 @@ private:
         // writable copy each time so tests don't interfere with each other.
         static char buf[2048];
         std::strncpy(buf, kBaseSdp, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        pjmedia_sdp_session *sdp = nullptr;
+        const pj_status_t st = pjmedia_sdp_parse(m_pool, buf, std::strlen(buf), &sdp);
+        if (st != PJ_SUCCESS)
+            return nullptr;
+        return sdp;
+    }
+
+    pjmedia_sdp_session *parseBaseNoSessionLevelConn()
+    {
+        static char buf[2048];
+        std::strncpy(buf, kBaseSdpNoSessionLevelConn, sizeof(buf) - 1);
         buf[sizeof(buf) - 1] = '\0';
         pjmedia_sdp_session *sdp = nullptr;
         const pj_status_t st = pjmedia_sdp_parse(m_pool, buf, std::strlen(buf), &sdp);
