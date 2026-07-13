@@ -10,6 +10,7 @@
 #include "sip/MessagingEventStore.h"
 #include "msrp/MsrpDiagnosticsStore.h"
 #include "msrp/MsrpRelayDiagnosticsStore.h"
+#include "msrp/MsrpCallPreparationDiagnosticsStore.h"
 #include "msrp/MsrpSessionStore.h"
 #include "sip/PresenceDiagnosticsStore.h"
 #include "sip/UrlRedactor.h"
@@ -393,6 +394,34 @@ QJsonObject buildMsrpRelayEvent(const MsrpRelayDiagnosticsEvent &ev, qint64 even
     return obj;
 }
 
+QString msrpCallPreparationStateToString(MsrpCallPreparationController::State state)
+{
+    switch (state) {
+    case MsrpCallPreparationController::State::Idle: return QStringLiteral("idle");
+    case MsrpCallPreparationController::State::ResolvingPolicy: return QStringLiteral("resolving-policy");
+    case MsrpCallPreparationController::State::AllocatingRelay: return QStringLiteral("allocating-relay");
+    case MsrpCallPreparationController::State::PreparingDirectMsrp: return QStringLiteral("preparing-direct-msrp");
+    case MsrpCallPreparationController::State::Ready: return QStringLiteral("ready");
+    case MsrpCallPreparationController::State::Cancelled: return QStringLiteral("cancelled");
+    case MsrpCallPreparationController::State::Failed: return QStringLiteral("failed");
+    case MsrpCallPreparationController::State::Expired: return QStringLiteral("expired");
+    }
+    return QStringLiteral("unknown");
+}
+
+QJsonObject buildMsrpCallPreparationEvent(const MsrpCallPreparationDiagnosticsEvent &ev, qint64 eventId)
+{
+    QJsonObject obj;
+    obj[QStringLiteral("eventId")] = static_cast<double>(eventId);
+    obj[QStringLiteral("timestamp")] = ev.timestamp.toString(Qt::ISODateWithMs);
+    obj[QStringLiteral("preparationId")] = ev.preparationId;
+    obj[QStringLiteral("state")] = msrpCallPreparationStateToString(ev.state);
+    obj[QStringLiteral("mode")] = ev.mode;
+    obj[QStringLiteral("allocationId")] = ev.allocationId;
+    obj[QStringLiteral("reason")] = ev.reason;
+    return obj;
+}
+
 } // namespace
 
 QString exportToJson(const QList<MessagingTraceEntry> &entries,
@@ -400,7 +429,8 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
                       const QList<XcapResult> &xcapEntries,
                       const QList<MsrpSessionInfo> &msrpSessions,
                       const QList<MsrpDiagnosticsEvent> &msrpEvents,
-                      const QList<MsrpRelayDiagnosticsEvent> &msrpRelayEvents)
+                      const QList<MsrpRelayDiagnosticsEvent> &msrpRelayEvents,
+                      const QList<MsrpCallPreparationDiagnosticsEvent> &msrpCallPreparationEvents)
 {
     QJsonArray events;
     qint64 id = 1;
@@ -432,6 +462,11 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
     for (const MsrpRelayDiagnosticsEvent &ev : msrpRelayEvents)
         msrpRelayEventsArray.append(buildMsrpRelayEvent(ev, msrpRelayEventId++));
 
+    QJsonArray msrpCallPreparationEventsArray;
+    qint64 msrpCallPreparationEventId = 1;
+    for (const MsrpCallPreparationDiagnosticsEvent &ev : msrpCallPreparationEvents)
+        msrpCallPreparationEventsArray.append(buildMsrpCallPreparationEvent(ev, msrpCallPreparationEventId++));
+
     QJsonObject root;
     root[QStringLiteral("schemaVersion")]  = kSchemaVersion;
     root[QStringLiteral("source")]         = QStringLiteral("windows-client");
@@ -442,6 +477,7 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
     root[QStringLiteral("msrpSessions")]   = msrpSessionsArray;
     root[QStringLiteral("msrpEvents")]     = msrpEventsArray;
     root[QStringLiteral("msrpRelayEvents")] = msrpRelayEventsArray;
+    root[QStringLiteral("msrpCallPreparationEvents")] = msrpCallPreparationEventsArray;
 
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
@@ -453,7 +489,8 @@ QString exportToJson()
                         XcapDiagnosticsStore::instance().entries(),
                         MsrpSessionStore::instance().snapshot(),
                         MsrpDiagnosticsStore::instance().entries(),
-                        MsrpRelayDiagnosticsStore::instance().entries());
+                        MsrpRelayDiagnosticsStore::instance().entries(),
+                        MsrpCallPreparationDiagnosticsStore::instance().entries());
 }
 
 } // namespace InteropTraceExporter

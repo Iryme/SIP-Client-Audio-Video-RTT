@@ -2,6 +2,7 @@
 #include <QList>
 #include <QString>
 
+#include "msrp/MsrpCallPreparationDiagnosticsEvent.h"
 #include "msrp/MsrpDiagnosticsEvent.h"
 #include "msrp/MsrpRelayDiagnosticsEvent.h"
 #include "msrp/MsrpSessionInfo.h"
@@ -94,6 +95,15 @@ namespace InteropTraceExporter {
 // kSchemaVersion stays 3. Every field is pre-redacted at the source (see
 // MsrpRelayDiagnosticsEvent); this exporter never has access to the raw
 // nonce/digest/credential values in the first place.
+//
+// Task W108 (Relay Live Call Integration) adds a top-level
+// "msrpCallPreparationEvents" array, built from
+// MsrpCallPreparationDiagnosticsStore rows (call-preparation state
+// transitions: resolving policy, allocating relay, ready/failed/cancelled —
+// independent of "msrpRelayEvents", which only ever describes the relay
+// control-connection protocol itself). Purely additive, kSchemaVersion
+// stays 3. Never contains a credential/nonce/full path — only the
+// preparation id, resolved mode, and (redacted) allocation id.
 constexpr int kSchemaVersion = 3;
 
 // Pure function: builds the full JSON document text from an explicit list
@@ -107,7 +117,8 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
                       const QList<XcapResult> &xcapEntries = QList<XcapResult>(),
                       const QList<MsrpSessionInfo> &msrpSessions = QList<MsrpSessionInfo>(),
                       const QList<MsrpDiagnosticsEvent> &msrpEvents = QList<MsrpDiagnosticsEvent>(),
-                      const QList<MsrpRelayDiagnosticsEvent> &msrpRelayEvents = QList<MsrpRelayDiagnosticsEvent>());
+                      const QList<MsrpRelayDiagnosticsEvent> &msrpRelayEvents = QList<MsrpRelayDiagnosticsEvent>(),
+                      const QList<MsrpCallPreparationDiagnosticsEvent> &msrpCallPreparationEvents = QList<MsrpCallPreparationDiagnosticsEvent>());
 
 // Convenience overload: exports the live MessagingDiagnosticsStore's,
 // PresenceDiagnosticsStore's, XcapDiagnosticsStore's, MsrpSessionStore's,
