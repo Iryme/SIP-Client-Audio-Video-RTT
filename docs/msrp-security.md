@@ -40,6 +40,32 @@ the UI/config.
   test flow will allow at once (enforced at the MSRP page /
   `MsrpSessionStore` level).
 
+## Inbound connection authentication (Task W105)
+
+`MsrpTcpTransport::listenPassive()` accepts the first TCP connection it
+receives unconditionally and then closes the listener (RFC 4975's passive
+role has no lower-layer authentication of its own — this matches the spec,
+not a bug in the transport). Before Task W105, `MsrpSession::handleFrame()`
+processed any inbound SEND/REPORT request from that connection without
+checking who it actually came from, so any local process able to connect to
+the ephemeral listening port before the real, SDP-negotiated peer would be
+silently trusted and could inject messages into the session.
+
+Per RFC 4975 §7.1, `MsrpSession::toPathTargetsThisSession()` now checks that
+every inbound *request*'s `To-Path` last URI's session-id equals this
+session's own negotiated local session-id before it is processed further. A
+mismatch is rejected with a `403 Forbidden` response, logged as an
+`MsrpDiagnosticsEvent` (`Kind::Error`), and never reaches
+`payloadReceived`/`fileTransferReceived` or the chunk assembler. The
+session-id is the one part of the URI an attacker cannot guess without
+having already observed the SDP `a=path` exchanged over the signaling
+channel — host/port alone (which a local port-scan could discover) are not
+sufficient to pass this check.
+
+This does not change behavior for a legitimate peer: the To-Path a real
+peer sends is always built from the `a=path` this client advertised in its
+own SDP offer/answer, so it always matches.
+
 ## Header/path injection
 
 - `MsrpFrameSerializer::serialize()` rejects (returns empty, `ok=false`)
