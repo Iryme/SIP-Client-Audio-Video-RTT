@@ -24,6 +24,7 @@
 #include "core/AppSettings.h"
 #include "msrp/MsrpDiagnosticsStore.h"
 #include "msrp/MsrpFileReceiver.h"
+#include "msrp/MsrpRelayDiagnosticsStore.h"
 #include "msrp/MsrpSession.h"
 #include "msrp/MsrpSessionStore.h"
 #include "sip/InteropTraceExporter.h"
@@ -55,7 +56,37 @@ constexpr int kDiagColContinuation = 6;
 constexpr int kDiagColPreview = 7;
 constexpr int kDiagColCount = 8;
 
+constexpr int kRelayDiagColTime = 0;
+constexpr int kRelayDiagColKind = 1;
+constexpr int kRelayDiagColResponse = 2;
+constexpr int kRelayDiagColAlgorithm = 3;
+constexpr int kRelayDiagColAllocatedPath = 4;
+constexpr int kRelayDiagColExpires = 5;
+constexpr int kRelayDiagColError = 6;
+constexpr int kRelayDiagColCount = 7;
+
 QChar continuationChar(MsrpContinuation c) { return msrpContinuationToChar(c); }
+
+QString relayEventKindLabel(MsrpRelayDiagnosticsEvent::Kind kind)
+{
+    switch (kind) {
+    case MsrpRelayDiagnosticsEvent::Kind::Connect: return QStringLiteral("Connect");
+    case MsrpRelayDiagnosticsEvent::Kind::ConnectFailed: return QStringLiteral("Connect Failed");
+    case MsrpRelayDiagnosticsEvent::Kind::InitialAuthSent: return QStringLiteral("Initial AUTH Sent");
+    case MsrpRelayDiagnosticsEvent::Kind::ChallengeReceived: return QStringLiteral("Challenge Received");
+    case MsrpRelayDiagnosticsEvent::Kind::AuthenticatedAuthSent: return QStringLiteral("Authenticated AUTH Sent");
+    case MsrpRelayDiagnosticsEvent::Kind::AllocationSuccess: return QStringLiteral("Allocation Success");
+    case MsrpRelayDiagnosticsEvent::Kind::AllocationFailure: return QStringLiteral("Allocation Failure");
+    case MsrpRelayDiagnosticsEvent::Kind::Refresh: return QStringLiteral("Refresh");
+    case MsrpRelayDiagnosticsEvent::Kind::RefreshFailure: return QStringLiteral("Refresh Failure");
+    case MsrpRelayDiagnosticsEvent::Kind::Reconnect: return QStringLiteral("Reconnect");
+    case MsrpRelayDiagnosticsEvent::Kind::Reauthenticate: return QStringLiteral("Reauthenticate");
+    case MsrpRelayDiagnosticsEvent::Kind::Expired: return QStringLiteral("Expired");
+    case MsrpRelayDiagnosticsEvent::Kind::Closed: return QStringLiteral("Closed");
+    case MsrpRelayDiagnosticsEvent::Kind::Error: return QStringLiteral("Error");
+    }
+    return QStringLiteral("Unknown");
+}
 } // namespace
 
 MsrpPage::MsrpPage(QWidget *parent) : QWidget(parent)
@@ -229,9 +260,39 @@ MsrpPage::MsrpPage(QWidget *parent) : QWidget(parent)
 
     root->addWidget(splitter, 1);
 
+    // ---- MSRP Relay diagnostics (Task W107, RFC 4976 — experimental) ----
+    // Relay support itself is Disabled by default (MsrpRelayConfig::mode);
+    // this table only ever shows rows when a relay is explicitly configured
+    // and used, and every field is already redacted at the source (see
+    // MsrpRelayDiagnosticsEvent) — no nonce/digest/credential ever reaches
+    // this UI.
+    auto *relayBox = new QGroupBox(tr("MSRP Relay Diagnostics (RFC 4976, Experimental)"), this);
+    auto *relayLayout = new QVBoxLayout(relayBox);
+    auto *relayHeaderLayout = new QHBoxLayout;
+    relayHeaderLayout->addWidget(new QLabel(
+        tr("Disabled by default. Populated only when a relay is explicitly configured."), relayBox), 1);
+    m_clearRelayDiagBtn = new QPushButton(tr("Clear"), relayBox);
+    relayHeaderLayout->addWidget(m_clearRelayDiagBtn);
+    relayLayout->addLayout(relayHeaderLayout);
+
+    m_relayDiagnosticsTable = new QTableWidget(0, kRelayDiagColCount, relayBox);
+    m_relayDiagnosticsTable->setHorizontalHeaderLabels({
+        tr("Time"), tr("Kind"), tr("Response"), tr("Algorithm"),
+        tr("Allocated Path"), tr("Expires"), tr("Error")
+    });
+    m_relayDiagnosticsTable->horizontalHeader()->setStretchLastSection(true);
+    m_relayDiagnosticsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_relayDiagnosticsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_relayDiagnosticsTable->setMaximumHeight(160);
+    relayLayout->addWidget(m_relayDiagnosticsTable);
+    root->addWidget(relayBox);
+
     connect(m_clearDiagBtn, &QPushButton::clicked, this, &MsrpPage::onClearDiagnosticsClicked);
     connect(m_exportJsonBtn, &QPushButton::clicked, this, &MsrpPage::onExportJsonClicked);
     connect(m_exportTxtBtn, &QPushButton::clicked, this, &MsrpPage::onExportTxtClicked);
+    connect(m_clearRelayDiagBtn, &QPushButton::clicked, this, [this]() {
+        MsrpRelayDiagnosticsStore::instance().clear();
+    });
 
     connect(&MsrpSessionStore::instance(), &MsrpSessionStore::sessionUpdated, this, &MsrpPage::onSessionUpdated);
     connect(&MsrpSessionStore::instance(), &MsrpSessionStore::sessionRemoved, this, &MsrpPage::onSessionRemoved);
@@ -242,9 +303,15 @@ MsrpPage::MsrpPage(QWidget *parent) : QWidget(parent)
     connect(&MsrpDiagnosticsStore::instance(), &MsrpDiagnosticsStore::cleared, this, [this]() {
         m_diagRows.clear(); m_diagnosticsTable->setRowCount(0);
     });
+    connect(&MsrpRelayDiagnosticsStore::instance(), &MsrpRelayDiagnosticsStore::entryLogged,
+            this, &MsrpPage::onRelayDiagnosticEvent);
+    connect(&MsrpRelayDiagnosticsStore::instance(), &MsrpRelayDiagnosticsStore::cleared, this, [this]() {
+        m_relayDiagRows.clear(); m_relayDiagnosticsTable->setRowCount(0);
+    });
 
     rebuildSessionTable();
     rebuildDiagnosticsTable();
+    rebuildRelayDiagnosticsTable();
     updateControlsEnabled();
 }
 
@@ -433,6 +500,39 @@ void MsrpPage::onDiagnosticEvent(const MsrpDiagnosticsEvent &event)
 {
     m_diagRows.append(event);
     addDiagnosticRow(event);
+}
+
+void MsrpPage::onRelayDiagnosticEvent(const MsrpRelayDiagnosticsEvent &event)
+{
+    m_relayDiagRows.append(event);
+    addRelayDiagnosticRow(event);
+}
+
+void MsrpPage::rebuildRelayDiagnosticsTable()
+{
+    m_relayDiagRows = MsrpRelayDiagnosticsStore::instance().entries();
+    m_relayDiagnosticsTable->setRowCount(0);
+    for (const auto &ev : m_relayDiagRows)
+        addRelayDiagnosticRow(ev);
+}
+
+void MsrpPage::addRelayDiagnosticRow(const MsrpRelayDiagnosticsEvent &event)
+{
+    const int row = m_relayDiagnosticsTable->rowCount();
+    m_relayDiagnosticsTable->insertRow(row);
+    for (int col = 0; col < kRelayDiagColCount; ++col)
+        m_relayDiagnosticsTable->setItem(row, col, new QTableWidgetItem());
+
+    m_relayDiagnosticsTable->item(row, kRelayDiagColTime)->setText(event.timestamp.toString(Qt::ISODateWithMs));
+    m_relayDiagnosticsTable->item(row, kRelayDiagColKind)->setText(relayEventKindLabel(event.kind));
+    m_relayDiagnosticsTable->item(row, kRelayDiagColResponse)->setText(
+        event.responseCode > 0 ? QStringLiteral("%1 %2").arg(event.responseCode).arg(event.responseComment)
+                               : QString());
+    m_relayDiagnosticsTable->item(row, kRelayDiagColAlgorithm)->setText(event.algorithm);
+    m_relayDiagnosticsTable->item(row, kRelayDiagColAllocatedPath)->setText(event.allocatedPathRedacted);
+    m_relayDiagnosticsTable->item(row, kRelayDiagColExpires)->setText(
+        event.expiresAt.isValid() ? event.expiresAt.toString(Qt::ISODateWithMs) : QString());
+    m_relayDiagnosticsTable->item(row, kRelayDiagColError)->setText(event.error);
 }
 
 void MsrpPage::rebuildSessionTable()

@@ -2,6 +2,7 @@
 #include <QWidget>
 
 #include "msrp/MsrpDiagnosticsEvent.h"
+#include "msrp/MsrpRelayDiagnosticsEvent.h"
 #include "msrp/MsrpSessionInfo.h"
 
 class QCheckBox;
@@ -45,13 +46,16 @@ private slots:
     void onSessionUpdated(const MsrpSessionInfo &info);
     void onSessionRemoved(const QString &sessionKey);
     void onDiagnosticEvent(const MsrpDiagnosticsEvent &event);
+    void onRelayDiagnosticEvent(const MsrpRelayDiagnosticsEvent &event);
 
 private:
     void wireTestSessionSignals();
     void addOrUpdateSessionRow(const MsrpSessionInfo &info);
     void addDiagnosticRow(const MsrpDiagnosticsEvent &event);
+    void addRelayDiagnosticRow(const MsrpRelayDiagnosticsEvent &event);
     void rebuildSessionTable();
     void rebuildDiagnosticsTable();
+    void rebuildRelayDiagnosticsTable();
     void updateControlsEnabled();
 
     QCheckBox *m_enableCheck{nullptr};
@@ -82,6 +86,14 @@ private:
     QPushButton  *m_clearDiagBtn{nullptr};
     QPushButton  *m_exportJsonBtn{nullptr};
     QPushButton  *m_exportTxtBtn{nullptr};
+
+    // Task W107 (MSRP relay, RFC 4976) — read-only, experimental: shows
+    // MsrpRelayDiagnosticsStore rows (relay AUTH/allocation/refresh/
+    // recovery). Relay support is Disabled by default (see MsrpRelayConfig),
+    // so this table stays empty unless a relay is explicitly configured.
+    QTableWidget *m_relayDiagnosticsTable{nullptr};
+    QPushButton  *m_clearRelayDiagBtn{nullptr};
+    QList<MsrpRelayDiagnosticsEvent> m_relayDiagRows;
 
     MsrpSession *m_testSession{nullptr};
     QList<MsrpSessionInfo> m_sessionRows;
