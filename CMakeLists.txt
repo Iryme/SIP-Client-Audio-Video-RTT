@@ -168,6 +168,8 @@ set(SOURCES
     src/msrp/MsrpDigestAuth.cpp
     src/msrp/MsrpRelayClient.cpp
     src/msrp/MsrpRelayDiagnosticsStore.cpp
+    src/msrp/MsrpCallPreparationController.cpp
+    src/msrp/MsrpCallPreparationDiagnosticsStore.cpp
     src/gui/widgets/AppStatusBar.cpp
     src/gui/dialogs/SipProfileEditorDialog.cpp
     src/gui/dialogs/IncomingCallDialog.cpp

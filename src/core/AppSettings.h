@@ -227,6 +227,42 @@ public:
     static bool msrpExperimental()         { return settings().value(QStringLiteral("msrp/experimental"), false).toBool(); }
     static void setMsrpExperimental(bool on) { settings().setValue(QStringLiteral("msrp/experimental"), on); }
 
+    // RFC 4976 MSRP relay call-integration config (Task W108). Mode is one
+    // of "disabled" / "automatic" / "required" and defaults to "disabled" —
+    // relay allocation is never attempted for any real call unless a user or
+    // config explicitly turns this on. No relay host/port/credential ever
+    // has a non-empty compiled-in default; see MsrpCallPreparationController.
+    static QString msrpRelayMode()         { return settings().value(QStringLiteral("msrp/relay/mode"), QStringLiteral("disabled")).toString(); }
+    static void setMsrpRelayMode(const QString &mode) { settings().setValue(QStringLiteral("msrp/relay/mode"), mode); }
+    static QString msrpRelayHost()         { return settings().value(QStringLiteral("msrp/relay/host"), QString()).toString(); }
+    static void setMsrpRelayHost(const QString &host) { settings().setValue(QStringLiteral("msrp/relay/host"), host); }
+    static int  msrpRelayPort()            { return settings().value(QStringLiteral("msrp/relay/port"), 0).toInt(); }
+    static void setMsrpRelayPort(int port) { settings().setValue(QStringLiteral("msrp/relay/port"), port); }
+    static bool msrpRelayUseTls()          { return settings().value(QStringLiteral("msrp/relay/useTls"), true).toBool(); }
+    static void setMsrpRelayUseTls(bool on) { settings().setValue(QStringLiteral("msrp/relay/useTls"), on); }
+    static QString msrpRelayUsername()     { return settings().value(QStringLiteral("msrp/relay/username"), QString()).toString(); }
+    static void setMsrpRelayUsername(const QString &user) { settings().setValue(QStringLiteral("msrp/relay/username"), user); }
+    // Identifies which CredentialStore entry supplies the relay password;
+    // the password itself is never stored here (see CredentialStore).
+    static QString msrpRelayCredentialProfileId() { return settings().value(QStringLiteral("msrp/relay/credentialProfileId"), QString()).toString(); }
+    static void setMsrpRelayCredentialProfileId(const QString &id) { settings().setValue(QStringLiteral("msrp/relay/credentialProfileId"), id); }
+    static bool msrpRelayTlsVerifyPeer()   { return settings().value(QStringLiteral("msrp/relay/tlsVerifyPeer"), true).toBool(); }
+    static void setMsrpRelayTlsVerifyPeer(bool on) { settings().setValue(QStringLiteral("msrp/relay/tlsVerifyPeer"), on); }
+    static QString msrpRelayTlsCaPath()    { return settings().value(QStringLiteral("msrp/relay/tlsCaPath"), QString()).toString(); }
+    static void setMsrpRelayTlsCaPath(const QString &path) { settings().setValue(QStringLiteral("msrp/relay/tlsCaPath"), path); }
+    static int  msrpRelayConnectTimeoutMs(){ return settings().value(QStringLiteral("msrp/relay/connectTimeoutMs"), 8000).toInt(); }
+    static void setMsrpRelayConnectTimeoutMs(int ms) { settings().setValue(QStringLiteral("msrp/relay/connectTimeoutMs"), ms); }
+    static int  msrpRelayAuthTimeoutMs()   { return settings().value(QStringLiteral("msrp/relay/authTimeoutMs"), 8000).toInt(); }
+    static void setMsrpRelayAuthTimeoutMs(int ms) { settings().setValue(QStringLiteral("msrp/relay/authTimeoutMs"), ms); }
+    static int  msrpRelayRefreshMarginSeconds() { return settings().value(QStringLiteral("msrp/relay/refreshMarginSeconds"), 30).toInt(); }
+    static void setMsrpRelayRefreshMarginSeconds(int s) { settings().setValue(QStringLiteral("msrp/relay/refreshMarginSeconds"), s); }
+    static int  msrpRelayMaxRetries()      { return settings().value(QStringLiteral("msrp/relay/maxRetries"), 2).toInt(); }
+    static void setMsrpRelayMaxRetries(int n) { settings().setValue(QStringLiteral("msrp/relay/maxRetries"), n); }
+    // Overall call-preparation timeout (Phase 5): how long makeCall() will
+    // wait for relay allocation before applying fallback policy.
+    static int  msrpRelayPreparationTimeoutMs() { return settings().value(QStringLiteral("msrp/relay/preparationTimeoutMs"), 12000).toInt(); }
+    static void setMsrpRelayPreparationTimeoutMs(int ms) { settings().setValue(QStringLiteral("msrp/relay/preparationTimeoutMs"), ms); }
+
     // Lab PSAP target URI — used only in emergency test mode, never a real PSAP.
     static QString emergencyTarget()
     {

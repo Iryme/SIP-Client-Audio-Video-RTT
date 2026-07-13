@@ -93,6 +93,10 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDigestAuth.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayClient.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayDiagnosticsStore.cpp
+    # Task W108: SipCall.cpp/SipManager.cpp now reference
+    # MsrpCallPreparationController/PreparedMsrpOffer directly.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpCallPreparationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpCallPreparationDiagnosticsStore.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -129,6 +133,8 @@ set(MSRP_RELAY_SOURCES
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDigestAuth.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayClient.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayDiagnosticsStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpCallPreparationController.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpCallPreparationDiagnosticsStore.cpp
 )
 
 # Messaging Diagnostics parser sources — CPIM / IMDN / is-composing / SDP MSRP.
@@ -161,6 +167,10 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     # Task W107: InteropTraceExporter.cpp's exportToJson() also calls
     # MsrpRelayDiagnosticsStore::instance() directly for msrpRelayEvents.
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayDiagnosticsStore.cpp
+    # Task W108: InteropTraceExporter.cpp's exportToJson() also calls
+    # MsrpCallPreparationDiagnosticsStore::instance() directly for
+    # msrpCallPreparationEvents.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpCallPreparationDiagnosticsStore.cpp
 )
 
 # SIP MESSAGE Foundation sources (Task W092) — composer + CPIM builder, plus
@@ -1066,6 +1076,22 @@ qt_add_executable(test_msrp_relay_client
 target_include_directories(test_msrp_relay_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(test_msrp_relay_client PRIVATE Qt6::Core Qt6::Test Qt6::Network)
 add_test(NAME test_msrp_relay_client COMMAND test_msrp_relay_client)
+
+# ---- test_msrp_call_preparation (Task W108) --------------------------------
+# MsrpCallPreparationController's async state machine against the same
+# scripted FakeMsrpRelay TCP double as test_msrp_relay_client — no PJSIP
+# dependency (the controller itself never touches pjsip types).
+qt_add_executable(test_msrp_call_preparation
+    test_msrp_call_preparation.cpp
+    ${MSRP_PROTOCOL_SOURCES}
+    ${MSRP_RELAY_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransport.h
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
+)
+target_include_directories(test_msrp_call_preparation PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_call_preparation PRIVATE Qt6::Core Qt6::Test Qt6::Network)
+add_test(NAME test_msrp_call_preparation COMMAND test_msrp_call_preparation)
 
 # ---- test_msrp_session_relay_transport (Task W107) -------------------------
 # Verifies MsrpSession::adoptExternalTransport(): an already-connected

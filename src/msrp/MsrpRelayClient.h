@@ -59,6 +59,22 @@ public:
     MsrpRelayAllocation allocation() const { return m_allocation; }
     bool isAllocated() const;
 
+    // Transfers ownership of the underlying (already-connected, already-
+    // authenticated) transport to the caller — used by call integration
+    // (Task W108) to hand the relay's TCP/TLS connection to an MsrpSession
+    // via adoptExternalTransport() once an allocation is ready, so relay
+    // SEND/response/REPORT traffic flows over the same connection the
+    // allocation was obtained on (RFC 4976: control and session traffic
+    // share one connection). After this call, this client no longer owns a
+    // transport: a later refresh cycle (see scheduleRefresh) always
+    // reconnects and re-authenticates from scratch, which yields a *new*
+    // allocation via allocationRefreshed() — the caller must call
+    // takeTransport() again and re-negotiate SDP with the new Use-Path
+    // (see docs/msrp-relay-call-preparation.md, "Ownership"). Returns
+    // nullptr if there is no transport to hand off (e.g. not yet
+    // connected, or already taken).
+    std::unique_ptr<MsrpTransport> takeTransport();
+
 signals:
     void stateChanged(MsrpRelayClient::State state);
     void allocationReady(const MsrpRelayAllocation &allocation);

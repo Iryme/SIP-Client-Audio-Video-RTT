@@ -64,6 +64,17 @@ bool MsrpRelayClient::isAllocated() const
     return (m_state == State::Allocated || m_state == State::Refreshing) && m_allocation.valid;
 }
 
+std::unique_ptr<MsrpTransport> MsrpRelayClient::takeTransport()
+{
+    if (!m_transport)
+        return nullptr;
+    // Stop delivering transport signals to this client's own slots — the
+    // new owner (MsrpSession::adoptExternalTransport) wires its own
+    // connections immediately after taking ownership.
+    m_transport->disconnect(this);
+    return std::move(m_transport);
+}
+
 void MsrpRelayClient::transitionTo(State s)
 {
     m_state = s;
