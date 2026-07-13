@@ -88,6 +88,11 @@ set(CALL_SOURCES
     # MessagingTransportPolicy::decideInitialTransport/
     # decideFallbackAfterMsrpFailure directly.
     ${CMAKE_SOURCE_DIR}/src/msrp/MessagingTransportPolicy.cpp
+    # Task W107: MsrpSipMediaInjector.cpp now consults MsrpRelayClient
+    # allocation state before offering a local vs. relay-allocated path.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDigestAuth.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayDiagnosticsStore.cpp
 )
 # SipCall.cpp references PjsipGdiRenderer::deviceIndex() under HAVE_PJSIP+_WIN32.
 # Include the renderer so tests link cleanly when PJSIP is enabled on Windows.
@@ -112,6 +117,18 @@ set(SIP_TRACE_SOURCES
 # SIP_TRACE_SOURCES, which is also used by plain-Qt tests like test_sip_trace.
 set(PJSIP_TRACE_MODULE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/PjsipTraceModule.cpp
+)
+
+# RFC 4976 MSRP relay authentication (Task W107) — pure Qt, no PJSIP types.
+# MsrpRelayClient.cpp depends on the same transport/frame-parser sources as
+# MsrpSession.cpp (see CALL_SOURCES), so it is appended there rather than
+# duplicated; MSRP_RELAY_SOURCES itself only needs to be linked alongside
+# MSRP_PROTOCOL_SOURCES for relay-only unit tests that don't need the full
+# SipManager dependency chain.
+set(MSRP_RELAY_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDigestAuth.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayDiagnosticsStore.cpp
 )
 
 # Messaging Diagnostics parser sources — CPIM / IMDN / is-composing / SDP MSRP.
@@ -141,6 +158,9 @@ set(MESSAGING_DIAGNOSTICS_SOURCES
     # transport code), so no further dependency is needed.
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSessionStore.cpp
     ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDiagnosticsStore.cpp
+    # Task W107: InteropTraceExporter.cpp's exportToJson() also calls
+    # MsrpRelayDiagnosticsStore::instance() directly for msrpRelayEvents.
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpRelayDiagnosticsStore.cpp
 )
 
 # SIP MESSAGE Foundation sources (Task W092) — composer + CPIM builder, plus
@@ -1020,6 +1040,55 @@ target_include_directories(test_msrp_session_harness PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries(test_msrp_session_harness PRIVATE Qt6::Core Qt6::Test Qt6::Network)
 add_test(NAME test_msrp_session_harness COMMAND test_msrp_session_harness)
 
+# ---- test_msrp_digest_auth (Task W107) -------------------------------------
+# Pure hashing/parsing primitives, no transport — verified against RFC 2617's
+# own worked digest example.
+qt_add_executable(test_msrp_digest_auth
+    test_msrp_digest_auth.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDigestAuth.cpp
+)
+target_include_directories(test_msrp_digest_auth PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_digest_auth PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_msrp_digest_auth COMMAND test_msrp_digest_auth)
+
+# ---- test_msrp_relay_client (Task W107) ------------------------------------
+# Drives MsrpRelayClient's real AUTH state machine against a scripted local
+# TCP relay double (test_msrp_relay_client.cpp's FakeMsrpRelay) — no
+# dependency on any real third-party relay.
+qt_add_executable(test_msrp_relay_client
+    test_msrp_relay_client.cpp
+    ${MSRP_PROTOCOL_SOURCES}
+    ${MSRP_RELAY_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransport.h
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
+)
+target_include_directories(test_msrp_relay_client PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_relay_client PRIVATE Qt6::Core Qt6::Test Qt6::Network)
+add_test(NAME test_msrp_relay_client COMMAND test_msrp_relay_client)
+
+# ---- test_msrp_session_relay_transport (Task W107) -------------------------
+# Verifies MsrpSession::adoptExternalTransport(): an already-connected
+# transport is adopted (not opened via connectAsActive/listenAsPassive) and
+# the session reaches Established immediately, then sends/receives normally.
+qt_add_executable(test_msrp_session_relay_transport
+    test_msrp_session_relay_transport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransport.h
+    ${MSRP_PROTOCOL_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpChunkAssembler.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransactionStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSessionStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpDiagnosticsStore.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpMessageChunker.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpSession.cpp
+    ${CMAKE_SOURCE_DIR}/src/msrp/MsrpFileSelector.cpp
+)
+target_include_directories(test_msrp_session_relay_transport PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_msrp_session_relay_transport PRIVATE Qt6::Core Qt6::Test Qt6::Network)
+add_test(NAME test_msrp_session_relay_transport COMMAND test_msrp_session_relay_transport)
+
 # ---- test_msrp_file_selector (Task W104) -----------------------------------
 qt_add_executable(test_msrp_file_selector
     test_msrp_file_selector.cpp
@@ -1786,5 +1855,32 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
 
     if(WIN32)
         target_link_libraries(live_emergency_call_probe PRIVATE Advapi32)
+    endif()
+
+    # ---- live_msrp_relay_probe (Task W107, manual live validation) ----------
+    # Pure Qt/Network — no PJSIP dependency — grouped here with the other live
+    # probes for consistency. Exercises MsrpRelayClient's real AUTH
+    # challenge/response and allocation path against a live RFC 4976 relay.
+    qt_add_executable(live_msrp_relay_probe
+        live_msrp_relay_probe.cpp
+        ${MSRP_PROTOCOL_SOURCES}
+        ${MSRP_RELAY_SOURCES}
+        ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTransport.h
+        ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTcpTransport.cpp
+        ${CMAKE_SOURCE_DIR}/src/msrp/MsrpTlsTransport.cpp
+        ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    )
+
+    target_include_directories(live_msrp_relay_probe PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(live_msrp_relay_probe PRIVATE
+        Qt6::Core
+        Qt6::Network
+    )
+
+    if(WIN32)
+        target_link_libraries(live_msrp_relay_probe PRIVATE Advapi32)
     endif()
 endif()
