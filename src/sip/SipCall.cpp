@@ -155,6 +155,41 @@ static pjmedia_vid_dev_index preferredPjsipVideoCaptureDevice()
     return PJMEDIA_VID_INVALID_DEV;
 }
 
+// Security audit (2026-07-13): SipCallOptions::customHeaders is currently
+// only ever populated with fixed literals or internally generated content
+// (EmergencyInviteBuilder/EmergencyCallAdapter — never raw user text), but
+// nothing on this path guarded against an embedded CRLF the way MSRP's own
+// headerValueSafe() does for the same class of risk. A header value
+// containing "\r\n" would inject an extra SIP header (or split the INVITE)
+// once handed to pjsip. Reject rather than silently strip, so a caller
+// mistake is visible in the log instead of producing a subtly wrong
+// request.
+static bool sipHeaderValueSafe(const QString &value)
+{
+    for (const QChar &c : value) {
+        if (c == QLatin1Char('\r') || c == QLatin1Char('\n') || c == QLatin1Char('\0'))
+            return false;
+    }
+    return true;
+}
+
+static void appendCustomHeaders(pj::CallOpParam &prm, const SipCallOptions &opts, const QString &callId)
+{
+    for (const auto &hdr : opts.customHeaders) {
+        if (!sipHeaderValueSafe(hdr.first) || !sipHeaderValueSafe(hdr.second)) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Rejected custom SIP header with embedded CR/LF/NUL "
+                               "(possible header injection): callId=%1 name=%2")
+                    .arg(callId, hdr.first));
+            continue;
+        }
+        pj::SipHeader sh;
+        sh.hName  = hdr.first.toStdString();
+        sh.hValue = hdr.second.toStdString();
+        prm.txOption.headers.push_back(sh);
+    }
+}
+
 // Task W102 Phase 2: extracts every "m=message" section from a live/remote
 // pjmedia_sdp_session, paired with its media index, reusing the already
 // vetted MsrpSdpNegotiator text parser (per-section text obtained via the
@@ -1447,12 +1482,7 @@ bool SipCall::makeCallWithOptions(const QString &remoteUri, const SipCallOptions
                     .arg(m_callId, m_remoteUri));
 
             // Inject extra SIP headers (emergency path).
-            for (const auto &hdr : opts.customHeaders) {
-                pj::SipHeader sh;
-                sh.hName  = hdr.first.toStdString();
-                sh.hValue = hdr.second.toStdString();
-                prm.txOption.headers.push_back(sh);
-            }
+            appendCustomHeaders(prm, opts, m_callId);
             if (!opts.customHeaders.isEmpty())
                 Logger::instance().info(LogCategory::Sip,
                     QStringLiteral("PJSIP INVITE: %1 custom headers injected (emergency)")
@@ -2838,12 +2868,7 @@ bool SipCall::sendLocationUpdate(const SipCallOptions &opts)
     }
     try {
         pj::CallOpParam prm;
-        for (const auto &hdr : opts.customHeaders) {
-            pj::SipHeader sh;
-            sh.hName  = hdr.first.toStdString();
-            sh.hValue = hdr.second.toStdString();
-            prm.txOption.headers.push_back(sh);
-        }
+        appendCustomHeaders(prm, opts, m_callId);
         if (!opts.body.isEmpty()) {
             pj::SipMultipartPart pidfPart;
             pidfPart.contentType.type    = "application";
