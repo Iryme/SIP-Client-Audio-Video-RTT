@@ -64,6 +64,7 @@ private slots:
 
     void exportMsrpSessionV3Fields();
     void exportMsrpRelayEventsFieldsRedacted();
+    void exportMsrpCallPreparationEventsFieldsRedacted();
 
 private:
     static void logMessage(const SipMessageTrace &t) { SipTraceLogger::instance().logMessage(t); }
@@ -524,6 +525,38 @@ void TestWindowsTraceJsonExport::exportMsrpRelayEventsFieldsRedacted()
     const QStringList keys = r.keys();
     for (const QString &forbidden : {QStringLiteral("nonce"), QStringLiteral("password"),
                                      QStringLiteral("digest"), QStringLiteral("credentials")}) {
+        QVERIFY(!keys.contains(forbidden));
+    }
+}
+
+void TestWindowsTraceJsonExport::exportMsrpCallPreparationEventsFieldsRedacted()
+{
+    // Task W108: msrpCallPreparationEvents is purely additive (schemaVersion
+    // stays 3). Only the preparation id, resolved mode, and an internal
+    // allocation id are ever recorded — no credential/nonce/full path.
+    MsrpCallPreparationDiagnosticsEvent ev;
+    ev.timestamp = QDateTime::currentDateTimeUtc();
+    ev.preparationId = QStringLiteral("prep-1");
+    ev.state = MsrpCallPreparationController::State::Ready;
+    ev.mode = QStringLiteral("relay");
+    ev.allocationId = QStringLiteral("alloc-1");
+    ev.reason = QString();
+
+    const QString json = InteropTraceExporter::exportToJson({}, {}, {}, {}, {}, {}, {ev});
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    QCOMPARE(doc.object().value(QStringLiteral("schemaVersion")).toInt(), InteropTraceExporter::kSchemaVersion);
+
+    const QJsonArray prepEvents = doc.object().value(QStringLiteral("msrpCallPreparationEvents")).toArray();
+    QCOMPARE(prepEvents.size(), 1);
+    const QJsonObject p = prepEvents.first().toObject();
+    QCOMPARE(p.value(QStringLiteral("preparationId")).toString(), QStringLiteral("prep-1"));
+    QCOMPARE(p.value(QStringLiteral("state")).toString(), QStringLiteral("ready"));
+    QCOMPARE(p.value(QStringLiteral("mode")).toString(), QStringLiteral("relay"));
+
+    const QStringList keys = p.keys();
+    for (const QString &forbidden : {QStringLiteral("nonce"), QStringLiteral("password"),
+                                     QStringLiteral("digest"), QStringLiteral("credentials"),
+                                     QStringLiteral("path")}) {
         QVERIFY(!keys.contains(forbidden));
     }
 }
