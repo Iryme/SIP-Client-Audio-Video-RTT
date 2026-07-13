@@ -3,6 +3,7 @@
 #include <QMetaType>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 
 // XCAP Foundation (Task W099) data model — RFC 4825 (XCAP) client-side
 // building blocks. This stage treats every AUID (pres-rules, resource-lists,
@@ -81,6 +82,40 @@ struct XcapDocument
     QString documentName{QStringLiteral("index")};
     QString nodeSelector;     // optional RFC 4825 node selector, appended after "~~"
 
+    // Percent-encodes a single path segment (auid/xui/documentName) per
+    // RFC 3986 "pchar" (unreserved / pct-encoded / sub-delims / ":" / "@")
+    // — everything outside that, including '/', '?', '#', is encoded so
+    // these fields can never introduce a path separator or start a
+    // query/fragment (security fix, found via security audit 2026-07-13:
+    // buildUri() previously concatenated these fields as raw text, so e.g.
+    // xui="../otheruser" would traverse to a different user's document
+    // instead of being treated as a literal XUI value). ":"/"@" are kept
+    // literal since XUI values are conventionally full SIP URIs
+    // (e.g. "sip:alice@example.test").
+    static QString encodeSegment(const QString &text)
+    {
+        return QString::fromLatin1(QUrl::toPercentEncoding(text, "!$&'()*+,;=:@"));
+    }
+
+    // Node selectors are, by RFC 4825 convention and this codebase's own
+    // existing usage, supplied by the caller ALREADY percent-encoded where
+    // needed (e.g. quotes/spaces inside "[@name=\"...\"]" predicates) and
+    // legitimately contain '/' as their own selector-segment separator —
+    // running the whole string through toPercentEncoding would double-encode
+    // those and corrupt a valid selector. Only neutralize the specific
+    // characters that would otherwise let an unescaped value break out of
+    // the path into a query string, fragment, or a second header line.
+    static QString encodeNodeSelector(const QString &text)
+    {
+        QString out = text;
+        out.replace(QLatin1Char('?'), QStringLiteral("%3F"));
+        out.replace(QLatin1Char('#'), QStringLiteral("%23"));
+        out.replace(QLatin1Char(' '), QStringLiteral("%20"));
+        out.remove(QLatin1Char('\r'));
+        out.remove(QLatin1Char('\n'));
+        return out;
+    }
+
     // Builds the full document URI: {root}/{auid}/{users/<xui>|global}/{documentName}[~~nodeSelector]
     // defaultXui is used when this document's own xui is empty (e.g. the
     // server config's XUI); still empty after that ⇒ a "global" document.
@@ -92,15 +127,15 @@ struct XcapDocument
 
         const QString effectiveXui = xui.trimmed().isEmpty() ? defaultXui.trimmed() : xui.trimmed();
 
-        QString path = root + QLatin1Char('/') + auid.trimmed();
+        QString path = root + QLatin1Char('/') + encodeSegment(auid.trimmed());
         if (effectiveXui.isEmpty())
             path += QStringLiteral("/global/");
         else
-            path += QStringLiteral("/users/") + effectiveXui + QLatin1Char('/');
-        path += documentName.trimmed();
+            path += QStringLiteral("/users/") + encodeSegment(effectiveXui) + QLatin1Char('/');
+        path += encodeSegment(documentName.trimmed());
 
         if (!nodeSelector.trimmed().isEmpty())
-            path += QStringLiteral("~~") + nodeSelector.trimmed();
+            path += QStringLiteral("~~") + encodeNodeSelector(nodeSelector.trimmed());
 
         return path;
     }

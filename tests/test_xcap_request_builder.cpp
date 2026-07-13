@@ -15,6 +15,9 @@ private slots:
     void globalDocumentOmitsUsersSegment();
     void perDocumentXuiOverridesServerXui();
     void appendsNodeSelector();
+    void encodesPathTraversalInXui();
+    void encodesQueryAndFragmentCharsInAuidAndDocumentName();
+    void neutralizesUnescapedQueryCharsInNodeSelector();
 };
 
 namespace {
@@ -99,6 +102,44 @@ void TestXcapRequestBuilder::appendsNodeSelector()
     doc.nodeSelector = QStringLiteral("/resource-lists/list%5B@name=%22friends%22%5D");
     const auto req = XcapRequestBuilder::build(XcapHttpMethod::Get, makeConfig(), doc);
     QVERIFY(req.url.toString().contains(QStringLiteral("~~")));
+}
+
+// Security audit regression (2026-07-13): buildUri() previously concatenated
+// auid/xui/documentName as raw text, so a value containing '/', '?', or '#'
+// changed which resource the request actually targeted instead of being
+// treated as literal data. These prove the fix.
+void TestXcapRequestBuilder::encodesPathTraversalInXui()
+{
+    XcapDocument doc = makeDocument();
+    doc.xui = QStringLiteral("../otheruser");
+    const auto req = XcapRequestBuilder::build(XcapHttpMethod::Get, makeConfig(), doc);
+    const QString url = req.url.toString();
+    // The literal '/' must be encoded away — no raw ".." path segment.
+    QVERIFY(!url.contains(QStringLiteral("/../")));
+    QVERIFY(url.contains(QStringLiteral("..%2Fotheruser")));
+}
+
+void TestXcapRequestBuilder::encodesQueryAndFragmentCharsInAuidAndDocumentName()
+{
+    XcapDocument doc = makeDocument();
+    doc.auid = QStringLiteral("resource-lists?evil=1");
+    doc.documentName = QStringLiteral("index#frag");
+    const auto req = XcapRequestBuilder::build(XcapHttpMethod::Get, makeConfig(), doc);
+    QVERIFY(req.url.query().isEmpty());
+    QVERIFY(req.url.fragment().isEmpty());
+    // '=' is a valid RFC 3986 sub-delim within a path segment and is
+    // intentionally left literal — only '?' (query-introducer) is encoded.
+    QVERIFY(req.url.toString().contains(QStringLiteral("resource-lists%3Fevil=1")));
+    QVERIFY(req.url.toString().contains(QStringLiteral("index%23frag")));
+}
+
+void TestXcapRequestBuilder::neutralizesUnescapedQueryCharsInNodeSelector()
+{
+    XcapDocument doc = makeDocument();
+    doc.nodeSelector = QStringLiteral("/resource-lists?evil=1");
+    const auto req = XcapRequestBuilder::build(XcapHttpMethod::Get, makeConfig(), doc);
+    QVERIFY(req.url.query().isEmpty());
+    QVERIFY(req.url.toString().contains(QStringLiteral("~~/resource-lists%3Fevil=1")));
 }
 
 QTEST_GUILESS_MAIN(TestXcapRequestBuilder)
