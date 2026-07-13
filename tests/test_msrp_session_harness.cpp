@@ -23,6 +23,7 @@ private slots:
     void connectionCloseIsObserved();
     void sendsAndReceivesFileTransfer();
     void sendFileRejectsMissingFile();
+    void rejectsSendWithMismatchedToPathSessionId();
 };
 
 namespace {
@@ -160,6 +161,39 @@ void TestMsrpSessionHarness::sendFileRejectsMissingFile()
     const auto result = client.sendFile(QStringLiteral("does/not/exist.bin"), QStringLiteral("text/plain"));
     QVERIFY(!result.ok);
     QVERIFY(!result.error.isEmpty());
+}
+
+// Task W105 (RFC 4975 §7.1 hardening) regression: MsrpTcpTransport's passive
+// listener accepts the first TCP connection unconditionally and closes the
+// listener (see MsrpTcpTransport::onNewConnection), so without a To-Path
+// check any local process that connects before the real, SDP-negotiated
+// peer would previously be silently trusted. This proves a connection whose
+// SEND frames carry a To-Path session-id the server never negotiated is
+// rejected (403) and never reaches payloadReceived.
+void TestMsrpSessionHarness::rejectsSendWithMismatchedToPathSessionId()
+{
+    MsrpSession server(QStringLiteral("srv7"));
+    server.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("srv7")));
+    server.listenAsPassive(QStringLiteral("127.0.0.1"), kWaitMs);
+    const int port = server.transportLocalPort();
+    QVERIFY(port > 0);
+
+    // "Attacker": knows the listening port but not the real session-id
+    // (only ever exchanged via the SDP a=path over the signaling channel),
+    // so it addresses SEND frames to a made-up session-id on the same port.
+    MsrpSession attacker(QStringLiteral("atk7"));
+    attacker.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("atk7")));
+    attacker.setRemotePath({MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), port, QStringLiteral("wrong-session-id"))});
+
+    QSignalSpy receivedSpy(&server, &MsrpSession::payloadReceived);
+    attacker.connectAsActive(kWaitMs);
+    QTRY_VERIFY_WITH_TIMEOUT(attacker.info().state == MsrpSessionState::Established, kWaitMs);
+
+    attacker.sendMessage(QStringLiteral("text/plain"), QByteArray("malicious payload"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!server.info().warnings.isEmpty(), kWaitMs);
+    QCOMPARE(receivedSpy.count(), 0);
+    QVERIFY(server.info().warnings.join(QLatin1Char('\n')).contains(QStringLiteral("To-Path")));
 }
 
 QTEST_GUILESS_MAIN(TestMsrpSessionHarness)
