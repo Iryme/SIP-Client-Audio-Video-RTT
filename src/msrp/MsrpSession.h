@@ -97,6 +97,18 @@ private slots:
 private:
     void createTransport(MsrpTransportProtocol proto);
     void handleFrame(const MsrpFrame &frame);
+
+    // Task W105 (RFC 4975 §7.1 hardening): an MSRP passive listener accepts
+    // the first TCP connection unconditionally (see MsrpTcpTransport), so
+    // without this check any local process able to reach the ephemeral port
+    // before the real peer would be silently trusted and could inject
+    // SEND/REPORT requests into the session. Returns true only when the
+    // request's To-Path last URI's session-id equals this session's own
+    // negotiated local session-id — the one piece of the URI an attacker
+    // cannot guess without having already observed the SDP a=path exchanged
+    // over the signaling channel.
+    bool toPathTargetsThisSession(const QString &toPathHeader) const;
+    void rejectUnauthorizedRequest(const MsrpFrame &frame, const QString &reason);
     void sendFrame(MsrpFrame frame, bool track = false, MsrpMethod method = MsrpMethod::Unknown,
                   const QString &messageId = QString());
     void updateState(MsrpSessionState state);

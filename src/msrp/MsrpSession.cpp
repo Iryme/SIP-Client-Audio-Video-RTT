@@ -147,11 +147,59 @@ void MsrpSession::onTransportBytes(const QByteArray &data)
     }
 }
 
+bool MsrpSession::toPathTargetsThisSession(const QString &toPathHeader) const
+{
+    const auto uris = MsrpPath::parsePath(toPathHeader);
+    if (uris.isEmpty() || !uris.last().ok)
+        return false;
+    return !m_localUri.sessionId.isEmpty() && uris.last().sessionId == m_localUri.sessionId;
+}
+
+void MsrpSession::rejectUnauthorizedRequest(const MsrpFrame &frame, const QString &reason)
+{
+    m_info.warnings << reason;
+
+    MsrpDiagnosticsEvent ev;
+    ev.timestamp = QDateTime::currentDateTimeUtc();
+    ev.direction = MsrpDiagnosticsEvent::Direction::Inbound;
+    ev.kind = MsrpDiagnosticsEvent::Kind::Error;
+    ev.sessionKey = m_sessionKey;
+    ev.transactionId = frame.transactionId;
+    ev.method = frame.method;
+    ev.error = reason;
+    ev.parseStatus = MsrpParseStatus::Error;
+    MsrpDiagnosticsStore::instance().record(ev);
+
+    if (!frame.transactionId.isEmpty()) {
+        MsrpFrame response;
+        response.isRequest = false;
+        response.transactionId = frame.transactionId;
+        response.toPath = frame.fromPath;
+        response.fromPath = frame.toPath;
+        response.responseCode = 403;
+        response.responseComment = QStringLiteral("Forbidden");
+        response.continuation = MsrpContinuation::Complete;
+        sendFrame(response);
+    }
+}
+
 void MsrpSession::handleFrame(const MsrpFrame &frame)
 {
     m_info.framesReceived++;
     m_info.bytesReceived += frame.body.size();
     logDiagnostic(true, frame);
+
+    // RFC 4975 §7.1: a receiver must verify the To-Path identifies this
+    // endpoint before acting on any inbound request. Applies to both SEND
+    // and REPORT — a mismatch here means the connection was not made by the
+    // negotiated peer (see toPathTargetsThisSession()).
+    if (frame.isRequest && !toPathTargetsThisSession(frame.toPath)) {
+        rejectUnauthorizedRequest(frame,
+            QStringLiteral("rejected inbound %1: To-Path does not match this session "
+                           "(possible connection hijack or stale peer)").arg(frame.method));
+        publishInfo();
+        return;
+    }
 
     if (frame.isRequest && frame.method == QStringLiteral("SEND")) {
         const auto assembled = m_assembler.feedChunk(frame);
