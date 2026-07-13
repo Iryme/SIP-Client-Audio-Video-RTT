@@ -24,6 +24,7 @@ private slots:
     void sendsAndReceivesFileTransfer();
     void sendFileRejectsMissingFile();
     void rejectsSendWithMismatchedToPathSessionId();
+    void relistensAfterRejectedConnectionAllowsRealPeer();
 };
 
 namespace {
@@ -194,6 +195,51 @@ void TestMsrpSessionHarness::rejectsSendWithMismatchedToPathSessionId()
     QTRY_VERIFY_WITH_TIMEOUT(!server.info().warnings.isEmpty(), kWaitMs);
     QCOMPARE(receivedSpy.count(), 0);
     QVERIFY(server.info().warnings.join(QLatin1Char('\n')).contains(QStringLiteral("To-Path")));
+}
+
+// Task W106 regression: W105 stopped a rogue connection from injecting
+// messages, but MsrpTcpTransport's listener still stops listening for good
+// after accepting that rogue connection (see MsrpTcpTransport::onNewConnection),
+// so without relisten() the real, SDP-negotiated peer would never get a
+// chance to connect at all — a denial-of-service, not a spoofing gap. This
+// proves that after an unauthenticated connection is rejected, the server
+// resumes listening on the same port and the real peer can still connect
+// and exchange a message.
+void TestMsrpSessionHarness::relistensAfterRejectedConnectionAllowsRealPeer()
+{
+    MsrpSession server(QStringLiteral("srv8"));
+    server.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("srv8")));
+    server.listenAsPassive(QStringLiteral("127.0.0.1"), kWaitMs);
+    const int port = server.transportLocalPort();
+    QVERIFY(port > 0);
+
+    MsrpSession attacker(QStringLiteral("atk8"));
+    attacker.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("atk8")));
+    attacker.setRemotePath({MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), port, QStringLiteral("wrong-session-id"))});
+
+    QSignalSpy receivedSpy(&server, &MsrpSession::payloadReceived);
+    attacker.connectAsActive(kWaitMs);
+    QTRY_VERIFY_WITH_TIMEOUT(attacker.info().state == MsrpSessionState::Established, kWaitMs);
+    attacker.sendMessage(QStringLiteral("text/plain"), QByteArray("malicious payload"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(!server.info().warnings.isEmpty(), kWaitMs);
+    QCOMPARE(receivedSpy.count(), 0);
+
+    // The server must have resumed listening on the same port rather than
+    // leaving the real peer permanently locked out.
+    QTRY_VERIFY_WITH_TIMEOUT(server.transportLocalPort() == port, kWaitMs);
+
+    MsrpSession realPeer(QStringLiteral("real8"));
+    realPeer.setLocalUri(MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), 0, QStringLiteral("real8")));
+    realPeer.setRemotePath({MsrpPath::buildUri(false, QStringLiteral("127.0.0.1"), port, QStringLiteral("srv8"))});
+    realPeer.connectAsActive(kWaitMs);
+
+    QTRY_VERIFY_WITH_TIMEOUT(realPeer.info().state == MsrpSessionState::Established, kWaitMs);
+    QTRY_VERIFY_WITH_TIMEOUT(server.info().state == MsrpSessionState::Established, kWaitMs);
+
+    realPeer.sendMessage(QStringLiteral("text/plain"), QByteArray("legit payload"));
+    QTRY_VERIFY_WITH_TIMEOUT(receivedSpy.count() >= 1, kWaitMs);
+    QCOMPARE(receivedSpy.first().at(3).toByteArray(), QByteArray("legit payload"));
 }
 
 QTEST_GUILESS_MAIN(TestMsrpSessionHarness)
