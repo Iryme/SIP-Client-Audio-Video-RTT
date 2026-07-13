@@ -3,6 +3,7 @@
 #include <QString>
 
 #include "msrp/MsrpDiagnosticsEvent.h"
+#include "msrp/MsrpRelayDiagnosticsEvent.h"
 #include "msrp/MsrpSessionInfo.h"
 #include "sip/MessagingTraceEntry.h"
 #include "sip/PresenceTraceEntry.h"
@@ -84,6 +85,15 @@ namespace InteropTraceExporter {
 // SIP-Server-RTT to compare against — see the comparator tool), and a
 // dedicated "tlsDiagnostics" array beyond the transport label already on
 // each session/frame event.
+//
+// Task W107 (MSRP Relay Authentication, RFC 4976) adds a top-level
+// "msrpRelayEvents" array, built from MsrpRelayDiagnosticsStore rows
+// (relay connect/AUTH challenge/allocation/refresh/recovery — independent
+// of "msrpSessions"/"msrpEvents", which only ever describe MSRP-direct
+// sessions). Purely additive — no existing field/array changes — so
+// kSchemaVersion stays 3. Every field is pre-redacted at the source (see
+// MsrpRelayDiagnosticsEvent); this exporter never has access to the raw
+// nonce/digest/credential values in the first place.
 constexpr int kSchemaVersion = 3;
 
 // Pure function: builds the full JSON document text from an explicit list
@@ -96,7 +106,8 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
                       const QList<PresenceTraceEntry> &presenceEntries = QList<PresenceTraceEntry>(),
                       const QList<XcapResult> &xcapEntries = QList<XcapResult>(),
                       const QList<MsrpSessionInfo> &msrpSessions = QList<MsrpSessionInfo>(),
-                      const QList<MsrpDiagnosticsEvent> &msrpEvents = QList<MsrpDiagnosticsEvent>());
+                      const QList<MsrpDiagnosticsEvent> &msrpEvents = QList<MsrpDiagnosticsEvent>(),
+                      const QList<MsrpRelayDiagnosticsEvent> &msrpRelayEvents = QList<MsrpRelayDiagnosticsEvent>());
 
 // Convenience overload: exports the live MessagingDiagnosticsStore's,
 // PresenceDiagnosticsStore's, XcapDiagnosticsStore's, MsrpSessionStore's,

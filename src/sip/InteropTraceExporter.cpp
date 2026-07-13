@@ -9,6 +9,7 @@
 #include "sip/MessagingEvent.h"
 #include "sip/MessagingEventStore.h"
 #include "msrp/MsrpDiagnosticsStore.h"
+#include "msrp/MsrpRelayDiagnosticsStore.h"
 #include "msrp/MsrpSessionStore.h"
 #include "sip/PresenceDiagnosticsStore.h"
 #include "sip/UrlRedactor.h"
@@ -346,13 +347,60 @@ QJsonObject buildMsrpFrameEvent(const MsrpDiagnosticsEvent &ev, qint64 eventId)
     return obj;
 }
 
+QString msrpRelayEventKindToString(MsrpRelayDiagnosticsEvent::Kind kind)
+{
+    switch (kind) {
+    case MsrpRelayDiagnosticsEvent::Kind::Connect: return QStringLiteral("connect");
+    case MsrpRelayDiagnosticsEvent::Kind::ConnectFailed: return QStringLiteral("connect-failed");
+    case MsrpRelayDiagnosticsEvent::Kind::InitialAuthSent: return QStringLiteral("initial-auth-sent");
+    case MsrpRelayDiagnosticsEvent::Kind::ChallengeReceived: return QStringLiteral("challenge-received");
+    case MsrpRelayDiagnosticsEvent::Kind::AuthenticatedAuthSent: return QStringLiteral("authenticated-auth-sent");
+    case MsrpRelayDiagnosticsEvent::Kind::AllocationSuccess: return QStringLiteral("allocation-success");
+    case MsrpRelayDiagnosticsEvent::Kind::AllocationFailure: return QStringLiteral("allocation-failure");
+    case MsrpRelayDiagnosticsEvent::Kind::Refresh: return QStringLiteral("refresh");
+    case MsrpRelayDiagnosticsEvent::Kind::RefreshFailure: return QStringLiteral("refresh-failure");
+    case MsrpRelayDiagnosticsEvent::Kind::Reconnect: return QStringLiteral("reconnect");
+    case MsrpRelayDiagnosticsEvent::Kind::Reauthenticate: return QStringLiteral("reauthenticate");
+    case MsrpRelayDiagnosticsEvent::Kind::Expired: return QStringLiteral("expired");
+    case MsrpRelayDiagnosticsEvent::Kind::Closed: return QStringLiteral("closed");
+    case MsrpRelayDiagnosticsEvent::Kind::Error: return QStringLiteral("error");
+    }
+    return QStringLiteral("unknown");
+}
+
+QJsonObject buildMsrpRelayEvent(const MsrpRelayDiagnosticsEvent &ev, qint64 eventId)
+{
+    QJsonObject obj;
+    obj[QStringLiteral("eventId")] = static_cast<double>(eventId);
+    obj[QStringLiteral("timestamp")] = ev.timestamp.toString(Qt::ISODateWithMs);
+    obj[QStringLiteral("kind")] = msrpRelayEventKindToString(ev.kind);
+    obj[QStringLiteral("relayConnectionId")] = ev.relayConnectionId;
+    obj[QStringLiteral("allocationId")] = ev.allocationId;
+    obj[QStringLiteral("sipCallIdRedacted")] = ev.sipCallIdRedacted;
+    obj[QStringLiteral("mediaIndex")] = ev.mediaIndex;
+    obj[QStringLiteral("responseCode")] = ev.responseCode;
+    obj[QStringLiteral("responseComment")] = ev.responseComment;
+    obj[QStringLiteral("algorithm")] = ev.algorithm;
+    obj[QStringLiteral("qopUsed")] = ev.qopUsed;
+    obj[QStringLiteral("allocatedPathRedacted")] = ev.allocatedPathRedacted;
+    if (ev.expiresAt.isValid())
+        obj[QStringLiteral("expiresAt")] = ev.expiresAt.toString(Qt::ISODateWithMs);
+    obj[QStringLiteral("refreshCount")] = ev.refreshCount;
+    obj[QStringLiteral("reconnectCount")] = ev.reconnectCount;
+    obj[QStringLiteral("failureCategory")] = ev.failureCategory;
+    obj[QStringLiteral("fallbackReason")] = ev.fallbackReason;
+    obj[QStringLiteral("error")] = ev.error;
+    return obj;
+}
+
 } // namespace
 
 QString exportToJson(const QList<MessagingTraceEntry> &entries,
                       const QList<PresenceTraceEntry> &presenceEntries,
                       const QList<XcapResult> &xcapEntries,
                       const QList<MsrpSessionInfo> &msrpSessions,
-                      const QList<MsrpDiagnosticsEvent> &msrpEvents)
+                      const QList<MsrpDiagnosticsEvent> &msrpEvents,
+                      const QList<MsrpRelayDiagnosticsEvent> &msrpRelayEvents)
 {
     QJsonArray events;
     qint64 id = 1;
@@ -379,6 +427,11 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
     for (const MsrpDiagnosticsEvent &ev : msrpEvents)
         msrpEventsArray.append(buildMsrpFrameEvent(ev, msrpEventId++));
 
+    QJsonArray msrpRelayEventsArray;
+    qint64 msrpRelayEventId = 1;
+    for (const MsrpRelayDiagnosticsEvent &ev : msrpRelayEvents)
+        msrpRelayEventsArray.append(buildMsrpRelayEvent(ev, msrpRelayEventId++));
+
     QJsonObject root;
     root[QStringLiteral("schemaVersion")]  = kSchemaVersion;
     root[QStringLiteral("source")]         = QStringLiteral("windows-client");
@@ -388,6 +441,7 @@ QString exportToJson(const QList<MessagingTraceEntry> &entries,
     root[QStringLiteral("xcapEvents")]     = xcapEvents;
     root[QStringLiteral("msrpSessions")]   = msrpSessionsArray;
     root[QStringLiteral("msrpEvents")]     = msrpEventsArray;
+    root[QStringLiteral("msrpRelayEvents")] = msrpRelayEventsArray;
 
     return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
@@ -398,7 +452,8 @@ QString exportToJson()
                         PresenceDiagnosticsStore::instance().entries(),
                         XcapDiagnosticsStore::instance().entries(),
                         MsrpSessionStore::instance().snapshot(),
-                        MsrpDiagnosticsStore::instance().entries());
+                        MsrpDiagnosticsStore::instance().entries(),
+                        MsrpRelayDiagnosticsStore::instance().entries());
 }
 
 } // namespace InteropTraceExporter
