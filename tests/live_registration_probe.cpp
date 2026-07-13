@@ -48,7 +48,9 @@ static bool waitFor(int timeoutMs, const std::function<bool()> &predicate)
 static SipProfile liveProfile(const QString &server,
                               const QString &port,
                               const QString &domain,
-                              const QString &username)
+                              const QString &username,
+                              SipTransport transport,
+                              const QString &outboundProxy)
 {
     SipProfile profile;
     profile.profileId = QStringLiteral("task22c-live-kamailio-alice");
@@ -56,11 +58,17 @@ static SipProfile liveProfile(const QString &server,
     profile.sipUsername = username;
     profile.sipDomain = domain;
     profile.sipUri = QStringLiteral("sip:%1@%2").arg(username, domain);
+    // Registrar Request-URI must stay the served domain (e.g. sip2sip.info);
+    // an outbound proxy is a routing-only hop added via config.sipConfig.proxies
+    // (see SipAccount.cpp) — it must never replace the Request-URI host, or a
+    // proxy that isn't itself the registrar for that domain will silently
+    // ignore/drop the REGISTER instead of forwarding it.
     profile.registrar = port.isEmpty() || port == QStringLiteral("5060")
         ? server
         : QStringLiteral("%1:%2").arg(server, port);
     profile.authUsername = username;
-    profile.transport = SipTransport::UDP;
+    profile.transport = transport;
+    profile.outboundProxy = outboundProxy;
     profile.enableRtt = false;
     profile.enableLmpe = false;
     profile.enableEtsiCompatibility = false;
@@ -81,6 +89,11 @@ int main(int argc, char **argv)
     const QString domain = envValue("SIP_LIVE_DOMAIN");
     const QString username = envValue("SIP_LIVE_USERNAME");
     const QString password = envValue("SIP_LIVE_PASSWORD");
+    const QString transportEnv = envValue("SIP_LIVE_TRANSPORT").toUpper();
+    const SipTransport transport = transportEnv == QStringLiteral("TCP")
+        ? SipTransport::TCP
+        : SipTransport::UDP;
+    const QString outboundProxy = envValue("SIP_LIVE_OUTBOUND_PROXY");
 
     if (server.isEmpty() || domain.isEmpty() || username.isEmpty() || password.isEmpty()) {
         std::cerr << "Missing SIP_LIVE_SERVER/SIP_LIVE_PORT/SIP_LIVE_DOMAIN/"
@@ -103,7 +116,7 @@ int main(int argc, char **argv)
     std::cout << "Server: " << qPrintable(server) << ':' << qPrintable(port) << '\n';
     std::cout << "Domain/Realm: " << qPrintable(domain) << '\n';
     std::cout << "Username: " << qPrintable(username) << '\n';
-    std::cout << "Transport: UDP\n";
+    std::cout << "Transport: " << (transport == SipTransport::TCP ? "TCP" : "UDP") << '\n';
 
     SipManager &sip = SipManager::instance();
     RegistrationRetryPolicy retry;
@@ -125,7 +138,7 @@ int main(int argc, char **argv)
     }
 
     SipProfileManager &profiles = SipProfileManager::instance();
-    const SipProfile profile = liveProfile(server, port, domain, username);
+    const SipProfile profile = liveProfile(server, port, domain, username, transport, outboundProxy);
     if (profiles.hasProfile(profile.profileId)) {
         if (!profiles.update(profile)) {
             std::cerr << "Profile update failed.\n";

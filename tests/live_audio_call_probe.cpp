@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include "core/Logger.h"
+#include "sip/CallMediaOptions.h"
 #include "sip/CallStateMachine.h"
 #include "sip/RegistrationRefreshConfig.h"
 #include "sip/RegistrationRetryPolicy.h"
@@ -109,6 +110,14 @@ int main(int argc, char **argv)
     const QString password = envValue("SIP_LIVE_PASSWORD");
     const QString targetRaw = envValue("SIP_LIVE_TARGET");
     const QString outboundProxy = envValue("SIP_LIVE_OUTBOUND_PROXY");
+    const QString callTypeEnv = envValue("SIP_LIVE_CALL_TYPE").toUpper();
+    CallType callType = CallType::AudioOnly;
+    if (callTypeEnv == QStringLiteral("VIDEO"))
+        callType = CallType::AudioVideo;
+    else if (callTypeEnv == QStringLiteral("RTT"))
+        callType = CallType::AudioRtt;
+    else if (callTypeEnv == QStringLiteral("VIDEORTT"))
+        callType = CallType::AudioVideoRtt;
 
     if (server.isEmpty() || domain.isEmpty() || username.isEmpty()
         || password.isEmpty() || targetRaw.isEmpty()) {
@@ -216,6 +225,8 @@ int main(int argc, char **argv)
     profiles.setActiveProfileId(profile.profileId);
 
     bool audioMediaActive = false;
+    bool videoMediaActive = false;
+    bool rttMediaActive = false;
     bool callFailedObserved = false;
 
     QObject::connect(&sip, &SipManager::registrationStateChanged,
@@ -238,6 +249,16 @@ int main(int argc, char **argv)
                      [&audioMediaActive] {
         audioMediaActive = true;
         std::cout << "AUDIO media connected\n";
+    });
+    QObject::connect(&sip, &SipManager::videoMediaConnected,
+                     [&videoMediaActive] {
+        videoMediaActive = true;
+        std::cout << "VIDEO media connected\n";
+    });
+    QObject::connect(&sip, &SipManager::rttMediaConnected,
+                     [&rttMediaActive] {
+        rttMediaActive = true;
+        std::cout << "RTT media connected\n";
     });
     QObject::connect(&sip, &SipManager::callDisconnected,
                      [](const QString &remoteUri, const QString &reason, int statusCode) {
@@ -271,8 +292,8 @@ int main(int argc, char **argv)
     std::cout << "REGISTER final state: Registered status="
               << sip.registrationStatusCode() << '\n';
 
-    std::cout << "CALL start\n";
-    if (!sip.makeCall(target)) {
+    std::cout << "CALL start (type=" << qPrintable(callTypeName(callType)) << ")\n";
+    if (!sip.makeCall(target, CallMediaOptions::fromType(callType))) {
         std::cerr << "makeCall() returned false.\n";
         cleanup();
         return 11;
@@ -314,6 +335,8 @@ int main(int argc, char **argv)
         return 14;
     }
     std::cout << "AUDIO media active\n";
+    std::cout << "VIDEO media active: " << (videoMediaActive ? "yes" : "no") << '\n';
+    std::cout << "RTT media active: " << (rttMediaActive ? "yes" : "no") << '\n';
 
     if (!waitFor(10000, [&] {
             return callFailedObserved

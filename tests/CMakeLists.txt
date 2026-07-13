@@ -1688,7 +1688,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
-        ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+        ${SIP_TRACE_SOURCES}
         ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
         ${CALL_SOURCES}
         ${CODEC_MANAGER_SOURCES}
@@ -1696,6 +1696,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${PJSIP_AUDIO_MAPPER_SOURCES}
         ${SECURITY_SOURCES}
         ${SECURITY_HEADERS}
+        ${PJSIP_TRACE_MODULE_SOURCES}
     )
 
     target_include_directories(live_registration_probe PRIVATE
@@ -1714,6 +1715,31 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         target_link_libraries(live_registration_probe PRIVATE Advapi32)
     endif()
 
+    # ---- live_xcap_probe (manual live validation) ---------------------------
+    # Pure Qt/Network — no PJSIP dependency — grouped here with the other live
+    # probes for consistency. Exercises XcapClient's real HTTP GET + Digest
+    # auth path against a live XCAP server.
+    qt_add_executable(live_xcap_probe
+        live_xcap_probe.cpp
+        ${XCAP_SOURCES}
+        ${SECURITY_SOURCES}
+        ${SECURITY_HEADERS}
+        ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
+    )
+
+    target_include_directories(live_xcap_probe PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+
+    target_link_libraries(live_xcap_probe PRIVATE
+        Qt6::Core
+        Qt6::Network
+    )
+
+    if(WIN32)
+        target_link_libraries(live_xcap_probe PRIVATE Advapi32)
+    endif()
+
     qt_add_executable(live_audio_call_probe
         live_audio_call_probe.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipManager.cpp
@@ -1722,7 +1748,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
-        ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+        ${SIP_TRACE_SOURCES}
         ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
         ${CALL_SOURCES}
         ${CODEC_MANAGER_SOURCES}
@@ -1730,6 +1756,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${PJSIP_AUDIO_MAPPER_SOURCES}
         ${SECURITY_SOURCES}
         ${SECURITY_HEADERS}
+        ${PJSIP_TRACE_MODULE_SOURCES}
     )
 
     target_include_directories(live_audio_call_probe PRIVATE
@@ -1757,7 +1784,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRetryPolicy.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/RegistrationRefreshConfig.cpp
         ${CMAKE_SOURCE_DIR}/src/sip/SipProfileManager.cpp
-        ${CMAKE_SOURCE_DIR}/src/sip/SipTraceLogger.cpp
+        ${SIP_TRACE_SOURCES}
         ${CMAKE_SOURCE_DIR}/src/core/Logger.cpp
         ${CALL_SOURCES}
         ${CODEC_MANAGER_SOURCES}
@@ -1770,6 +1797,7 @@ if(BUILD_LIVE_VALIDATION_TOOLS)
         ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyInviteBuilder.cpp
         ${CMAKE_SOURCE_DIR}/src/emergency/EmergencyLocation.cpp
         ${CMAKE_SOURCE_DIR}/src/emergency/PidfLoBuilder.cpp
+        ${PJSIP_TRACE_MODULE_SOURCES}
     )
 
     target_include_directories(live_emergency_call_probe PRIVATE
