@@ -47,16 +47,61 @@ void MsrpTcpTransport::listenPassive(const QString &bindAddress, int port, int a
     m_server = new QTcpServer(this);
     connect(m_server, &QTcpServer::newConnection, this, &MsrpTcpTransport::onNewConnection);
 
+    m_bindAddress = bindAddress;
     const QHostAddress addr = bindAddress.isEmpty() ? QHostAddress::AnyIPv4 : QHostAddress(bindAddress);
     if (!m_server->listen(addr, static_cast<quint16>(port))) {
         emit errorOccurred(QStringLiteral("listen failed: %1").arg(m_server->errorString()));
         return;
     }
 
+    m_boundPort = m_server->serverPort();
+    m_acceptTimeoutMs = acceptTimeoutMs;
     if (acceptTimeoutMs > 0) {
+        m_acceptElapsed.start();
         disconnect(m_timeoutTimer, nullptr, this, nullptr);
         connect(m_timeoutTimer, &QTimer::timeout, this, &MsrpTcpTransport::onAcceptTimeout);
         m_timeoutTimer->start(acceptTimeoutMs);
+    }
+}
+
+void MsrpTcpTransport::relisten()
+{
+    if (!m_server)
+        return;
+
+    int remainingMs = 0;
+    if (m_acceptTimeoutMs > 0) {
+        remainingMs = m_acceptTimeoutMs - static_cast<int>(m_acceptElapsed.elapsed());
+        if (remainingMs <= 0) {
+            emit errorOccurred(QStringLiteral("accept timeout: no peer connected"));
+            return;
+        }
+    }
+
+    if (m_socket) {
+        // Drop the rejected connection silently: no disconnected()/
+        // errorOccurred() for this — the caller (MsrpSession) already knows
+        // why it was dropped and is choosing to keep listening rather than
+        // treat the session as closed/failed.
+        m_socket->disconnect(this);
+        m_socket->abort();
+        m_socket->deleteLater();
+        m_socket = nullptr;
+    }
+
+    if (m_server->isListening())
+        return;
+
+    const QHostAddress addr = m_bindAddress.isEmpty() ? QHostAddress::AnyIPv4 : QHostAddress(m_bindAddress);
+    if (!m_server->listen(addr, static_cast<quint16>(m_boundPort))) {
+        emit errorOccurred(QStringLiteral("relisten failed: %1").arg(m_server->errorString()));
+        return;
+    }
+
+    if (m_acceptTimeoutMs > 0) {
+        disconnect(m_timeoutTimer, nullptr, this, nullptr);
+        connect(m_timeoutTimer, &QTimer::timeout, this, &MsrpTcpTransport::onAcceptTimeout);
+        m_timeoutTimer->start(remainingMs);
     }
 }
 

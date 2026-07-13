@@ -1,4 +1,6 @@
 #pragma once
+#include <QElapsedTimer>
+
 #include "msrp/MsrpTransport.h"
 
 class QTcpSocket;
@@ -18,6 +20,7 @@ public:
 
     void connectActive(const QString &host, int port, int timeoutMs) override;
     void listenPassive(const QString &bindAddress, int port, int acceptTimeoutMs) override;
+    void relisten() override;
     void sendBytes(const QByteArray &data) override;
     void closeGracefully() override;
     void abortNow() override;
@@ -49,4 +52,12 @@ private:
     // consume them — backpressure/oversized-buffer protection
     // (task section F: "buffer limitat").
     static constexpr qint64 kMaxSocketReadBufferBytes = 8 * 1024 * 1024;
+
+    // Task W106: remembered so relisten() can reopen the exact same
+    // bind address/port (already advertised via SDP a=path — cannot change)
+    // and respect what remains of the original accept window.
+    QString m_bindAddress;
+    int m_boundPort{0};
+    int m_acceptTimeoutMs{0};
+    QElapsedTimer m_acceptElapsed;
 };

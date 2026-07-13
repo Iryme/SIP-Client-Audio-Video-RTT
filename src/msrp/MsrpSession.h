@@ -109,6 +109,18 @@ private:
     // over the signaling channel.
     bool toPathTargetsThisSession(const QString &toPathHeader) const;
     void rejectUnauthorizedRequest(const MsrpFrame &frame, const QString &reason);
+
+    // Task W106: a passive listener's transport stops listening once it
+    // accepts its first TCP connection (see MsrpTcpTransport::onNewConnection),
+    // so before this, a rogue local process winning that accept race — even
+    // though W105 already stops it from injecting messages — could still
+    // permanently deny service to the real, SDP-negotiated peer, which would
+    // never get another chance to connect. rejectUnauthorizedRequest() now
+    // calls MsrpTransport::relisten() to recover from that instead, but only
+    // while this session has never yet accepted a single authenticated
+    // request (m_awaitingAuthentication) — once a legitimate peer has
+    // proven itself once, later connection drops are handled by the normal
+    // close/error path, not by relistening.
     void sendFrame(MsrpFrame frame, bool track = false, MsrpMethod method = MsrpMethod::Unknown,
                   const QString &messageId = QString());
     void updateState(MsrpSessionState state);
@@ -130,4 +142,7 @@ private:
     bool m_requestReports{true};
     bool m_tlsVerifyPeer{true};
     QString m_tlsCaCertificatePath;
+    // Task W106: true from listenAsPassive() until the first inbound request
+    // passes toPathTargetsThisSession(); see rejectUnauthorizedRequest().
+    bool m_awaitingAuthentication{false};
 };

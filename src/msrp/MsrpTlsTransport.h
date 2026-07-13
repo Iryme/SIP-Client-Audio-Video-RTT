@@ -1,4 +1,5 @@
 #pragma once
+#include <QElapsedTimer>
 #include <QList>
 #include <QSslError>
 
@@ -25,6 +26,7 @@ public:
 
     void connectActive(const QString &host, int port, int timeoutMs) override;
     void listenPassive(const QString &bindAddress, int port, int acceptTimeoutMs) override;
+    void relisten() override;
     void sendBytes(const QByteArray &data) override;
     void closeGracefully() override;
     void abortNow() override;
@@ -55,4 +57,10 @@ private:
     QString m_expectedHost; // for SNI/hostname verification in active mode
 
     static constexpr qint64 kMaxSocketReadBufferBytes = 8 * 1024 * 1024;
+
+    // Task W106: see MsrpTcpTransport's identical fields for rationale.
+    QString m_bindAddress;
+    int m_boundPort{0};
+    int m_acceptTimeoutMs{0};
+    QElapsedTimer m_acceptElapsed;
 };

@@ -116,6 +116,7 @@ void MsrpSession::connectAsActive(int connectTimeoutMs)
 void MsrpSession::listenAsPassive(const QString &bindAddress, int acceptTimeoutMs)
 {
     m_info.role = MsrpRole::PassiveListener;
+    m_awaitingAuthentication = true;
     createTransport(m_localUri.transportProtocol());
     updateState(MsrpSessionState::Connecting);
     m_transport->listenPassive(bindAddress, m_localUri.port, acceptTimeoutMs);
@@ -181,6 +182,17 @@ void MsrpSession::rejectUnauthorizedRequest(const MsrpFrame &frame, const QStrin
         response.continuation = MsrpContinuation::Complete;
         sendFrame(response);
     }
+
+    if (m_awaitingAuthentication && m_info.role == MsrpRole::PassiveListener) {
+        // Task W106: the connection that just failed authentication is not
+        // the real peer. Don't let it sit there having permanently consumed
+        // the transport's one-shot accept — drop it and resume listening for
+        // whatever time remains of the original accept window, so the real,
+        // SDP-negotiated peer still gets a chance to connect.
+        updateState(MsrpSessionState::Connecting);
+        if (m_transport)
+            m_transport->relisten();
+    }
 }
 
 void MsrpSession::handleFrame(const MsrpFrame &frame)
@@ -200,6 +212,9 @@ void MsrpSession::handleFrame(const MsrpFrame &frame)
         publishInfo();
         return;
     }
+
+    if (frame.isRequest)
+        m_awaitingAuthentication = false;
 
     if (frame.isRequest && frame.method == QStringLiteral("SEND")) {
         const auto assembled = m_assembler.feedChunk(frame);
