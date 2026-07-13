@@ -29,6 +29,14 @@
 > [msrp-file-transfer.md](msrp-file-transfer.md).
 > `test_msrp_session_harness` gained `sendsAndReceivesFileTransfer` and
 > `sendFileRejectsMissingFile`. 71/71 CTest targets pass, zero regressions.
+>
+> **Task W108 addition**: `test_msrp_call_preparation` (6 cases) covers
+> `MsrpCallPreparationController`'s async relay-vs-direct decision, using
+> the same scripted local relay double as `test_msrp_relay_client`. See
+> [msrp-relay-call-preparation.md](msrp-relay-call-preparation.md).
+> `test_windows_trace_json_export` gained a case for the new schemaVersion 3
+> `msrpCallPreparationEvents` array. 75/75 CTest targets pass, zero
+> regressions.
 
 ## Automated unit/protocol tests
 

@@ -141,6 +141,11 @@ diagnostics/export surface redacts them:
 Relay-assisted MSRP has its own dedicated security notes — see
 [msrp-relay-security.md](msrp-relay-security.md) — since it introduces a
 new credential-handling path (relay AUTH digest) distinct from everything
-above. Relay support is `Disabled` by default and, as of W107, not wired
-into any live call's SDP flow, so nothing in this file's threat model
-changes for direct MSRP.
+above. Relay support is `Disabled` by default. As of W108, an *outbound* call can
+opt into relay-assisted MSRP (still off by default —
+`AppSettings::msrpRelayMode()` defaults to `"disabled"`) — see
+[msrp-relay-live-call-integration.md](msrp-relay-live-call-integration.md).
+This does not change this file's threat model for direct MSRP: the relay
+decision is fully resolved before a call exists, and when relay is
+disabled/not configured, `onCallSdpCreated` takes the exact same direct-MSRP
+code path described above.
