@@ -13,6 +13,13 @@
 > `test_trace_comparator` target (8 tests, no PJSIP dependency) covers the
 > client/server trace comparator — see
 > [client-server-trace-comparison.md](client-server-trace-comparison.md).
+>
+> **Task W107 addition**: RFC 4976 MSRP relay authentication testing
+> (`test_msrp_digest_auth`, `test_msrp_relay_client`,
+> `test_msrp_session_relay_transport`) — a separate, additive test surface
+> with no shared code path with anything above, since relay support is not
+> wired into the live call flow. See
+> [msrp-relay-testing.md](msrp-relay-testing.md).
 > `test_windows_trace_json_export` gained a case for the new schemaVersion 3
 > `msrpSessions` fields. 68/68 CTest targets pass, zero regressions.
 >

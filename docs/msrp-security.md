@@ -135,3 +135,12 @@ diagnostics/export surface redacts them:
 - Server-side TLS certificate/key provisioning has no production UI (see
   [msrp-transport.md](msrp-transport.md)) — only usable in the local test
   harness context.
+
+## MSRP relay (RFC 4976) — Task W107
+
+Relay-assisted MSRP has its own dedicated security notes — see
+[msrp-relay-security.md](msrp-relay-security.md) — since it introduces a
+new credential-handling path (relay AUTH digest) distinct from everything
+above. Relay support is `Disabled` by default and, as of W107, not wired
+into any live call's SDP flow, so nothing in this file's threat model
+changes for direct MSRP.
