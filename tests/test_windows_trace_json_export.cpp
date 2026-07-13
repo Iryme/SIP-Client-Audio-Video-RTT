@@ -8,6 +8,7 @@
 #include "sip/MessagingDiagnosticsStore.h"
 #include "sip/PresenceDiagnosticsStore.h"
 #include "sip/SipTraceLogger.h"
+#include "msrp/MsrpRelayDiagnosticsEvent.h"
 #include "msrp/MsrpSessionInfo.h"
 
 // Tests for InteropTraceExporter — the server-compatible JSON export (Task
@@ -62,6 +63,7 @@ private slots:
     void presenceEventsDoNotAffectMessagingEventsSchema();
 
     void exportMsrpSessionV3Fields();
+    void exportMsrpRelayEventsFieldsRedacted();
 
 private:
     static void logMessage(const SipMessageTrace &t) { SipTraceLogger::instance().logMessage(t); }
@@ -482,6 +484,48 @@ void TestWindowsTraceJsonExport::exportMsrpSessionV3Fields()
         .object().value(QStringLiteral("msrpSessions")).toArray().first().toObject();
     QCOMPARE(s2.value(QStringLiteral("peerAssociation")).toObject()
         .value(QStringLiteral("confidence")).toString(), QStringLiteral("unknown"));
+}
+
+void TestWindowsTraceJsonExport::exportMsrpRelayEventsFieldsRedacted()
+{
+    // Task W107: msrpRelayEvents is purely additive (schemaVersion stays 3)
+    // and every field is already pre-redacted by MsrpRelayDiagnosticsEvent
+    // itself — this exporter never sees a nonce/response/credential value in
+    // the first place, so there is nothing here that could leak one.
+    MsrpRelayDiagnosticsEvent ev;
+    ev.timestamp = QDateTime::currentDateTimeUtc();
+    ev.kind = MsrpRelayDiagnosticsEvent::Kind::AllocationSuccess;
+    ev.relayConnectionId = QStringLiteral("conn-1");
+    ev.allocationId = QStringLiteral("alloc-1");
+    ev.sipCallIdRedacted = QStringLiteral("call-abc…");
+    ev.mediaIndex = 1;
+    ev.responseCode = 200;
+    ev.responseComment = QStringLiteral("OK");
+    ev.algorithm = QStringLiteral("MD5");
+    ev.qopUsed = true;
+    ev.allocatedPathRedacted = QStringLiteral("relay.example.com:2855");
+    ev.expiresAt = QDateTime::currentDateTimeUtc().addSecs(600);
+
+    const QString json = InteropTraceExporter::exportToJson({}, {}, {}, {}, {}, {ev});
+    const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    QCOMPARE(doc.object().value(QStringLiteral("schemaVersion")).toInt(), InteropTraceExporter::kSchemaVersion);
+
+    const QJsonArray relayEvents = doc.object().value(QStringLiteral("msrpRelayEvents")).toArray();
+    QCOMPARE(relayEvents.size(), 1);
+    const QJsonObject r = relayEvents.first().toObject();
+    QCOMPARE(r.value(QStringLiteral("kind")).toString(), QStringLiteral("allocation-success"));
+    QCOMPARE(r.value(QStringLiteral("responseCode")).toInt(), 200);
+    QCOMPARE(r.value(QStringLiteral("qopUsed")).toBool(), true);
+    QCOMPARE(r.value(QStringLiteral("allocatedPathRedacted")).toString(), QStringLiteral("relay.example.com:2855"));
+
+    // Structural guarantee that nothing sensitive can appear: the exported
+    // object's keys are a fixed, known set — no free-form "path"/"nonce"/
+    // "credentials" key exists for a caller to have accidentally populated.
+    const QStringList keys = r.keys();
+    for (const QString &forbidden : {QStringLiteral("nonce"), QStringLiteral("password"),
+                                     QStringLiteral("digest"), QStringLiteral("credentials")}) {
+        QVERIFY(!keys.contains(forbidden));
+    }
 }
 
 QTEST_GUILESS_MAIN(TestWindowsTraceJsonExport)
