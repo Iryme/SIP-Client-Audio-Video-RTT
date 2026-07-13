@@ -66,6 +66,32 @@ This does not change behavior for a legitimate peer: the To-Path a real
 peer sends is always built from the `a=path` this client advertised in its
 own SDP offer/answer, so it always matches.
 
+## Connection-hijack denial-of-service recovery (Task W106)
+
+Task W105 stopped a rogue local connection from injecting messages, but the
+underlying denial-of-service was still open: `MsrpTcpTransport`/
+`MsrpTlsTransport` stop listening for good once they accept their first TCP
+connection (see `onNewConnection`), so a rogue process that merely won the
+accept race — without ever sending a valid request — could permanently
+prevent the real, SDP-negotiated peer from connecting at all, even though
+none of its messages would have been accepted.
+
+`MsrpSession` now tracks whether it has ever accepted one authenticated
+inbound request (`m_awaitingAuthentication`). While that is still true,
+`rejectUnauthorizedRequest()` calls `MsrpTransport::relisten()`: the
+rejected connection is dropped without treating the session as closed or
+failed, and the listener reopens on the exact same bind address/port for
+whatever time remains of the original accept window
+(`msrpAcceptTimeoutMs`/`msrpConnectionTimeoutMs`), giving the real peer a
+further chance to connect. Once a request actually passes the To-Path
+check, `m_awaitingAuthentication` is cleared and later disconnects are
+handled by the normal close/error path — an already-established, validated
+session is never torn down and relistened on.
+
+This is bounded by the original accept window: if it elapses before a
+valid peer connects, `relisten()` surfaces the same `accept timeout: no
+peer connected` error as an ordinary failed passive listen.
+
 ## Header/path injection
 
 - `MsrpFrameSerializer::serialize()` rejects (returns empty, `ok=false`)
@@ -98,7 +124,10 @@ diagnostics/export surface redacts them:
 
 - Connection-flood / many-simultaneous-listener protection beyond
   `msrpMaxConcurrentSessions` is not implemented as a dedicated rate
-  limiter.
+  limiter — a rogue peer can still repeatedly reconnect-and-fail within a
+  single session's accept window (see Task W106 above), consuming CPU for
+  parse/reject cycles, even though it can never inject messages or
+  permanently deny the real peer.
 - Stalled-connection detection relies on `msrpIdleTimeoutSeconds` /
   `msrpTransactionTimeoutMs` being enforced by the owning `MsrpSession` /
   `MsrpChunkAssembler::purgeStale` — there is no separate TCP-level
