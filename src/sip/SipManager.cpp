@@ -1,6 +1,7 @@
 #include "SipManager.h"
 
 #include <QPointer>
+#include <QUuid>
 
 #include "core/Logger.h"
 #include "core/PerfScope.h"
@@ -1044,6 +1045,14 @@ bool SipManager::sendEmergencyLocationUpdate(const SipCallOptions &opts)
 
 void SipManager::destroyActiveCall()
 {
+    // Task W108: cancel any in-flight MSRP relay call preparation whenever
+    // the active call is torn down (hangup, new call replacing this one,
+    // shutdown, profile switch) — otherwise a relay allocation completing
+    // after the fact could try to drive a call that no longer exists. The
+    // controller's generation guard makes this safe even if called when
+    // nothing is in flight.
+    cancelMsrpCallPreparation();
+
     if (!m_activeCall)
         return;
     m_rtpStatsTimer.stop();
@@ -1200,7 +1209,97 @@ bool SipManager::makeCall(const QString &remoteUri)
         SipTraceLogger::instance().logMessage(trace);
     }
 
-    return m_activeCall->makeCall(remoteUri);
+    return dispatchMakeCall(remoteUri, SipCallOptions{});
+}
+
+MsrpRelayConfig SipManager::buildMsrpRelayConfigFromSettings() const
+{
+    MsrpRelayConfig cfg;
+    const QString modeStr = AppSettings::msrpRelayMode();
+    if (modeStr == QStringLiteral("required"))
+        cfg.mode = MsrpRelayMode::Required;
+    else if (modeStr == QStringLiteral("automatic"))
+        cfg.mode = MsrpRelayMode::Automatic;
+    else
+        cfg.mode = MsrpRelayMode::Disabled;
+
+    cfg.relayHost = AppSettings::msrpRelayHost();
+    cfg.relayPort = AppSettings::msrpRelayPort();
+    cfg.useTls = AppSettings::msrpRelayUseTls();
+    cfg.username = AppSettings::msrpRelayUsername();
+    cfg.credentialProfileId = AppSettings::msrpRelayCredentialProfileId();
+    cfg.tlsVerifyPeer = AppSettings::msrpRelayTlsVerifyPeer();
+    cfg.tlsCaCertificatePath = AppSettings::msrpRelayTlsCaPath();
+    cfg.connectTimeoutMs = AppSettings::msrpRelayConnectTimeoutMs();
+    cfg.authTimeoutMs = AppSettings::msrpRelayAuthTimeoutMs();
+    cfg.refreshMarginSeconds = AppSettings::msrpRelayRefreshMarginSeconds();
+    cfg.maxRetries = AppSettings::msrpRelayMaxRetries();
+    return cfg;
+}
+
+void SipManager::cancelMsrpCallPreparation()
+{
+    if (m_msrpCallPreparation)
+        m_msrpCallPreparation->cancel();
+}
+
+bool SipManager::dispatchMakeCall(const QString &remoteUri, const SipCallOptions &callOpts)
+{
+    const bool wantsMsrp = AppSettings::enableMsrp()
+        && (AppSettings::enableMsrpTcp() || AppSettings::enableMsrpTls());
+    const MsrpRelayConfig relayConfig = buildMsrpRelayConfigFromSettings();
+
+    // The overwhelmingly common case (relay disabled, the default) is
+    // byte-for-byte the pre-W108 synchronous path: no controller is even
+    // created, so there is no behavioral change and no new failure mode
+    // for existing audio/video/RTT/direct-MSRP calls.
+    if (relayConfig.mode == MsrpRelayMode::Disabled || !relayConfig.isUsable()) {
+        return m_activeCall->makeCallWithOptions(remoteUri, callOpts);
+    }
+
+    QString relayPassword;
+    if (!relayConfig.credentialProfileId.isEmpty()) {
+        bool found = false;
+        relayPassword = CredentialStore::instance().loadPassword(
+            relayConfig.credentialProfileId, relayConfig.username, &found);
+        if (!found)
+            relayPassword.clear();
+    }
+
+    if (!m_msrpCallPreparation)
+        m_msrpCallPreparation = new MsrpCallPreparationController(this);
+
+    QPointer<SipManager> self(this);
+    const QString capturedRemoteUri = remoteUri;
+    const SipCallOptions capturedOpts = callOpts;
+
+    // These connections are scoped to a single preparation attempt: the
+    // controller's own generation guard (see MsrpCallPreparationController)
+    // ensures a stale signal from a previous attempt (e.g. this call was
+    // cancelled and a new one started) can never reach here.
+    QObject::disconnect(m_msrpCallPreparation, &MsrpCallPreparationController::ready, this, nullptr);
+    QObject::disconnect(m_msrpCallPreparation, &MsrpCallPreparationController::failed, this, nullptr);
+    QObject::connect(m_msrpCallPreparation, &MsrpCallPreparationController::ready, this,
+        [self, capturedRemoteUri, capturedOpts](const PreparedMsrpOffer &offer) {
+            if (!self || !self->m_activeCall)
+                return;
+            self->m_activeCall->setPreparedMsrpOffer(offer);
+            self->m_activeCall->makeCallWithOptions(capturedRemoteUri, capturedOpts);
+        });
+    QObject::connect(m_msrpCallPreparation, &MsrpCallPreparationController::failed, this,
+        [self, capturedRemoteUri](const QString &reason) {
+            if (!self || !self->m_activeCall)
+                return;
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Call preparation failed (relay required, no allocation): %1 target=%2")
+                    .arg(reason, capturedRemoteUri));
+            self->m_activeCall->reset(QStringLiteral("MSRP relay allocation failed: %1").arg(reason));
+        });
+
+    m_msrpCallPreparation->start(wantsMsrp, relayConfig, relayPassword,
+                                 QUuid::createUuid().toString(QUuid::WithoutBraces).left(12),
+                                 AppSettings::msrpRelayPreparationTimeoutMs());
+    return true;
 }
 
 bool SipManager::makeCall(const QString &remoteUri, const CallMediaOptions &opts)
@@ -1241,7 +1340,7 @@ bool SipManager::makeCall(const QString &remoteUri, const CallMediaOptions &opts
         SipTraceLogger::instance().logMessage(trace);
     }
 
-    return m_activeCall->makeCallWithOptions(remoteUri, callOpts);
+    return dispatchMakeCall(remoteUri, callOpts);
 }
 
 bool SipManager::makeEmergencyCall(const QString &remoteUri, const SipCallOptions &options)
@@ -1249,6 +1348,10 @@ bool SipManager::makeEmergencyCall(const QString &remoteUri, const SipCallOption
     if (!prepareOutgoingCall(remoteUri))
         return false;
 
+    // Task W108: deliberately bypasses dispatchMakeCall()/MSRP relay
+    // preparation — an emergency call must never be delayed waiting on a
+    // relay allocation. INVITE goes out immediately, exactly as before
+    // W108; MSRP relay is never used for emergency calls.
     applyVideoSettingsForCall();
 
     // Emit INVITE outbound trace (emergency).

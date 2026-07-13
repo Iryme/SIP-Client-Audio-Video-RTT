@@ -9,6 +9,7 @@
 #include "sip/CallStateMachine.h"
 #include "sip/SipCallOptions.h"
 #include "media/RtpStats.h"
+#include "msrp/MsrpCallPreparation.h"
 
 // Manages a single SIP call. Owns a CallStateMachine that enforces valid
 // call state transitions. In stub mode (ENABLE_PJSIP=OFF) all operations
@@ -30,6 +31,17 @@ public:
     // Outgoing call with per-call SIP options (emergency headers, media policy).
     // When options.isEmpty(), behavior is identical to makeCall().
     bool makeCallWithOptions(const QString &remoteUri, const SipCallOptions &options);
+
+    // Task W108: supplies a pre-resolved MSRP transport decision (Direct or
+    // relay-allocated) obtained asynchronously by a
+    // MsrpCallPreparationController *before* this call is created. Must be
+    // called before makeCall()/makeCallWithOptions() to have any effect —
+    // it is read once, synchronously, from inside the pjsip
+    // onCallSdpCreated callback while building the offer; it is never used
+    // to trigger any I/O of its own. A default-constructed (not-ready)
+    // offer means "no relay decision was made" and preserves the exact
+    // pre-W108 direct-MSRP behavior (lazy passive listener).
+    void setPreparedMsrpOffer(const PreparedMsrpOffer &offer);
 
     // Binds the call to the active PJSIP account or existing incoming INVITE.
     // No-op in stub builds; the handle is a pj::Account* behind HAVE_PJSIP.

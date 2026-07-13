@@ -16,6 +16,7 @@
 #include "sip/SipMessageComposer.h"
 #include "rtt/RttSession.h"
 #include "media/RtpStats.h"
+#include "msrp/MsrpCallPreparationController.h"
 
 // Owns the SIP endpoint lifecycle and the account for the active profile.
 // Registration flow is governed by RegistrationStateMachine; invalid operations
@@ -271,6 +272,21 @@ private:
     // Returns false if rejected (active call, empty URI).
     bool prepareOutgoingCall(const QString &remoteUri);
 
+    // Task W108: shared tail end of makeCall()/makeCall(opts)/
+    // makeEmergencyCall() — called after prepareOutgoingCall() has already
+    // created m_activeCall. Resolves MSRP transport policy from
+    // AppSettings/CredentialStore (never hardcoded) and either calls
+    // m_activeCall->makeCallWithOptions() immediately (relay disabled/not
+    // configured — identical to pre-W108 behavior, the overwhelmingly
+    // common case) or defers it until MsrpCallPreparationController
+    // resolves a relay allocation (or its configured fallback). Always
+    // returns true if prepareOutgoingCall() already accepted the request;
+    // the eventual outcome is observed via callStateChanged/callFailed as
+    // before.
+    bool dispatchMakeCall(const QString &remoteUri, const SipCallOptions &callOpts);
+    MsrpRelayConfig buildMsrpRelayConfigFromSettings() const;
+    void cancelMsrpCallPreparation();
+
     // Reads the persisted mic/speaker selection from MediaDeviceSelectionModel
     // and applies it to PJSIP AudDevManager. No-op when PJSIP is not active.
     void applyPersistedAudioDevices();
@@ -303,6 +319,7 @@ private:
 #endif
 
     SipCall                 *m_activeCall{nullptr};
+    MsrpCallPreparationController *m_msrpCallPreparation{nullptr}; // Task W108, lazily created
     RttSession               m_rttSession;
     QTimer                   m_rtpStatsTimer;
     bool                     m_initialized{false};

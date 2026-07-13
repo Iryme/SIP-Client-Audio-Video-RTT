@@ -14,6 +14,9 @@
 #include "msrp/MsrpSession.h"
 #include "msrp/MsrpPath.h"
 #include "msrp/MsrpSdpNegotiator.h"
+#include "msrp/MsrpCallPreparation.h"
+#include "msrp/MsrpRelayClient.h"
+#include "msrp/MsrpTypes.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -717,7 +720,6 @@ struct SipCall::Impl
                 }
 
                 if (!alreadyHasMessage) {
-                    m_impl->startMsrpPassiveListener();
                     if (!m_impl->msrpSdpPool)
                         m_impl->msrpSdpPool = pjsua_pool_create("msrp-sdp", 2048, 2048);
 
@@ -727,14 +729,39 @@ struct SipCall::Impl
                         .split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
                     int advertisedPort = 0;
-                    MsrpUri advertisedUri = m_impl->msrpLocalUri;
-                    if (m_impl->msrpSession && !m_impl->msrpListenerFailed) {
-                        advertisedPort = m_impl->msrpSession->transportLocalPort();
-                        QString host = AppSettings::msrpAdvertisedHost();
-                        if (host.isEmpty())
-                            host = MsrpSipMediaInjector::resolveSessionConnectionHost(prm.sdp.pjSdpSession);
-                        if (!host.isEmpty())
-                            advertisedUri.host = host;
+                    MsrpUri advertisedUri;
+
+                    // Task W108: a relay allocation obtained *before* this
+                    // synchronous callback ran (see MsrpCallPreparationController)
+                    // takes precedence — the allocated Use-Path is already real,
+                    // wire-confirmed data; no I/O happens here, only reads of
+                    // the prepared offer. No local passive listener is bound in
+                    // this case (see Phase 9: the relay's own connection is
+                    // adopted into msrpSession after the call is created).
+                    if (m_impl->preparedMsrpOffer.ready
+                            && m_impl->preparedMsrpOffer.mode == MsrpCallTransportMode::Relay
+                            && m_impl->preparedMsrpOffer.advertisedUri.ok) {
+                        m_impl->createMsrpSessionObject();
+                        advertisedUri = m_impl->preparedMsrpOffer.advertisedUri;
+                        advertisedPort = advertisedUri.port;
+                        m_impl->msrpSession->setLocalUri(advertisedUri);
+                        m_impl->msrpLocalUri = advertisedUri;
+                        Logger::instance().info(LogCategory::Sip,
+                            QStringLiteral("MSRP relay allocation applied to outbound SDP: callId=%1 "
+                                           "allocationId=%2")
+                                .arg(m_impl->q ? m_impl->q->callId() : QString())
+                                .arg(m_impl->preparedMsrpOffer.relayAllocation.allocationId));
+                    } else {
+                        m_impl->startMsrpPassiveListener();
+                        advertisedUri = m_impl->msrpLocalUri;
+                        if (m_impl->msrpSession && !m_impl->msrpListenerFailed) {
+                            advertisedPort = m_impl->msrpSession->transportLocalPort();
+                            QString host = AppSettings::msrpAdvertisedHost();
+                            if (host.isEmpty())
+                                host = MsrpSipMediaInjector::resolveSessionConnectionHost(prm.sdp.pjSdpSession);
+                            if (!host.isEmpty())
+                                advertisedUri.host = host;
+                        }
                     }
 
                     const auto injectResult = MsrpSipMediaInjector::injectMessageMedia(
@@ -1332,6 +1359,11 @@ struct SipCall::Impl
     MsrpSession *msrpSession{nullptr};   // this call's own MSRP listener/session, lazily started
     MsrpUri      msrpLocalUri;           // this call's advertised msrp(s):// URI once the listener is up
     bool         msrpListenerFailed{false}; // true once we've tried and failed — offer m=message with port 0
+
+    // Task W108: async-prepared MSRP transport decision, supplied via
+    // SipCall::setPreparedMsrpOffer() before makeCall()/makeCallWithOptions().
+    // onCallSdpCreated only ever reads this — see the header doc comment.
+    PreparedMsrpOffer preparedMsrpOffer;
 #endif
 };
 
@@ -1511,6 +1543,31 @@ bool SipCall::makeCallWithOptions(const QString &remoteUri, const SipCallOptions
             }
 
             m_impl->pjCall->makeCall(m_remoteUri.toStdString(), prm);
+
+            // Task W108 Phase 9: onCallSdpCreated (above) already created
+            // msrpSession and populated the offer from the relay allocation
+            // synchronously, without touching the relay's transport. Now
+            // that the dialog exists, hand the relay's already-connected,
+            // already-authenticated transport to msrpSession so SEND/
+            // response/REPORT traffic for this call flows over it.
+            if (m_impl->preparedMsrpOffer.ready
+                    && m_impl->preparedMsrpOffer.mode == MsrpCallTransportMode::Relay
+                    && m_impl->preparedMsrpOffer.relayClient
+                    && m_impl->msrpSession) {
+                if (auto transport = m_impl->preparedMsrpOffer.relayClient->takeTransport()) {
+                    m_impl->msrpSession->adoptExternalTransport(std::move(transport),
+                                                                  MsrpRole::ActiveConnector);
+                    Logger::instance().info(LogCategory::Sip,
+                        QStringLiteral("MSRP relay transport adopted into session: callId=%1")
+                            .arg(m_callId));
+                } else {
+                    Logger::instance().warn(LogCategory::Sip,
+                        QStringLiteral("MSRP relay transport unavailable at call-creation time "
+                                       "(already taken or disconnected): callId=%1")
+                            .arg(m_callId));
+                }
+            }
+
             return true;
         } catch (const pj::Error &e) {
             delete m_impl->pjCall;
@@ -1535,6 +1592,15 @@ void SipCall::setPjsipAccountHandle(void *accountHandle)
     m_impl->pjAccountHandle = accountHandle;
 #else
     Q_UNUSED(accountHandle)
+#endif
+}
+
+void SipCall::setPreparedMsrpOffer(const PreparedMsrpOffer &offer)
+{
+#ifdef HAVE_PJSIP
+    m_impl->preparedMsrpOffer = offer;
+#else
+    Q_UNUSED(offer)
 #endif
 }
 
