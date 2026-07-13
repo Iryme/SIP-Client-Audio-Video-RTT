@@ -39,6 +39,15 @@ public:
 
     void connectAsActive(int connectTimeoutMs);
     void listenAsPassive(const QString &bindAddress, int acceptTimeoutMs);
+
+    // Task W107: adopts an already-connected transport owned externally
+    // (the same control connection MsrpRelayClient used for its AUTH
+    // handshake, reused as this session's media connection per RFC 4976 —
+    // relay-assisted MSRP never opens a second, separate connection).
+    // Ownership transfers to this MsrpSession. Must be called instead of,
+    // never in addition to, connectAsActive()/listenAsPassive().
+    void adoptExternalTransport(std::unique_ptr<MsrpTransport> transport, MsrpRole role);
+
     void closeSession();
     void abortSession(const QString &reason);
 

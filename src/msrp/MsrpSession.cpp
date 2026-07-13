@@ -122,6 +122,28 @@ void MsrpSession::listenAsPassive(const QString &bindAddress, int acceptTimeoutM
     m_transport->listenPassive(bindAddress, m_localUri.port, acceptTimeoutMs);
 }
 
+void MsrpSession::adoptExternalTransport(std::unique_ptr<MsrpTransport> transport, MsrpRole role)
+{
+    // Disconnect/drop any transport this session previously owned first —
+    // mirrors the ~MsrpSession() ordering rationale (never let a stale
+    // transport's signal reach `this` mid-swap).
+    if (m_transport) {
+        m_transport->disconnect();
+        m_transport->abortNow();
+    }
+    m_transport = std::move(transport);
+    m_info.role = role;
+    m_info.localTransport = m_localUri.transportProtocol();
+
+    connect(m_transport.get(), &MsrpTransport::connected, this, &MsrpSession::onTransportConnected);
+    connect(m_transport.get(), &MsrpTransport::bytesReceived, this, &MsrpSession::onTransportBytes);
+    connect(m_transport.get(), &MsrpTransport::errorOccurred, this, &MsrpSession::onTransportError);
+    connect(m_transport.get(), &MsrpTransport::disconnected, this, &MsrpSession::onTransportDisconnected);
+
+    if (m_transport->isConnected())
+        onTransportConnected();
+}
+
 void MsrpSession::onTransportConnected()
 {
     m_info.connectedAt = QDateTime::currentDateTimeUtc();
