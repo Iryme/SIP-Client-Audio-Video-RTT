@@ -1192,7 +1192,7 @@ QWidget *MainWindow::buildClientsPage()
         if (acceptMode) {
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("Accepting text request: protocol=%1").arg(proto));
-            if (!SipManager::instance().requestCallRtt(true)) {
+            if (!SipManager::instance().acceptIncomingRtt()) {
                 *rttRequestFailed = true;
                 cardRtt->setValue(tr("Failed"));
                 cardRtt->setStatus(QStringLiteral("err"));
@@ -1511,6 +1511,24 @@ QWidget *MainWindow::buildClientsPage()
     });
     connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
             this, [=]() { refreshRequestRttButton(); refreshCards(); });
+    connect(&SipManager::instance(), &SipManager::rttRequestRejected,
+            this, [=]() {
+        *rttRequestPending = false;
+        *rttRequestFailed  = false;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Text protocol request rejected: protocol=RTT"));
+        refreshRequestRttButton();
+        refreshCards();
+    });
+    connect(&SipManager::instance(), &SipManager::rttNegotiationFailed,
+            this, [=](const QString &reason) {
+        *rttRequestPending = false;
+        *rttRequestFailed  = true;
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("Text protocol negotiation failed: protocol=RTT reason=%1").arg(reason));
+        refreshRequestRttButton();
+        refreshCards();
+    });
     connect(&VideoStatistics::instance(), &VideoStatistics::statsUpdated,
             this, [=](float fps, int drops) {
         if (VideoMediaManager::instance().isVideoActive() || VideoMediaManager::instance().isLocalVideoAvailable()) {

@@ -6,8 +6,27 @@
 // -----------------------------------------------------------------------
 // Singleton
 // -----------------------------------------------------------------------
+namespace {
+QString &sipProfileManagerConfigDirOverride()
+{
+    static QString s_dir;
+    return s_dir;
+}
+}
+
+void SipProfileManager::setConfigDirectoryOverride(const QString &dir)
+{
+    sipProfileManagerConfigDirOverride() = dir;
+}
+
 SipProfileManager &SipProfileManager::instance()
 {
+    const QString &dir = sipProfileManagerConfigDirOverride();
+    if (!dir.isEmpty()) {
+        static SipProfileManager s_instanceOverride(
+            dir + QStringLiteral("/SIPClientProfiles.ini"), QSettings::IniFormat, nullptr);
+        return s_instanceOverride;
+    }
     static SipProfileManager s_instance("SIPClient", "SIPClientProfiles");
     return s_instance;
 }
@@ -19,6 +38,14 @@ SipProfileManager::SipProfileManager(const QString &org, const QString &app,
                                       QSettings::Format format, QObject *parent)
     : QObject(parent)
     , m_settings(format, QSettings::UserScope, org, app)
+{
+    loadAll();
+}
+
+SipProfileManager::SipProfileManager(const QString &iniFilePath, QSettings::Format format,
+                                      QObject *parent)
+    : QObject(parent)
+    , m_settings(iniFilePath, format)
 {
     loadAll();
 }

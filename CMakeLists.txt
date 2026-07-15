@@ -193,6 +193,8 @@ set(SOURCES
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
+    src/sip/RtpPortRangeConfig.cpp
+    src/sip/RtpPortDiagnostics.cpp
     src/sip/SipUriNormalizer.cpp
     src/sip/CodecManager.cpp
     src/sip/PjsipAudioMapper.cpp
@@ -354,6 +356,8 @@ set(HEADERS
     src/sip/SipManager.h
     src/sip/SipAccount.h
     src/sip/SipCall.h
+    src/sip/RtpPortRangeConfig.h
+    src/sip/RtpPortDiagnostics.h
     src/sip/SipUriNormalizer.h
     src/sip/CodecManager.h
     src/sip/PjsipAudioMapper.h

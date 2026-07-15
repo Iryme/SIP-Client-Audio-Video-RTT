@@ -17,6 +17,7 @@
 #endif
 
 #include "rtt/RttConfig.h"
+#include "sip/RtpPortRangeConfig.h"
 
 #if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
 static QString normalizeDeviceName(const QString &value)
@@ -585,6 +586,35 @@ bool SipAccount::startRegistration(const SipProfile &profile, const QString &pas
                 QStringLiteral("No PJSIP video capture device detected; outgoing video disabled, incoming video still allowed"));
         }
 #endif
+
+        // RTP/RTCP media port range (Task W109A) — pj::EpConfig::MediaConfig
+        // has no port-range field; the actual pjsua2 API for this is the
+        // per-account AccountMediaConfig::transportConfig (applies to audio,
+        // video, and text streams alike). Without this, pjsua2 defaults to
+        // its own built-in unbounded start port, so two instances of this
+        // app on the same host both try to bind the same port first and
+        // collide (WSAEADDRINUSE) — see docs/rtp-port-range-configuration.md.
+        {
+            const RtpPortRangeConfig rtpRange = resolveEffectiveRtpPortRange();
+            QString rangeError, rangeWarning;
+            if (!validateRtpPortRange(rtpRange.start, rtpRange.end, &rangeError, &rangeWarning)) {
+                Logger::instance().warn(LogCategory::Sip,
+                    QStringLiteral("Configured RTP port range [%1-%2] is invalid (%3); "
+                                   "falling back to pjsua2 default (unbounded from its "
+                                   "built-in start port)")
+                        .arg(rtpRange.start).arg(rtpRange.end).arg(rangeError));
+            } else {
+                config.mediaConfig.transportConfig.port = static_cast<unsigned>(rtpRange.start);
+                config.mediaConfig.transportConfig.portRange = static_cast<unsigned>(rtpRange.portRange());
+                Logger::instance().info(LogCategory::Sip,
+                    QStringLiteral("Effective RTP/RTCP port range: [%1-%2] (%3 ports)")
+                        .arg(rtpRange.start).arg(rtpRange.end).arg(rtpRange.end - rtpRange.start + 1));
+                if (!rangeWarning.isEmpty()) {
+                    Logger::instance().warn(LogCategory::Sip,
+                        QStringLiteral("RTP port range warning: %1").arg(rangeWarning));
+                }
+            }
+        }
 
         // RTT / T.140 text media configuration (RFC 4103 + RFC 2198 RED).
         // redundancyLevel controls how many previous T.140 packets are

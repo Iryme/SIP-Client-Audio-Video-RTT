@@ -87,9 +87,35 @@ public:
     // In PJSIP mode attempts a re-INVITE with updated video media counts.
     bool requestVideo(bool enabled);
 
-    // Request / release negotiated RTT/text mid-call.
+    // Request / release negotiated RTT/text mid-call. Local-initiated only:
+    // refuses (logs a warning, returns false) while a remote RTT offer is
+    // pending user consent (see rttRequested()/hasPendingIncomingRttRequest())
+    // — use acceptIncomingRttRequest()/rejectIncomingRttRequest() for that
+    // case instead. Also refuses while a previous local RTT re-INVITE is
+    // still in flight (single-flight guard, prevents duplicate re-INVITEs
+    // from repeated button clicks).
     // In PJSIP mode attempts a re-INVITE with updated text media counts.
     bool requestRtt(bool enabled);
+
+    // True when a remote RTT/text offer was auto-declined (m=text 0) and is
+    // awaiting the user's accept/reject decision.
+    bool hasPendingIncomingRttRequest() const;
+
+    // Accepts a pending incoming RTT offer. The offer itself was already
+    // answered with m=text 0 by the synchronous auto-response in
+    // onCallRxReinvite (pjsua2's onCallRxReinvite callback cannot defer the
+    // answer) — this issues a *new* local re-INVITE offering m=text, which is
+    // the only mechanism pjsua2 exposes for turning that decline into RTT
+    // becoming active. Returns false (no-op) if no incoming request is
+    // pending or a local RTT re-INVITE is already in flight.
+    bool acceptIncomingRttRequest();
+
+    // Rejects a pending incoming RTT offer. No new re-INVITE is sent — the
+    // offer was already declined (m=text 0) by the auto-response; this only
+    // clears the pending flag and emits rttRequestRejected() so the UI state
+    // stops showing a contradictory "still pending" request. Returns false
+    // if no incoming request is pending.
+    bool rejectIncomingRttRequest();
 
     // True when a video stream is currently active (set/cleared alongside
     // videoMediaConnected / videoMediaDisconnected).
@@ -208,8 +234,28 @@ signals:
     void videoRequested();
 
     // Emitted when the remote peer requests an RTT/text channel via re-INVITE.
-    // The auto-response declines it (textCount=0); user must call requestRtt(true).
+    // The auto-response declines it (textCount=0); user must call
+    // acceptIncomingRttRequest() (to renegotiate RTT on) or
+    // rejectIncomingRttRequest() (to clear the pending state without
+    // renegotiating — the decline was already sent).
     void rttRequested();
+
+    // Emitted when rejectIncomingRttRequest() clears a pending incoming
+    // RTT offer without sending a new re-INVITE.
+    void rttRequestRejected();
+
+    // Emitted right before a local RTT re-INVITE is sent (requestRtt(true)
+    // or acceptIncomingRttRequest()), so listeners (RttSession) can reflect
+    // the "negotiating" state and start a bounded negotiation timeout.
+    void rttLocalOfferSent();
+
+    // Emitted when a local RTT re-INVITE (requestRtt()/
+    // acceptIncomingRttRequest()) fails: either a PJSIP/transport error (e.g.
+    // RTP port bind failure) or the remote peer's answer coming back with
+    // RTT declined (m=text 0 / line removed). Audio/video are unaffected —
+    // this only concerns the RTT/text media line. `reason` is a short,
+    // human-readable, non-sensitive diagnostic string.
+    void rttNegotiationFailed(const QString &reason);
 
     // Granular local/remote video availability signals.
     void localVideoStarted();
@@ -237,6 +283,11 @@ private slots:
 
 private:
     void postStubTransition(CallState to, const QString &reason, int statusCode = 0);
+
+    // Shared re-INVITE logic for requestRtt()/acceptIncomingRttRequest() —
+    // callers are responsible for their own distinct precondition checks and
+    // logging (see requestRtt() vs acceptIncomingRttRequest()).
+    bool sendRttOffer(bool enabled);
 
     CallStateMachine m_stateMachine;
     QString          m_remoteUri;

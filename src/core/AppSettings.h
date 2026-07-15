@@ -8,8 +8,27 @@
 class AppSettings
 {
 public:
+    // Task W109A — lets two instances of this application on the same host
+    // (e.g. an "Alice" and "Bob" test instance) use separate settings files
+    // (separate SIP profiles, RTP port range, etc.) instead of silently
+    // sharing the single per-Windows-user UserScope ini. Must be called
+    // before the first call to settings() (i.e. at the very start of main())
+    // to have any effect — settings() is a function-local static and only
+    // constructs its QSettings object once. See --config-dir / the
+    // SIPCLIENT_CONFIG_DIR environment variable in main.cpp.
+    static void setConfigDirectoryOverride(const QString &dir)
+    {
+        configDirectoryOverride() = dir;
+    }
+
     static QSettings &settings()
     {
+        const QString &dir = configDirectoryOverride();
+        if (!dir.isEmpty()) {
+            static QSettings s_settingsOverride(
+                dir + QStringLiteral("/SIPClient.ini"), QSettings::IniFormat);
+            return s_settingsOverride;
+        }
         static QSettings s_settings(
             QSettings::IniFormat,
             QSettings::UserScope,
@@ -272,5 +291,25 @@ public:
     static void setEmergencyTarget(const QString &uri)
     {
         settings().setValue("emergency/target", uri);
+    }
+
+    // RTP/RTCP media port range (Task W109A) — applied to
+    // pj::AccountConfig::mediaConfig::transportConfig at account creation
+    // (see SipAccount::startRegistration() and RtpPortRangeConfig.h).
+    // Defaults preserve the same starting port pjsua2 would otherwise pick
+    // (4000) but bound it, which is required so two instances on the same
+    // host can be given distinct, non-overlapping ranges — see
+    // docs/rtp-port-range-configuration.md and
+    // docs/multiple-instances-same-host.md.
+    static int  rtpPortRangeStart()        { return settings().value(QStringLiteral("media/rtpPortStart"), 4000).toInt(); }
+    static void setRtpPortRangeStart(int p) { settings().setValue(QStringLiteral("media/rtpPortStart"), p); }
+    static int  rtpPortRangeEnd()          { return settings().value(QStringLiteral("media/rtpPortEnd"), 4998).toInt(); }
+    static void setRtpPortRangeEnd(int p)   { settings().setValue(QStringLiteral("media/rtpPortEnd"), p); }
+
+private:
+    static QString &configDirectoryOverride()
+    {
+        static QString s_dir;
+        return s_dir;
     }
 };

@@ -227,11 +227,14 @@ void RttPanel::onRttStateChanged(RttState state)
         stateText = tr("RTT: Not negotiated");
         resetRttBuffers();
         break;
-    case RttState::Offered:
-        stateText = tr("RTT: Offered (awaiting negotiation)");
+    case RttState::RemoteOfferPending:
+        stateText = tr("RTT: Incoming request (awaiting Accept/Reject)");
         break;
-    case RttState::Negotiated:
-        stateText = tr("RTT: Negotiated");
+    case RttState::LocalOfferPending:
+        stateText = tr("RTT: Negotiating (awaiting peer)");
+        break;
+    case RttState::Negotiating:
+        stateText = tr("RTT: Negotiated (stream inactive)");
         break;
     case RttState::Active:
         // Sync m_prevLocalText to the current field content so that no delta
@@ -239,8 +242,11 @@ void RttPanel::onRttStateChanged(RttState state)
         m_prevLocalText = m_rttInput->text();
         stateText = tr("RTT: Active");
         break;
+    case RttState::Rejected:
+        stateText = tr("RTT: Rejected");
+        break;
     case RttState::Failed:
-        stateText = tr("RTT: Failed");
+        stateText = tr("RTT: Failed — RTP port unavailable or negotiation timed out");
         break;
     }
     m_rttState->setText(stateText);

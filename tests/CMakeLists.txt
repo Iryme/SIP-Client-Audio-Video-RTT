@@ -34,6 +34,12 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
     ${CMAKE_SOURCE_DIR}/src/rtt/RttSession.cpp
+    # Task W109A: SipCall.cpp classifies RTP bind errors via
+    # RtpPortDiagnostics.cpp; SipAccount.cpp (co-listed with CALL_SOURCES in
+    # every target below) resolves the effective RTP port range via
+    # RtpPortRangeConfig.cpp.
+    ${CMAKE_SOURCE_DIR}/src/sip/RtpPortDiagnostics.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RtpPortRangeConfig.cpp
     # SipManager.cpp calls into MessageHistoryStore (Task W093) from
     # sendSipMessage()/onAccountInstantMessageReceived(); pure Qt, no
     # further link dependency (only uses ComposedSipMessage's fields, not
@@ -729,6 +735,42 @@ target_link_libraries(test_rtt_session PRIVATE
 )
 
 add_test(NAME test_rtt_session COMMAND test_rtt_session)
+
+# ---- test_rtp_port_range_config (Task W109A) ---------------------------
+# Pure logic: validation + priority resolution (session override > AppSettings
+# > default). AppSettings.h is header-only (QSettings wrapper), no .cpp needed.
+qt_add_executable(test_rtp_port_range_config
+    test_rtp_port_range_config.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RtpPortRangeConfig.cpp
+)
+
+target_include_directories(test_rtp_port_range_config PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_rtp_port_range_config PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_rtp_port_range_config COMMAND test_rtp_port_range_config)
+
+# ---- test_rtp_port_diagnostics (Task W109A) ----------------------------
+qt_add_executable(test_rtp_port_diagnostics
+    test_rtp_port_diagnostics.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/RtpPortDiagnostics.cpp
+)
+
+target_include_directories(test_rtp_port_diagnostics PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_rtp_port_diagnostics PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_rtp_port_diagnostics COMMAND test_rtp_port_diagnostics)
 
 # ---- test_sip_trace ----------------------------------------------------
 qt_add_executable(test_sip_trace

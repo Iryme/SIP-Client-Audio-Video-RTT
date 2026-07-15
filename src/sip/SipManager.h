@@ -81,7 +81,18 @@ public:
 
     // Request or release video / RTT mid-call via renegotiation when possible.
     bool requestCallVideo(bool enabled);
+    // Local-initiated RTT request only — see SipCall::requestRtt(). Refuses
+    // while an incoming RTT request is pending (see acceptIncomingRtt()/
+    // rejectIncomingRtt() below).
     bool requestCallRtt(bool enabled);
+
+    // Accepts/rejects a pending incoming RTT request (SipManager::rttRequested
+    // was emitted). Distinct from requestCallRtt(): accepting sends a new
+    // local re-INVITE (the incoming offer was already auto-declined and
+    // cannot be un-declined); rejecting only clears the pending UI state
+    // (Task W109A — see docs/rtt-offer-answer-state-machine.md).
+    bool acceptIncomingRtt();
+    bool rejectIncomingRtt();
 
     // Send RTT text via the active call's T.140 text stream.
     // No-op if no call is active or RTT is not negotiated.
@@ -223,6 +234,13 @@ signals:
     void rttMediaDisconnected();
     void rttTextReceived(const QString &text);
     void rtpStatsChanged(const RtpStatsSnapshot &stats);
+
+    // Task W109A — forwarded from the active SipCall. rttRequestRejected:
+    // rejectIncomingRtt() cleared a pending incoming request. rttNegotiationFailed:
+    // a local RTT re-INVITE (request or accept) failed — transport/port error
+    // or the remote declined; audio/video are unaffected.
+    void rttRequestRejected();
+    void rttNegotiationFailed(const QString &reason);
 
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,

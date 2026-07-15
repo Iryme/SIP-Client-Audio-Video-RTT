@@ -78,7 +78,7 @@ MediaRequestDialog::MediaRequestDialog(QWidget *parent)
         } else {
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("Accepting text request: protocol=RTT"));
-            SipManager::instance().requestCallRtt(true);
+            SipManager::instance().acceptIncomingRtt();
         }
         hide();
     });
@@ -90,6 +90,13 @@ MediaRequestDialog::MediaRequestDialog(QWidget *parent)
         } else {
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("Incoming RTT request ignored by user"));
+            // Task W109A: explicitly clear the pending state via the SIP
+            // layer instead of merely hiding the dialog — the offer was
+            // already declined (m=text 0) by the auto-response, so without
+            // this the app would keep showing "pending" even though it had
+            // already told the peer no, and a later "Accept" click would be
+            // ambiguous about what it was accepting.
+            SipManager::instance().rejectIncomingRtt();
         }
         hide();
     });

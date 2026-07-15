@@ -980,6 +980,26 @@ bool SipManager::requestCallRtt(bool enabled)
     return m_activeCall->requestRtt(enabled);
 }
 
+bool SipManager::acceptIncomingRtt()
+{
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("acceptIncomingRtt: no active call"));
+        return false;
+    }
+    return m_activeCall->acceptIncomingRttRequest();
+}
+
+bool SipManager::rejectIncomingRtt()
+{
+    if (!m_activeCall) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("rejectIncomingRtt: no active call"));
+        return false;
+    }
+    return m_activeCall->rejectIncomingRttRequest();
+}
+
 void SipManager::sendRttText(const QString &text)
 {
     if (!m_activeCall) {
@@ -1115,6 +1135,10 @@ void SipManager::wireActiveCall(SipCall *call)
             this, &SipManager::rttMediaConnected);
     connect(call, &SipCall::rttMediaDisconnected,
             this, &SipManager::rttMediaDisconnected);
+    connect(call, &SipCall::rttRequestRejected,
+            this, &SipManager::rttRequestRejected);
+    connect(call, &SipCall::rttNegotiationFailed,
+            this, &SipManager::rttNegotiationFailed);
     connect(call, &SipCall::rttTextReceived,
             this, &SipManager::rttTextReceived);
     // Task W101 Phase 6: MSRP payload received on this call's own session

@@ -17,10 +17,24 @@ class SipProfileManager : public QObject
 public:
     static SipProfileManager &instance();
 
+    // Task W109A — lets two instances of this application on the same host
+    // use separate profile stores instead of silently sharing the single
+    // per-Windows-user "SIPClientProfiles" ini. Must be called before the
+    // first call to instance() to have any effect. See --config-dir / the
+    // SIPCLIENT_CONFIG_DIR environment variable in main.cpp and
+    // AppSettings::setConfigDirectoryOverride() (same mechanism, applied to
+    // the separate profile store).
+    static void setConfigDirectoryOverride(const QString &dir);
+
     // Testable constructor: pass custom org/app to isolate test settings
     explicit SipProfileManager(const QString &org, const QString &app,
                                 QSettings::Format format = QSettings::IniFormat,
                                 QObject *parent = nullptr);
+
+    // Explicit-file-path constructor, used when a config directory override
+    // is set (see setConfigDirectoryOverride()).
+    explicit SipProfileManager(const QString &iniFilePath, QSettings::Format format,
+                                QObject *parent);
 
     ProfileValidationResult validate(const SipProfile &profile) const;
 

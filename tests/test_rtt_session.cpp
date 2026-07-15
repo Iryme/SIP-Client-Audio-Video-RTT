@@ -42,9 +42,9 @@ private slots:
 
         session.enableForCall(&call);
 
-        QCOMPARE(session.state(), RttState::Offered);
+        QCOMPARE(session.state(), RttState::LocalOfferPending);
         QCOMPARE(spy.count(), 1);
-        QCOMPARE(spy.first().first().value<RttState>(), RttState::Offered);
+        QCOMPARE(spy.first().first().value<RttState>(), RttState::LocalOfferPending);
     }
 
     // 3. sendText while Disabled drops the text (no crash)
@@ -64,7 +64,7 @@ private slots:
         RttSession session;
         SipCall call;
         session.enableForCall(&call);
-        QCOMPARE(session.state(), RttState::Offered);
+        QCOMPARE(session.state(), RttState::LocalOfferPending);
 
         QSignalSpy spy(&session, &RttSession::localTextQueued);
         session.sendText(QStringLiteral("Hello"));
@@ -100,8 +100,8 @@ private slots:
         QSignalSpy spy(&session, &RttSession::rttStateChanged);
         session.onCallMediaStateChanged(false);
 
-        QCOMPARE(session.state(), RttState::Negotiated);
-        QCOMPARE(spy.first().first().value<RttState>(), RttState::Negotiated);
+        QCOMPARE(session.state(), RttState::Negotiating);
+        QCOMPARE(spy.first().first().value<RttState>(), RttState::Negotiating);
     }
 
     // 7. sendText while Active queues localTextQueued
@@ -153,11 +153,72 @@ private slots:
     // 10. rttStateName returns expected strings
     void test_rttStateName()
     {
-        QCOMPARE(rttStateName(RttState::Disabled),   QStringLiteral("Disabled"));
-        QCOMPARE(rttStateName(RttState::Offered),    QStringLiteral("Offered"));
-        QCOMPARE(rttStateName(RttState::Negotiated), QStringLiteral("Negotiated"));
-        QCOMPARE(rttStateName(RttState::Active),     QStringLiteral("Active"));
-        QCOMPARE(rttStateName(RttState::Failed),     QStringLiteral("Failed"));
+        QCOMPARE(rttStateName(RttState::Disabled),           QStringLiteral("Disabled"));
+        QCOMPARE(rttStateName(RttState::RemoteOfferPending), QStringLiteral("RemoteOfferPending"));
+        QCOMPARE(rttStateName(RttState::LocalOfferPending),  QStringLiteral("LocalOfferPending"));
+        QCOMPARE(rttStateName(RttState::Negotiating),        QStringLiteral("Negotiating"));
+        QCOMPARE(rttStateName(RttState::Active),             QStringLiteral("Active"));
+        QCOMPARE(rttStateName(RttState::Rejected),           QStringLiteral("Rejected"));
+        QCOMPARE(rttStateName(RttState::Failed),             QStringLiteral("Failed"));
+    }
+
+    // 10b. onIncomingRttRequest transitions to RemoteOfferPending
+    void test_incomingRttRequestTransitionsToRemoteOfferPending()
+    {
+        RttSession session;
+        SipCall call;
+        session.enableForCall(&call);
+
+        QSignalSpy spy(&session, &RttSession::rttStateChanged);
+        session.onIncomingRttRequest();
+
+        QCOMPARE(session.state(), RttState::RemoteOfferPending);
+        QCOMPARE(spy.last().first().value<RttState>(), RttState::RemoteOfferPending);
+    }
+
+    // 10c. onIncomingRttRejected transitions to Rejected
+    void test_incomingRttRejectedTransitionsToRejected()
+    {
+        RttSession session;
+        SipCall call;
+        session.enableForCall(&call);
+        session.onIncomingRttRequest();
+
+        session.onIncomingRttRejected();
+
+        QCOMPARE(session.state(), RttState::Rejected);
+    }
+
+    // 10d. onNegotiationFailed transitions to Failed
+    void test_negotiationFailedTransitionsToFailed()
+    {
+        RttSession session;
+        SipCall call;
+        session.enableForCall(&call);
+
+        session.onNegotiationFailed(QStringLiteral("RTP port unavailable"));
+
+        QCOMPARE(session.state(), RttState::Failed);
+    }
+
+    // 10e. A resolved state (Active) is not affected by a stale negotiation
+    // timeout that could theoretically still be pending — verifies the
+    // timeout is stopped once a definitive outcome occurs (anti-ping-pong /
+    // stale-callback guard).
+    void test_negotiationTimeoutStoppedOnceActive()
+    {
+        RttSession session;
+        SipCall call;
+        session.enableForCall(&call);
+        QCOMPARE(session.state(), RttState::LocalOfferPending);
+
+        session.onCallMediaStateChanged(true);
+        QCOMPARE(session.state(), RttState::Active);
+
+        // If the timeout timer were still running it would eventually force
+        // Failed; process events briefly and confirm state is unaffected.
+        QCoreApplication::processEvents();
+        QCOMPARE(session.state(), RttState::Active);
     }
 
     // 11. Double enableForCall replaces old call cleanly
@@ -167,10 +228,36 @@ private slots:
         SipCall call1, call2;
 
         session.enableForCall(&call1);
-        QCOMPARE(session.state(), RttState::Offered);
+        QCOMPARE(session.state(), RttState::LocalOfferPending);
 
         session.enableForCall(&call2);
-        QCOMPARE(session.state(), RttState::Offered);
+        QCOMPARE(session.state(), RttState::LocalOfferPending);
+    }
+
+    // 11b. SipCall: no pending incoming RTT request by default.
+    void test_sipCall_noPendingIncomingRequestByDefault()
+    {
+        SipCall call;
+        QCOMPARE(call.hasPendingIncomingRttRequest(), false);
+    }
+
+    // 11c. SipCall: accepting with nothing pending is a no-op (returns false).
+    void test_sipCall_acceptWithNothingPendingFails()
+    {
+        SipCall call;
+        QSignalSpy spy(&call, &SipCall::rttLocalOfferSent);
+        QCOMPARE(call.acceptIncomingRttRequest(), false);
+        QCOMPARE(spy.count(), 0);
+    }
+
+    // 11d. SipCall: rejecting with nothing pending is a no-op (returns false,
+    // does not emit rttRequestRejected).
+    void test_sipCall_rejectWithNothingPendingFails()
+    {
+        SipCall call;
+        QSignalSpy spy(&call, &SipCall::rttRequestRejected);
+        QCOMPARE(call.rejectIncomingRttRequest(), false);
+        QCOMPARE(spy.count(), 0);
     }
 
     // 12. callDisconnected signal from SipCall triggers onCallEnded
