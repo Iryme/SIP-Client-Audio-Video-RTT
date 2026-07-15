@@ -89,7 +89,7 @@ parsing is duplicated anywhere in this task.
 
 ```
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "source": "windows-client",
   "exportedAt": "<ISO-8601 UTC timestamp of the export itself>",
   "events": [ { ...one object per MessagingTraceEntry, now with selectedTransport/actualTransport/fallbackUsed/fallbackReason, Task W100... } ],
@@ -197,7 +197,7 @@ diagnostics needs to be updated to read the v2-only fields.
 
 | Requirement's field name | JSON key | Source |
 |---|---|---|
-| schemaVersion | `schemaVersion` (root) | `InteropTraceExporter::kSchemaVersion` (currently `2` — see migration note above) |
+| schemaVersion | `schemaVersion` (root) | `InteropTraceExporter::kSchemaVersion` (currently `3` — bumped by Task W102, see migration note above) |
 | source | `source` (root) | literal `"windows-client"` |
 | exportedAt | `exportedAt` (root) | export wall-clock time, UTC, ISO 8601 with milliseconds |
 | eventId | `eventId` | 1-based position in the exported list (same convention `MessagingEventStore` already uses for its own ids) |
@@ -352,7 +352,7 @@ extended with this export's additional common fields:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "source": "windows-client",
   "exportedAt": "2026-07-09T21:00:00.000Z",
   "events": [
