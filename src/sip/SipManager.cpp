@@ -1317,7 +1317,15 @@ bool SipManager::dispatchMakeCall(const QString &remoteUri, const SipCallOptions
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("Call preparation failed (relay required, no allocation): %1 target=%2")
                     .arg(reason, capturedRemoteUri));
-            self->m_activeCall->reset(QStringLiteral("MSRP relay allocation failed: %1").arg(reason));
+            const QString userReason = QStringLiteral("MSRP relay allocation failed: %1").arg(reason);
+            self->m_activeCall->reset(userReason);
+            // reset() unconditionally returns the (never-started) call to Idle,
+            // which does not emit callFailed — nothing else here would tell the
+            // user why the call they just placed never rang. Emit it directly
+            // so the same UI feedback path added for the synchronous makeCall()
+            // rejection case (see "surface feedback when makeCall() is silently
+            // rejected") also covers this asynchronous relay-preparation failure.
+            emit self->callFailed(capturedRemoteUri, userReason, 0);
         });
 
     m_msrpCallPreparation->start(wantsMsrp, relayConfig, relayPassword,
