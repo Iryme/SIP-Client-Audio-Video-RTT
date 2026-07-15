@@ -35,7 +35,7 @@ QList<MsrpSessionInfo> MsrpSessionStore::snapshot() const
 
 void MsrpSessionStore::remove(const QString &sessionKey)
 {
-    if (m_sessions.remove(sessionKey) > 0)
+    if (m_sessions.remove(sessionKey))
         emit sessionRemoved(sessionKey);
 }
 
