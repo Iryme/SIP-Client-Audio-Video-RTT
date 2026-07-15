@@ -350,24 +350,18 @@ void TestRegistrationStateMachine::passwordNeverAppearsInStateTransitionLogs()
     sm.reset("shutdown");
     disconnect(conn);
 
-    // The reason IS stored and emitted in signals, but must not be logged
-    // if it were a real password. Here we verify the test by checking the
-    // reason DOES appear (proving we actually logged) and the secret is NOT
-    // separately logged beyond what we passed in.
-    //
-    // In production SipManager, credentials are NEVER passed as reasons.
-    // This test confirms the state machine itself does not inject extra secret text.
+    // The reason string IS logged verbatim (that's expected — it's just the
+    // caller-supplied transition reason, not a credential). What must NOT
+    // happen is the state machine echoing it a second time anywhere else
+    // (e.g. into a separate diagnostic/debug line), which would multiply
+    // any accidental leak if a caller ever did pass a secret as a reason.
+    QVERIFY(!messages.isEmpty());
+    int occurrences = 0;
     for (const QString &msg : messages) {
-        const bool containsSecret = msg.contains(secret);
-        if (containsSecret) {
-            // Only acceptable if it is echoing the reason we explicitly passed.
-            // The logging format includes the reason; that's expected.
-            // The test is that SipManager never passes password as reason.
-            // Nothing extra should appear.
-        }
-        // No assertion needed here — SipManager tests cover the full path.
+        if (msg.contains(secret))
+            ++occurrences;
     }
-    QVERIFY(true); // Test verifies password-as-reason plumbing via SipManager tests.
+    QCOMPARE(occurrences, 1);
 }
 
 QTEST_GUILESS_MAIN(TestRegistrationStateMachine)
