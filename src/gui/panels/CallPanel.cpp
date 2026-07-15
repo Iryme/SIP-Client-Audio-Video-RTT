@@ -661,7 +661,13 @@ CallPanel::CallPanel(QWidget *parent)
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Placing call: uri=%1 type=%2")
                 .arg(result.uri, callTypeName(ct)));
-        SipManager::instance().makeCall(result.uri, CallMediaOptions::fromType(ct));
+        if (!SipManager::instance().makeCall(result.uri, CallMediaOptions::fromType(ct))) {
+            // makeCall() returning false produces no other signal (no
+            // SipCall is created, so callStateChanged/callFailed never
+            // fire) — without this the Call button appears to do nothing.
+            m_regStatusLabel->setText(tr("Call could not be started (a call may already be active)"));
+            m_regStatusLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+        }
     };
     connect(m_btnCall,   &QPushButton::clicked,       this, triggerCall);
     connect(m_dialInput, &QLineEdit::returnPressed,   this, triggerCall);
@@ -791,7 +797,12 @@ void CallPanel::placeCall(const QString &uri)
         : CallType::AudioOnly;
     m_activeCallType = ct;
     AppSettings::saveLastCallType(static_cast<int>(ct));
-    SipManager::instance().makeCall(result.uri, CallMediaOptions::fromType(ct));
+    if (!SipManager::instance().makeCall(result.uri, CallMediaOptions::fromType(ct))) {
+        if (m_regStatusLabel) {
+            m_regStatusLabel->setText(tr("Call could not be started (a call may already be active)"));
+            m_regStatusLabel->setStyleSheet("color: #e05050; font-size: 10px;");
+        }
+    }
 }
 
 void CallPanel::populateDeviceCombos()

@@ -1054,14 +1054,19 @@ QWidget *MainWindow::buildClientsPage()
 
     connect(callBtn, &QPushButton::clicked, this, [this, requestVideoBtn, requestRttBtn]() {
         const QString raw = m_clientsTargetInput ? m_clientsTargetInput->text().trimmed() : QString{};
-        if (raw.isEmpty())
+        if (raw.isEmpty()) {
+            if (m_statusBar)
+                m_statusBar->showMessage(tr("Enter a SIP URI or number to call"), 4000);
             return;
+        }
         const QString fallbackDomain = SipProfileManager::instance().activeProfile().sipDomain;
         const SipUriNormalizer::Result result = SipUriNormalizer::normalize(raw, fallbackDomain);
         if (!result.isValid) {
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("Dial URI invalid: input=\"%1\" error=\"%2\"")
                     .arg(raw, result.error));
+            if (m_statusBar)
+                m_statusBar->showMessage(tr("Invalid URI: %1").arg(result.error), 5000);
             return;
         }
         if (m_clientsTargetInput && result.uri != raw)
@@ -1077,7 +1082,19 @@ QWidget *MainWindow::buildClientsPage()
         Logger::instance().info(LogCategory::Sip,
             QStringLiteral("Placing call from Clients layout: uri=%1 type=%2")
                 .arg(result.uri, callTypeName(callType)));
-        SipManager::instance().makeCall(result.uri, opts);
+        if (!SipManager::instance().makeCall(result.uri, opts)) {
+            // makeCall() returns false without any other user-visible signal
+            // (no callStateChanged/callFailed is ever emitted, since no
+            // SipCall was created) — most commonly because a call is
+            // already active. Without this, the Call button silently did
+            // nothing, which is indistinguishable from a hang.
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Call to %1 rejected — see the warning above/in Diagnostics for the exact reason")
+                    .arg(result.uri));
+            if (m_statusBar)
+                m_statusBar->showMessage(
+                    tr("Call could not be started (see Diagnostics log for details)"), 5000);
+        }
     });
     connect(answerBtn, &QPushButton::clicked, this, []() { SipManager::instance().answerCall(); });
     connect(rejectBtn, &QPushButton::clicked, this, []() { SipManager::instance().rejectCall(); });
