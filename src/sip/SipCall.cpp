@@ -335,6 +335,17 @@ struct SipCall::Impl
                                                            : reason,
                                                        code);
                 }
+                // Held has no direct path to Failed (only Active/Disconnecting);
+                // without this reroute a dialog that dies while on hold (e.g. a
+                // dropped transport or a re-INVITE timeout) gets stuck at Held
+                // forever, since tryTransition(Failed) below would be rejected.
+                if (newState == CallState::Failed && cur == CallState::Held) {
+                    self->m_stateMachine.tryTransition(CallState::Disconnecting,
+                                                       reason.isEmpty()
+                                                           ? QStringLiteral("Call disconnected")
+                                                           : reason,
+                                                       code);
+                }
                 // Caller cancelled an incoming call: route through Disconnecting so
                 // IncomingRinging → Idle is a valid path.
                 if (cur == CallState::IncomingRinging

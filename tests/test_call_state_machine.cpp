@@ -33,6 +33,10 @@ private slots:
     // Hold and resume: Active -> Held -> Active
     void holdResumeFlow();
 
+    // Held has no direct path to Failed; SipCall::onCallState (W110-F002)
+    // reroutes through Disconnecting instead — verify that path is valid.
+    void heldToFailedRequiresDisconnectingReroute();
+
     // Invalid transitions are rejected with signal and no state change
     void invalidTransitionRejection();
 
@@ -172,6 +176,26 @@ void TestCallStateMachine::holdResumeFlow()
     // Held -> Active
     QVERIFY(sm.tryTransition(CallState::Active, QStringLiteral("Resumed")));
     QCOMPARE(sm.state(), CallState::Active);
+}
+
+void TestCallStateMachine::heldToFailedRequiresDisconnectingReroute()
+{
+    CallStateMachine sm;
+    sm.tryTransition(CallState::OutgoingInit, QStringLiteral("Dialing"));
+    sm.tryTransition(CallState::Ringing,      QStringLiteral("Remote ringing"));
+    sm.tryTransition(CallState::Active,       QStringLiteral("Connected"), 200);
+    sm.tryTransition(CallState::Held,         QStringLiteral("On hold"));
+    QCOMPARE(sm.state(), CallState::Held);
+
+    // Direct Held -> Failed must be rejected (a dialog that dies while on
+    // hold cannot be reported without the Disconnecting reroute).
+    QVERIFY(!sm.tryTransition(CallState::Failed, QStringLiteral("dropped"), 500));
+    QCOMPARE(sm.state(), CallState::Held);
+
+    // The reroute SipCall::onCallState performs: Held -> Disconnecting -> Failed.
+    QVERIFY(sm.tryTransition(CallState::Disconnecting, QStringLiteral("dropped"), 500));
+    QVERIFY(sm.tryTransition(CallState::Failed, QStringLiteral("dropped"), 500));
+    QCOMPARE(sm.state(), CallState::Failed);
 }
 
 void TestCallStateMachine::invalidTransitionRejection()
