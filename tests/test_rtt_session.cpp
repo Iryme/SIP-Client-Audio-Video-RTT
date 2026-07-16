@@ -260,6 +260,21 @@ private slots:
         QCOMPARE(spy.count(), 0);
     }
 
+    // 11e. SipCall: cancelPendingRttRequest() (called by RttSession's
+    // negotiation timeout, W110 live-testing follow-up) is a safe no-op when
+    // nothing is pending, and afterwards requestRtt() is still governed by
+    // the normal call-state guard (not left in some broken state).
+    void test_sipCall_cancelPendingRttRequestIsSafeNoOp()
+    {
+        SipCall call;
+        call.cancelPendingRttRequest();
+        // Call is still Idle (never entered a call) — requestRtt() must be
+        // rejected on call-state grounds exactly as before, proving
+        // cancelPendingRttRequest() didn't put the call into some other
+        // unexpected state.
+        QCOMPARE(call.requestRtt(true), false);
+    }
+
     // 12. callDisconnected signal from SipCall triggers onCallEnded
     void test_callDisconnectedSignalCleansUp()
     {

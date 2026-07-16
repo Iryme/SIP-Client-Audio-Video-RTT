@@ -32,6 +32,14 @@ RttSession::RttSession(QObject *parent)
         Logger::instance().warn(LogCategory::Sip,
             QStringLiteral("RTT negotiation timed out (state=%1) after %2 ms")
                 .arg(rttStateName(m_state)).arg(kNegotiationTimeoutMs));
+        // SipCall no longer clears its own "offer in flight" guard on the
+        // expected first auto-decline (see SipCall::onCallState) — this
+        // timeout is now the only place that gives up on an unanswered local
+        // RTT offer, so it must tell SipCall to release the guard too, or a
+        // subsequent requestRtt()/acceptIncomingRttRequest() would stay
+        // permanently refused as "already in flight".
+        if (m_call)
+            m_call->cancelPendingRttRequest();
         setState(RttState::Failed);
     });
 }

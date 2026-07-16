@@ -388,15 +388,8 @@ struct SipCall::Impl
             bool audioBridgeWired    = false;
             bool videoActive         = false;
             bool textMediaActive     = false;
-            bool textLineSeen        = false;
             int  videoIncomingWinId  = PJSUA_INVALID_ID;
             int  videoCapDevId       = -1;
-            // Captured once, before any TEXT branch below may clear the flag,
-            // so we can tell "our own local RTT offer just came back declined"
-            // (pending was true, final state is inactive) apart from an
-            // unrelated media-state callback that has nothing to do with RTT.
-            const bool rttLocalOfferWasPending = m_impl->rttRequestPendingLocal;
-            bool rttLocalOfferDeclined = false;
 
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("PJSIP media state callback: pjsipCallId=%1 mediaCount=%2")
@@ -593,7 +586,6 @@ struct SipCall::Impl
                             .arg(mi.index)
                             .arg(static_cast<int>(mi.status)));
                 } else if (mi.type == PJMEDIA_TYPE_TEXT) {
-                    textLineSeen = true;
                     Logger::instance().info(LogCategory::Sip,
                         QStringLiteral("RTT media stream status: index=%1 status=%2 direction=%3")
                             .arg(mi.index)
@@ -642,22 +634,20 @@ struct SipCall::Impl
                                            "mediaIndex=%2 status=%3")
                                 .arg(getId()).arg(mi.index)
                                 .arg(static_cast<int>(mi.status)));
-                        if (rttLocalOfferWasPending) {
-                            m_impl->rttRequestPendingLocal = false;
-                            rttLocalOfferDeclined = true;
-                        }
+                        // Do NOT clear rttRequestPendingLocal / declare failure
+                        // here: Model B (reject-then-renegotiate, see
+                        // docs/rtt-offer-answer-state-machine.md) means the
+                        // *first* response to our own offer is always m=text 0
+                        // — the peer's real answer only arrives later, as its
+                        // own separate accept-triggered re-INVITE, once their
+                        // user clicks Accept. Treating this expected first
+                        // bounce as a terminal failure gave up before the peer
+                        // could ever respond, and (combined with the guard
+                        // above) produced an endless Request/Accept ping-pong.
+                        // RttSession's own negotiation timeout (12s,
+                        // cancelPendingRttRequest()) is the sole give-up path.
                     }
                 }
-            }
-
-            // The remote answer removed the m=text line entirely (rather than
-            // sending port 0 on a still-present line) — still a completed,
-            // declined negotiation of our own pending local offer. Without
-            // this, rttRequestPendingLocal would stay stuck forever and the
-            // "Accept RTT" / "Request RTT" button would remain disabled.
-            if (!textLineSeen && rttLocalOfferWasPending) {
-                m_impl->rttRequestPendingLocal = false;
-                rttLocalOfferDeclined = true;
             }
 
             QPointer<SipCall> self = m_impl->q;
@@ -665,7 +655,7 @@ struct SipCall::Impl
             m_impl->rttMediaActive = textMediaActive;
             QMetaObject::invokeMethod(self,
                 [self, audioBridgeWired, videoActive, videoIncomingWinId, videoCapDevId,
-                 textMediaActive, prevRttActive, rttLocalOfferDeclined]() {
+                 textMediaActive, prevRttActive]() {
                 if (!self) return;
                 if (audioBridgeWired)
                     emit self->audioMediaConnected();
@@ -680,13 +670,13 @@ struct SipCall::Impl
                     Logger::instance().info(LogCategory::Sip,
                         QStringLiteral("RTT inactive/rejected/withdrawn: rttMediaDisconnected"));
                     emit self->rttMediaDisconnected();
-                } else if (!textMediaActive && rttLocalOfferDeclined) {
-                    Logger::instance().info(LogCategory::Sip,
-                        QStringLiteral("RTT negotiation failed: our local RTT offer was declined "
-                                       "by the remote peer (m=text 0 / line removed)"));
-                    emit self->rttNegotiationFailed(
-                        QStringLiteral("Remote peer declined RTT (m=text 0)"));
                 }
+                // Note: a declined *first* response to our own RTT offer is
+                // no longer treated as failure here — see the comment at the
+                // PJSUA_CALL_MEDIA_ACTIVE check above. rttRequestPendingLocal
+                // stays set until either this callback later sees the text
+                // stream active, or RttSession's negotiation timeout gives up
+                // via cancelPendingRttRequest().
                 if (videoActive) {
                     // Store on Qt main thread — read by attachVideoWindows on same thread.
                     self->m_impl->videoIncomingWinId =
@@ -1135,7 +1125,14 @@ struct SipCall::Impl
             }
 
             // ── RTT/text consent ────────────────────────────────────────────
-            if (hasTextOffer && !m_impl->rttMediaActive) {
+            // Mirrors the video guard above: if we ourselves are already
+            // waiting on our own local RTT offer (rttRequestPendingLocal),
+            // this incoming offer is the peer's accept-triggered re-INVITE
+            // answering it, not a fresh remote request — accept it directly
+            // instead of auto-declining and re-prompting, which previously
+            // caused an endless "Accept RTT" ping-pong between both sides
+            // (W110 live two-device follow-up).
+            if (hasTextOffer && !m_impl->rttRequestPendingLocal && !m_impl->rttMediaActive) {
                 // Remote requesting RTT — decline in auto-response; user must accept.
                 prm.opt.textCount = 0;
                 if (!m_impl->rttRequestNotified) {
@@ -2357,6 +2354,14 @@ bool SipCall::rejectIncomingRttRequest()
                        "auto-response m=text 0 — no new re-INVITE sent)").arg(m_callId));
     emit rttRequestRejected();
     return true;
+}
+
+void SipCall::cancelPendingRttRequest()
+{
+#ifdef HAVE_PJSIP
+    if (m_impl)
+        m_impl->rttRequestPendingLocal = false;
+#endif
 }
 
 bool SipCall::sendRttOffer(bool enabled)

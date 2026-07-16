@@ -117,6 +117,15 @@ public:
     // if no incoming request is pending.
     bool rejectIncomingRttRequest();
 
+    // Called by RttSession when its negotiation timeout expires without RTT
+    // becoming active: clears the "our own offer is in flight" guard so a
+    // fresh requestRtt()/acceptIncomingRttRequest() is possible again. This
+    // is the sole place a pending local RTT offer is given up on — the
+    // synchronous auto-decline every offer receives on its first round-trip
+    // (Model B, see docs/rtt-offer-answer-state-machine.md) is expected, not
+    // a failure, and no longer clears this flag itself.
+    void cancelPendingRttRequest();
+
     // True when a video stream is currently active (set/cleared alongside
     // videoMediaConnected / videoMediaDisconnected).
     bool isLocalVideoAvailable()  const;
