@@ -9,6 +9,7 @@
 #include "gui/panels/NavRail.h"
 #include "gui/panels/SettingsPanel.h"
 #include "gui/panels/ToolsPage.h"
+#include "gui/panels/messaging/ClientMessagingView.h"
 #include "gui/widgets/AudioLevelMeter.h"
 #include "gui/widgets/FlowLayout.h"
 #include "gui/widgets/StatusCard.h"
@@ -883,21 +884,32 @@ QWidget *MainWindow::buildClientsPage()
     m_rttPanel = new RttPanel(split);
     split->addWidget(m_rttPanel);
 
+    // ------------------------------------------------------------------
+    // FAR RIGHT COLUMN: Client Messaging View (Task W111) — SIP MESSAGE/
+    // MSRP/CPIM/IMDN/is-composing/presence/file-transfer, integrated
+    // directly into the call UI instead of requiring a separate technical
+    // page. Follows the same target as the dial input (wired below).
+    // ------------------------------------------------------------------
+    m_clientMessagingView = new ClientMessagingView(split);
+    split->addWidget(m_clientMessagingView);
+
     split->setStretchFactor(0, 1);
     split->setStretchFactor(1, 2);
     split->setStretchFactor(2, 1);
+    split->setStretchFactor(3, 1);
 
     // Restore persisted column widths; fall back to default proportions
     const QByteArray savedSplit = AppSettings::loadSplitterState(QStringLiteral("clients"));
     if (savedSplit.isEmpty())
-        split->setSizes(QList<int>{380, 760, 380});
+        split->setSizes(QList<int>{340, 680, 320, 340});
     else
         split->restoreState(savedSplit);
 
     // Minimum widths prevent columns from collapsing to nothing
     if (split->widget(0)) split->widget(0)->setMinimumWidth(260);
-    if (split->widget(1)) split->widget(1)->setMinimumWidth(340);
-    if (split->widget(2)) split->widget(2)->setMinimumWidth(220);
+    if (split->widget(1)) split->widget(1)->setMinimumWidth(300);
+    if (split->widget(2)) split->widget(2)->setMinimumWidth(200);
+    if (split->widget(3)) split->widget(3)->setMinimumWidth(260);
 
     connect(split, &QSplitter::splitterMoved, this, [this]() {
         if (m_clientsSplitter)
@@ -906,6 +918,15 @@ QWidget *MainWindow::buildClientsPage()
     });
 
     root->addWidget(split);
+
+    // The Client Messaging View follows the same dial-target concept as the
+    // call controls (m_clientsTargetInput is also updated to the remote URI
+    // on incoming/connected calls elsewhere in this function), so messaging
+    // never needs a second, separate "who am I talking to" field.
+    connect(m_clientsTargetInput, &QLineEdit::textChanged, this, [this](const QString &text) {
+        if (m_clientMessagingView)
+            m_clientMessagingView->setPeerUri(text);
+    });
 
     // ------------------------------------------------------------------
     // Wiring

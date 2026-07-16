@@ -1155,17 +1155,18 @@ void SipManager::wireActiveCall(SipCall *call)
                 call->remoteUri(), toUri, call->remoteUri(), contentType,
                 QString::fromUtf8(body), call->callId(), cp.profileId, msrpMessageId);
         });
-    // MSRP delivery status (SEND response / REPORT) is logged but not yet
-    // correlated into MessageHistoryStore: that store's correlateDelivery()
-    // matches against the SIP MESSAGE Message-ID header space, and MSRP
-    // Message-IDs are a distinct identifier space (never assume they're
-    // interchangeable) — wiring this correctly needs its own correlation
-    // field, left for a follow-up rather than risking a wrong match here.
+    // Task W111: MSRP delivery status (SEND response / REPORT) correlates
+    // into MessageHistoryStore via its own msrpMessageId key space —
+    // deliberately not correlateDelivery(), which matches on the SIP
+    // MESSAGE Message-ID header and must never be fed an MSRP id.
     connect(call, &SipCall::msrpDeliveryStatusChanged, this,
         [](const QString &msrpMessageId, bool success, const QString &statusText) {
             Logger::instance().info(LogCategory::Sip,
                 QStringLiteral("MSRP delivery status: msrpMessageId=%1 success=%2 status=%3")
                     .arg(msrpMessageId).arg(success).arg(statusText));
+            MessageHistoryStore::instance().correlateMsrpDelivery(
+                msrpMessageId, success ? MessageHistoryEntry::DeliveryState::Delivered
+                                       : MessageHistoryEntry::DeliveryState::Failed);
         });
     connect(call, &SipCall::callStateChanged,
             this, &SipManager::refreshRtpStats);
@@ -1475,6 +1476,8 @@ bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
             // MsrpSession's own transaction tracking (Phase 6).
             MessageHistoryStore::instance().updateOutboundStatus(
                 historyId, MessageHistoryEntry::OutboundStatus::Submitted);
+            MessageHistoryStore::instance().updateTransportOutcome(
+                historyId, MessagingActualTransport::Msrp, msrpMessageId);
             return true;
         }
         // MSRP send attempt failed (e.g. session dropped between the
@@ -1505,6 +1508,15 @@ bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
     MessageHistoryStore::instance().updateOutboundStatus(
         historyId, ok ? MessageHistoryEntry::OutboundStatus::Submitted
                        : MessageHistoryEntry::OutboundStatus::Failed);
+    if (ok) {
+        const auto actual = decision.transport == MessagingActualTransport::Msrp
+            ? MessagingActualTransport::SipMessageFallback
+            : MessagingActualTransport::SipMessage;
+        MessageHistoryStore::instance().updateTransportOutcome(
+            historyId, actual, QString(),
+            actual == MessagingActualTransport::SipMessageFallback
+                ? QStringLiteral("MSRP send failed; fell back to SIP MESSAGE") : QString());
+    }
     return ok;
 }
 

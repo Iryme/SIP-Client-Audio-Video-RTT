@@ -4,6 +4,7 @@
 #include <QMutex>
 #include <QObject>
 
+#include "msrp/MsrpTypes.h"
 #include "sip/ImdnInfo.h"
 #include "sip/MessageHistoryEntry.h"
 #include "sip/SipMessageComposer.h"
@@ -75,6 +76,26 @@ public:
     // (idempotent) if no such entry is found — e.g. the entry was evicted,
     // or the correlated Message-ID was never one we generated.
     void correlateDelivery(const QString &messageId, MessageHistoryEntry::DeliveryState state);
+
+    // Task W111 (Client Messaging View): records which transport
+    // MessagingTransportPolicy/SipManager::sendSipMessage actually used for
+    // the most recently appended outbound entry with this id — called right
+    // after the transport decision is made, since appendOutbound() runs
+    // before that decision exists. msrpMessageId is set only when transport
+    // is Msrp (a distinct id space from the SIP Message-ID). fallbackReason
+    // is only meaningful when transport == SipMessageFallback.
+    void updateTransportOutcome(qint64 id, MessagingActualTransport transport,
+                                const QString &msrpMessageId = QString(),
+                                const QString &fallbackReason = QString());
+
+    // Task W111: correlates an MSRP SEND response / REPORT
+    // (SipCall::msrpDeliveryStatusChanged) back to the outbound entry that
+    // was sent with this msrpMessageId (set via updateTransportOutcome
+    // above). Distinct correlation key space from correlateDelivery(), which
+    // matches on the SIP MESSAGE Message-ID header instead. No-op if no
+    // matching entry is found (e.g. evicted).
+    void correlateMsrpDelivery(const QString &msrpMessageId,
+                               MessageHistoryEntry::DeliveryState state);
 
     // Task W096: marks that this client has sent a delivered/displayed IMDN
     // report for the given inbound entry, so it is never sent twice.

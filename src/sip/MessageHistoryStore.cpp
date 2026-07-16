@@ -288,6 +288,55 @@ void MessageHistoryStore::correlateDelivery(const QString &messageId,
         emit entryUpdated(updated);
 }
 
+void MessageHistoryStore::updateTransportOutcome(qint64 id, MessagingActualTransport transport,
+                                                 const QString &msrpMessageId,
+                                                 const QString &fallbackReason)
+{
+    MessageHistoryEntry updated;
+    bool found = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        for (int i = 0; i < m_entries.size(); ++i) {
+            if (m_entries.at(i).id == id) {
+                m_entries[i].actualTransport = messagingActualTransportToString(transport);
+                m_entries[i].msrpMessageId = msrpMessageId;
+                m_entries[i].fallbackReason =
+                    transport == MessagingActualTransport::SipMessageFallback ? fallbackReason : QString();
+                updated = m_entries.at(i);
+                found = true;
+                break;
+            }
+        }
+    }
+    if (found)
+        emit entryUpdated(updated);
+}
+
+void MessageHistoryStore::correlateMsrpDelivery(const QString &msrpMessageId,
+                                                MessageHistoryEntry::DeliveryState state)
+{
+    if (msrpMessageId.trimmed().isEmpty())
+        return;
+
+    MessageHistoryEntry updated;
+    bool found = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        for (int i = m_entries.size() - 1; i >= 0; --i) {
+            MessageHistoryEntry &e = m_entries[i];
+            if (e.direction == MessageHistoryEntry::Direction::Outbound
+                && !e.isImdnReport && e.msrpMessageId == msrpMessageId) {
+                e.deliveryState = state;
+                updated = e;
+                found = true;
+                break;
+            }
+        }
+    }
+    if (found)
+        emit entryUpdated(updated);
+}
+
 void MessageHistoryStore::markImdnSent(qint64 inboundEntryId, ImdnInfo::Disposition disposition)
 {
     MessageHistoryEntry updated;

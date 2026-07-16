@@ -95,6 +95,24 @@ struct MessageHistoryEntry
     // and never written into Message History, only the peer's are).
     bool          isTypingNotification{false};
     QString       typingState; // "active" / "idle" / "gone"
+
+    // Task W111 (Client Messaging View): outbound entries only. The actual
+    // transport MessagingTransportPolicy/SipManager::sendSipMessage used for
+    // this specific send, set once the transport decision is known (empty
+    // until then — appendOutbound() runs before the decision is made).
+    // messagingActualTransportToString() values ("sip-message"/"msrp"/
+    // "sip-message-fallback"), or empty if never resolved (e.g. rejected
+    // before a transport was chosen).
+    QString       actualTransport;
+    // Set only when actualTransport == "sip-message-fallback": why MSRP was
+    // not used (mirrors MessagingTransportPolicy::Decision::reason).
+    QString       fallbackReason;
+
+    // Task W111: MSRP-specific delivery correlation. MSRP Message-IDs are a
+    // distinct identifier space from the SIP MESSAGE Message-ID above
+    // (messageId) — never conflated. Only ever set on outbound entries that
+    // were actually sent via MSRP (actualTransport == "msrp").
+    QString       msrpMessageId;
 };
 
 Q_DECLARE_METATYPE(MessageHistoryEntry)
