@@ -12,6 +12,20 @@ introduced by W090's `ImdnParser`/`ImdnInfo` (see
 [Messaging Diagnostics](messaging-diagnostics.md)). **MSRP remains
 completely disabled** — this task only adds IMDN generation/correlation over
 the existing SIP MESSAGE path; no MSRP session is ever opened.
+**Task W111** — [Client Messaging Workspace](client-messaging-workspace.md)
+adds "Request Delivered"/"Request Displayed" checkboxes to the new
+`ClientMessagingView` composer (setting
+`SipMessageComposer::Options::requestImdn`) and a "mark as read" action
+calling the existing `SipManager::sendDisplayedImdnForEntry()` — no new
+IMDN generation/correlation logic. Separately, this task also closed an
+MSRP-side gap this document's correlation didn't cover: MSRP delivery
+status (`SipCall::msrpDeliveryStatusChanged`) was previously only logged,
+never correlated into `MessageHistoryStore` — now handled by the new
+`MessageHistoryStore::correlateMsrpDelivery()`, keyed on MSRP Message-ID,
+which is a **separate id space** from the SIP Message-ID
+`correlateDelivery()` below matches on; the two are never cross-matched
+(see `tests/test_message_history.cpp`
+`correlateMsrpDeliveryIgnoresSipMessageId`).
 
 ## Overview
 

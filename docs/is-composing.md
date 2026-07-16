@@ -12,6 +12,14 @@ introduced by W090's `IsComposingParser`/`IsComposingInfo` (see
 [Messaging Diagnostics](messaging-diagnostics.md)). **MSRP remains
 completely disabled** — this task only adds typing-indicator generation and
 its local state machine over the existing SIP MESSAGE path.
+**Task W111** — [Client Messaging Workspace](client-messaging-workspace.md)
+gives every conversation in the new `ClientMessagingView` its own
+`TypingIndicatorController` instance (`ConversationModel::
+typingControllerFor()`), lazily created and never shared across peers —
+composing in one conversation can never start or expire a typing session
+belonging to another (see `tests/test_conversation_model.cpp`
+`typingControllerForIsIndependentAcrossPeers`). No changes to the
+controller or generator themselves.
 
 ## Overview
 

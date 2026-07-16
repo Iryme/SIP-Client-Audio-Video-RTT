@@ -17,6 +17,13 @@ Covers `MsrpTransport`/`MsrpTcpTransport`/`MsrpTlsTransport`. See
 > [msrp-tls.md](msrp-tls.md) for the TLS-specific review. The transport
 > classes' own code is still unchanged; only which role is chosen, and by
 > what code path, changed.
+>
+> **Task W111 update**: `SipCall` gained `sendMsrpMessage()`/
+> `sendMsrpFile()` wrappers forwarding to its own `MsrpSession` (used by the
+> new Client Messaging View — see
+> [client-messaging-workspace.md](client-messaging-workspace.md)). The
+> transport classes themselves are unchanged; this only exposes
+> capabilities `MsrpSession` already had.
 
 ## Threading
 

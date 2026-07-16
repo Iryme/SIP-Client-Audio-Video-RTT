@@ -54,6 +54,14 @@ page. The only two things Presence shares with this document's pipeline are
 the underlying raw-trace capture (`SipTraceLogger`/`PjsipTraceModule`, fully
 method-agnostic) and `InteropTraceExporter`'s single JSON document (a new,
 independent `presenceEvents` array alongside the existing `events` array).
+**Task W111** — [Client Messaging Workspace](client-messaging-workspace.md)
+(branch `feature/w111-client-messaging-and-tools-navigation`) adds a
+user-facing conversational UI (`ClientMessagingView`) that composes/sends
+through this exact same `SipMessageComposer::compose()` +
+`SipManager::sendSipMessage()` path — no second send implementation. Also
+adds `MessageHistoryEntry::actualTransport`/`fallbackReason` so the UI can
+show which transport a send actually used; see
+[client-messaging-transport-selection.md](client-messaging-transport-selection.md).
 
 ## Overview
 

@@ -9,6 +9,14 @@ control. XCAP and resource lists were explicitly out of scope for this task
 Presence-specific integration (e.g. pres-rules policy semantics remain
 unimplemented). MSRP remains permanently disabled and untouched.
 
+> **Task W111 update**: [Client Messaging Workspace](client-messaging-workspace.md)
+> displays the selected conversation's presence in the new
+> `ClientMessagingView`, reading `PresenceStore::current(peerUri)`/
+> `presenceUpdated` directly — no new parsing or a second presence
+> pipeline. See [client-presence-and-capabilities.md](client-presence-and-capabilities.md)
+> for the exact state → display-text mapping, including why "Not available"
+> (not a fabricated "Offline") is shown when `SubscriptionState::Unknown`.
+
 ## Architecture — two independent pipelines
 
 Mirroring the disjoint-pipeline pattern already used for Message History vs.

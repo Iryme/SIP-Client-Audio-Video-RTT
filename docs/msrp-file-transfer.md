@@ -20,6 +20,20 @@ it as a file rather than a chat message.
 | Receive (save) | `src/msrp/MsrpFileReceiver.h/.cpp` | Pure, caller-triggered: atomic disk write (`QSaveFile` — either the whole file lands or nothing does) to a caller-chosen path, plus SHA-1/SHA-256 hash verification against a negotiated `file-selector` hash |
 | UI | `src/gui/panels/MsrpPage.h/.cpp` | "Send File…" button (file picker) on the existing manual test session; a save dialog is offered automatically on `fileTransferReceived`, pre-filled with the sanitized suggested name |
 
+> **Task W111 update**: `MsrpPage`'s Send File was manual-test-session-only,
+> disconnected from a live call's own `MsrpSession`. `SipCall` gained
+> `sendMsrpFile()`/`msrpFileTransferReceived` forwarding to/from its own
+> session (mirroring the pre-existing `sendMsrpMessage()`/
+> `msrpPayloadReceived` pattern), and `SipManager::sendMsrpFile()`/
+> `msrpFileTransferReceived` expose it further. The new, explicitly
+> **experimental** Client Messaging View (see
+> [client-messaging-workspace.md](client-messaging-workspace.md)) is the
+> first consumer of this live-call path — a "Save Received File…" action
+> replaces `MsrpPage`'s automatic save-dialog-on-receive with an explicit
+> user click before anything touches disk. No changes to
+> `MsrpSession`/`MsrpFileSelector`/`MsrpFileReceiver`/the chunker/assembler
+> themselves.
+
 ## Why the in-memory model, not disk streaming
 
 The existing MSRP pipeline (established in W100) already builds every
