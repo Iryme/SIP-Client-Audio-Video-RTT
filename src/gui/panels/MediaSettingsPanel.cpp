@@ -118,7 +118,11 @@ MediaSettingsPanel::MediaSettingsPanel(QWidget *parent)
 
 MediaSettingsPanel::~MediaSettingsPanel()
 {
+    // Disconnect first: stop() can synchronously emit stateChanged(), and we
+    // are about to delete this object anyway, so the reentrant slot must not
+    // run against a QAudioSink that's mid-teardown.
     if (m_testSink) {
+        disconnect(m_testSink, nullptr, this, nullptr);
         m_testSink->stop();
         delete m_testSink;
     }
@@ -537,15 +541,24 @@ void MediaSettingsPanel::onResetToDefaultClicked()
 
 void MediaSettingsPanel::onTestSpeakerClicked()
 {
-    if (m_testSink) {
-        m_testSink->stop();
-        m_testSink->deleteLater();
+    // QAudioSink::stop() can emit stateChanged() synchronously, which
+    // re-enters onTestToneStateChanged() while m_testSink still points at
+    // the object being stopped. That handler nulls m_testSink itself, so if
+    // we read m_testSink again afterwards (the old code called
+    // m_testSink->deleteLater() as a second statement) it has already become
+    // null and we crash on a null-pointer deleteLater() call deep in
+    // Qt6Core.dll. Null the members first and disconnect so the reentrant
+    // path has nothing left to touch, then act on local copies.
+    if (QAudioSink *oldSink = m_testSink) {
         m_testSink = nullptr;
+        disconnect(oldSink, nullptr, this, nullptr);
+        oldSink->stop();
+        oldSink->deleteLater();
     }
-    if (m_testBuffer) {
-        m_testBuffer->close();
-        m_testBuffer->deleteLater();
+    if (QBuffer *oldBuffer = m_testBuffer) {
         m_testBuffer = nullptr;
+        oldBuffer->close();
+        oldBuffer->deleteLater();
     }
 
     const QString spkId = m_spkCombo->currentData().toString();
@@ -598,15 +611,19 @@ void MediaSettingsPanel::onTestToneStateChanged(QAudio::State state)
 {
     if (state != QAudio::IdleState && state != QAudio::StoppedState)
         return;
-    if (m_testSink) {
-        m_testSink->stop();
-        m_testSink->deleteLater();
+    // Same null-first-then-act pattern as onTestSpeakerClicked(): stop() can
+    // itself be the caller of this slot, so null the member before touching
+    // the object to keep any further reentrant call a safe no-op.
+    if (QAudioSink *oldSink = m_testSink) {
         m_testSink = nullptr;
+        disconnect(oldSink, nullptr, this, nullptr);
+        oldSink->stop();
+        oldSink->deleteLater();
     }
-    if (m_testBuffer) {
-        m_testBuffer->close();
-        m_testBuffer->deleteLater();
+    if (QBuffer *oldBuffer = m_testBuffer) {
         m_testBuffer = nullptr;
+        oldBuffer->close();
+        oldBuffer->deleteLater();
     }
 }
 
