@@ -1,4 +1,5 @@
 #pragma once
+#include <QByteArray>
 #include <QWidget>
 
 #include "sip/MessageHistoryEntry.h"
@@ -13,6 +14,7 @@ class QPlainTextEdit;
 class QPushButton;
 
 class ClientMessagingController;
+class FileTransferModel;
 
 // Client Messaging View (Task W111): the end-user-facing conversational
 // surface, embedded inside the Clients page. Presentation only — every
@@ -37,10 +39,13 @@ private slots:
     void onConversationSelectionChanged();
     void onSendClicked();
     void onSendFileClicked();
+    void onSaveReceivedFileClicked();
     void onBodyTextChanged();
     void onConversationUpdated(const QString &peerUri);
     void onConversationListChanged();
     void onPresenceUpdated();
+    void onMsrpFileTransferReceived(const QString &contentType, const QString &suggestedFileName,
+                                    const QByteArray &body, const QString &msrpMessageId);
     void refreshTransportStatus();
     void refreshCapabilities();
 
@@ -51,6 +56,7 @@ private:
     QString currentPeer() const;
 
     ClientMessagingController *m_controller{nullptr};
+    FileTransferModel *m_fileTransferModel{nullptr};
 
     QComboBox      *m_conversationSelector{nullptr};
     QLineEdit      *m_toUriEdit{nullptr};
@@ -64,9 +70,18 @@ private:
     QPlainTextEdit *m_inputEdit{nullptr};
     QPushButton    *m_sendBtn{nullptr};
     QPushButton    *m_sendFileBtn{nullptr};
+    QPushButton    *m_saveFileBtn{nullptr};
     QLabel         *m_actualTransportLabel{nullptr};
     QLabel         *m_fallbackStatusLabel{nullptr};
     QLabel         *m_sessionStatusLabel{nullptr};
 
     QString m_peerUri; // externally-driven target (dial target / active call peer)
+
+    // Most recently received-but-not-yet-saved MSRP file transfer offer
+    // (Faza 10: no automatic disk write, no local path exposure in history —
+    // the user must explicitly choose where to save via onSaveReceivedFileClicked).
+    QString    m_pendingFileName;
+    QString    m_pendingFileContentType;
+    QByteArray m_pendingFileBody;
+    QString    m_pendingFileMessageId;
 };

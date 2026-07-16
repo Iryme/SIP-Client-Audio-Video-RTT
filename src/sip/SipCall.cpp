@@ -1335,6 +1335,12 @@ struct SipCall::Impl
                     if (self)
                         emit self->msrpDeliveryStatusChanged(messageId, success, statusText);
                 });
+            QObject::connect(msrpSession, &MsrpSession::fileTransferReceived, q,
+                [self](const QString &, const QString &messageId, const QString &contentType,
+                       const QString &suggestedFileName, const QByteArray &body) {
+                    if (self)
+                        emit self->msrpFileTransferReceived(contentType, suggestedFileName, body, messageId);
+                });
         }
         msrpSession->setChunkSizeBytes(AppSettings::msrpChunkSizeBytes());
         msrpSession->setRequestReports(AppSettings::msrpRequestReports());
@@ -1553,6 +1559,30 @@ QString SipCall::sendMsrpMessage(const QString &contentType, const QByteArray &b
     Q_UNUSED(contentType)
     Q_UNUSED(body)
     return QString();
+#endif
+}
+
+SipCall::MsrpFileSendResult SipCall::sendMsrpFile(const QString &filePath, const QString &contentType)
+{
+#ifdef HAVE_PJSIP
+    MsrpFileSendResult result;
+    if (!isMsrpEstablished()) {
+        result.error = QStringLiteral("No established MSRP session");
+        return result;
+    }
+    const MsrpSession::FileSendResult sent = m_impl->msrpSession->sendFile(filePath, contentType);
+    result.ok = sent.ok;
+    result.error = sent.error;
+    result.messageId = sent.messageId;
+    result.fileSize = sent.fileSize;
+    result.sha1Hex = sent.sha1Hex;
+    return result;
+#else
+    Q_UNUSED(filePath)
+    Q_UNUSED(contentType)
+    MsrpFileSendResult result;
+    result.error = QStringLiteral("MSRP not available in this build");
+    return result;
 #endif
 }
 

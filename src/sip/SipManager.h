@@ -119,6 +119,12 @@ public:
     // it.
     bool sendDisplayedImdnForEntry(qint64 inboundEntryId, QString &error);
 
+    // Task W111 (Client Messaging View file transfer, experimental): sends
+    // filePath as an RFC 5547 MSRP file transfer on the active call. Returns
+    // a default-constructed (ok == false) result if no call is active or no
+    // MSRP session is established — never falls back to SIP MESSAGE.
+    SipCall::MsrpFileSendResult sendMsrpFile(const QString &filePath, const QString &contentType);
+
     // ---- SIP Presence (Task W098) --------------------------------------
     // Starts/stops/refreshes a presence subscription to targetUri via the
     // active account, gated by AppSettings::enablePresence()/
@@ -244,6 +250,14 @@ signals:
     // Forwarded from SipCall: the peer withdrew a pending incoming RTT offer
     // (re-INVITE without m=text) — pending prompts must be dismissed.
     void rttRequestWithdrawn();
+
+    // Task W111: forwarded from SipCall::msrpFileTransferReceived. Fires in
+    // addition to the existing Message History append (msrpPayloadReceived
+    // already appends the raw body as an inbound entry) — this is purely so
+    // the Client Messaging View can offer a "Save" action. Nothing here
+    // touches disk.
+    void msrpFileTransferReceived(const QString &contentType, const QString &suggestedFileName,
+                                  const QByteArray &body, const QString &msrpMessageId);
 
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,

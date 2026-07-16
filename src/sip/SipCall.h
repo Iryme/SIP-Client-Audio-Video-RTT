@@ -214,6 +214,22 @@ public:
     // first, or treat an empty return as failure.
     QString sendMsrpMessage(const QString &contentType, const QByteArray &body);
 
+    // Task W111 (Client Messaging View file transfer): sends filePath over
+    // this call's established MSRP session as an RFC 5547 file transfer
+    // (Content-Disposition: attachment), reusing MsrpSession::sendFile() —
+    // no new transport or chunking logic. ok is false (with error set) if no
+    // MSRP session is established, the file cannot be opened, or it exceeds
+    // the configured max message size (never truncated/streamed-partial).
+    struct MsrpFileSendResult
+    {
+        bool ok{false};
+        QString error;
+        QString messageId;
+        qint64 fileSize{0};
+        QString sha1Hex;
+    };
+    MsrpFileSendResult sendMsrpFile(const QString &filePath, const QString &contentType);
+
     CallStateMachine &stateMachine();
 
 signals:
@@ -229,6 +245,13 @@ signals:
                              const QString &msrpMessageId);
     void msrpDeliveryStatusChanged(const QString &msrpMessageId, bool success,
                                    const QString &statusText);
+
+    // Task W111: relayed from MsrpSession::fileTransferReceived — fires in
+    // addition to msrpPayloadReceived (never instead of it) when an inbound
+    // MSRP message's Content-Disposition indicates a file transfer. Nothing
+    // here touches disk; the caller decides whether/where to save.
+    void msrpFileTransferReceived(const QString &contentType, const QString &suggestedFileName,
+                                  const QByteArray &body, const QString &msrpMessageId);
 
     // Emitted when the PJSIP audio bridge is wired (CONFIRMED + media active).
     // In stub mode emitted when state reaches Active.

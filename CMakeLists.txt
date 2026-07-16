@@ -128,6 +128,7 @@ set(SOURCES
     src/gui/panels/messaging/ConversationModel.cpp
     src/gui/panels/messaging/ClientMessagingController.cpp
     src/gui/panels/messaging/ClientMessagingView.cpp
+    src/gui/panels/messaging/FileTransferModel.cpp
     src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
@@ -282,6 +283,7 @@ set(HEADERS
     src/gui/panels/messaging/ConversationModel.h
     src/gui/panels/messaging/ClientMessagingController.h
     src/gui/panels/messaging/ClientMessagingView.h
+    src/gui/panels/messaging/FileTransferModel.h
     src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h

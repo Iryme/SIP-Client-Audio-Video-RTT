@@ -1168,6 +1168,7 @@ void SipManager::wireActiveCall(SipCall *call)
                 msrpMessageId, success ? MessageHistoryEntry::DeliveryState::Delivered
                                        : MessageHistoryEntry::DeliveryState::Failed);
         });
+    connect(call, &SipCall::msrpFileTransferReceived, this, &SipManager::msrpFileTransferReceived);
     connect(call, &SipCall::callStateChanged,
             this, &SipManager::refreshRtpStats);
     connect(call, &SipCall::audioMediaConnected,
@@ -1518,6 +1519,16 @@ bool SipManager::sendSipMessage(const ComposedSipMessage &msg, QString &error)
                 ? QStringLiteral("MSRP send failed; fell back to SIP MESSAGE") : QString());
     }
     return ok;
+}
+
+SipCall::MsrpFileSendResult SipManager::sendMsrpFile(const QString &filePath, const QString &contentType)
+{
+    if (!m_activeCall) {
+        SipCall::MsrpFileSendResult result;
+        result.error = QStringLiteral("No active call");
+        return result;
+    }
+    return m_activeCall->sendMsrpFile(filePath, contentType);
 }
 
 void SipManager::onAccountInstantMessageReceived(const QString &fromUri, const QString &toUri,

@@ -1,8 +1,10 @@
 #include "ClientMessagingView.h"
 #include "ClientMessagingController.h"
 #include "ConversationModel.h"
+#include "FileTransferModel.h"
 
 #include "core/AppSettings.h"
+#include "msrp/MsrpFileReceiver.h"
 #include "msrp/MsrpSessionStore.h"
 #include "sip/PresenceInfo.h"
 #include "sip/PresenceStore.h"
@@ -10,11 +12,14 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMimeDatabase>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -47,6 +52,7 @@ QString formatHistoryRow(const MessageHistoryEntry &e)
 ClientMessagingView::ClientMessagingView(QWidget *parent)
     : QWidget(parent)
     , m_controller(new ClientMessagingController(this))
+    , m_fileTransferModel(new FileTransferModel(this))
 {
     setObjectName(QStringLiteral("ClientMessagingView"));
 
@@ -144,9 +150,15 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
     auto *sendRow = new QHBoxLayout();
     m_sendFileBtn = new QPushButton(tr("Send File (Experimental)"), this);
     m_sendFileBtn->setObjectName(QStringLiteral("messagingSendFile"));
+    m_sendFileBtn->setToolTip(tr("Experimental: requires an established MSRP session; "
+                                 "never falls back to SIP MESSAGE"));
+    m_saveFileBtn = new QPushButton(tr("Save Received File…"), this);
+    m_saveFileBtn->setObjectName(QStringLiteral("messagingSaveFile"));
+    m_saveFileBtn->setVisible(false);
     m_sendBtn = new QPushButton(tr("Send"), this);
     m_sendBtn->setObjectName(QStringLiteral("messagingSend"));
     sendRow->addWidget(m_sendFileBtn);
+    sendRow->addWidget(m_saveFileBtn);
     sendRow->addStretch(1);
     sendRow->addWidget(m_sendBtn);
     root->addLayout(sendRow);
@@ -155,7 +167,10 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
             this, &ClientMessagingView::onConversationSelectionChanged);
     connect(m_sendBtn, &QPushButton::clicked, this, &ClientMessagingView::onSendClicked);
     connect(m_sendFileBtn, &QPushButton::clicked, this, &ClientMessagingView::onSendFileClicked);
+    connect(m_saveFileBtn, &QPushButton::clicked, this, &ClientMessagingView::onSaveReceivedFileClicked);
     connect(m_inputEdit, &QPlainTextEdit::textChanged, this, &ClientMessagingView::onBodyTextChanged);
+    connect(&SipManager::instance(), &SipManager::msrpFileTransferReceived,
+            this, &ClientMessagingView::onMsrpFileTransferReceived);
     connect(m_controller->conversationModel(), &ConversationModel::conversationUpdated,
             this, &ClientMessagingView::onConversationUpdated);
     connect(m_controller->conversationModel(), &ConversationModel::conversationListChanged,
@@ -220,10 +235,61 @@ void ClientMessagingView::onSendClicked()
 
 void ClientMessagingView::onSendFileClicked()
 {
-    // Task W111 Phase 6: file transfer wiring lands in a follow-up commit;
-    // kept as a visibly disabled/experimental action rather than a dead
-    // button that silently does nothing.
-    m_fallbackStatusLabel->setText(tr("File transfer is experimental and not yet wired here"));
+    const QString peer = currentPeer();
+    if (peer.trimmed().isEmpty()
+        || SipManager::instance().activeCallRemoteUri().compare(peer, Qt::CaseInsensitive) != 0) {
+        m_fallbackStatusLabel->setText(tr("Send File requires an active call with this peer"));
+        return;
+    }
+
+    const QString filePath = QFileDialog::getOpenFileName(this, tr("Send file"));
+    if (filePath.isEmpty())
+        return;
+
+    const QString contentType = QMimeDatabase().mimeTypeForFile(filePath).name();
+    QString error;
+    if (m_fileTransferModel->sendFile(filePath, contentType, error)) {
+        m_fallbackStatusLabel->setText(tr("File sent: %1").arg(QFileInfo(filePath).fileName()));
+    } else {
+        m_fallbackStatusLabel->setText(tr("File send failed: %1").arg(error));
+    }
+}
+
+void ClientMessagingView::onMsrpFileTransferReceived(const QString &contentType,
+                                                     const QString &suggestedFileName,
+                                                     const QByteArray &body,
+                                                     const QString &msrpMessageId)
+{
+    m_pendingFileName = suggestedFileName;
+    m_pendingFileContentType = contentType;
+    m_pendingFileBody = body;
+    m_pendingFileMessageId = msrpMessageId;
+    m_saveFileBtn->setText(tr("Save: %1").arg(suggestedFileName));
+    m_saveFileBtn->setVisible(true);
+}
+
+void ClientMessagingView::onSaveReceivedFileClicked()
+{
+    if (m_pendingFileBody.isEmpty() && m_pendingFileName.isEmpty())
+        return;
+
+    const QString savePath = QFileDialog::getSaveFileName(this, tr("Save received file"),
+                                                          m_pendingFileName);
+    if (savePath.isEmpty())
+        return;
+
+    const auto result = MsrpFileReceiver::saveToPath(m_pendingFileBody, savePath);
+    if (result.ok) {
+        m_fallbackStatusLabel->setText(tr("Saved %1 bytes to %2")
+            .arg(result.bytesWritten).arg(QFileInfo(savePath).fileName()));
+        m_pendingFileBody.clear();
+        m_pendingFileName.clear();
+        m_pendingFileContentType.clear();
+        m_pendingFileMessageId.clear();
+        m_saveFileBtn->setVisible(false);
+    } else {
+        m_fallbackStatusLabel->setText(tr("Save failed: %1").arg(result.error));
+    }
 }
 
 void ClientMessagingView::onBodyTextChanged()
@@ -323,6 +389,7 @@ void ClientMessagingView::refreshCapabilities()
     // MSRP session state for the current call, only when it's actually
     // talking to this peer (never inferred from IP/port alone).
     QString sessionText = tr("MSRP session: none");
+    bool msrpEstablished = false;
     if (!peer.trimmed().isEmpty()
         && SipManager::instance().activeCallRemoteUri().compare(peer, Qt::CaseInsensitive) == 0) {
         const QString callSipId = SipManager::instance().activeCallSipId();
@@ -330,12 +397,16 @@ void ClientMessagingView::refreshCapabilities()
             for (const MsrpSessionInfo &session : MsrpSessionStore::instance().snapshot()) {
                 if (session.sipHeaderCallId == callSipId) {
                     sessionText = tr("MSRP session: %1").arg(msrpSessionStateToString(session.state));
+                    msrpEstablished = session.isEstablished();
                     break;
                 }
             }
         }
     }
     m_sessionStatusLabel->setText(sessionText);
+    // Faza 10: disable Send File (never accidentally fall back to SIP
+    // MESSAGE for a file) when no MSRP session is established for this peer.
+    m_sendFileBtn->setEnabled(msrpEstablished);
 
     refreshTransportStatus();
 }
