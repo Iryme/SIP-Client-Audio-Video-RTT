@@ -30,7 +30,8 @@ QHash<QString, QByteArray> readBundleFiles(const QString &path)
         for (const QString &name : dir.entryList(QDir::Files))
             out.insert(name, [&] {
                 QFile f(dir.filePath(name));
-                f.open(QIODevice::ReadOnly);
+                if (!f.open(QIODevice::ReadOnly))
+                    return QByteArray();
                 return f.readAll();
             }());
         return out;
