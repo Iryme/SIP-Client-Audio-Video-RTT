@@ -537,9 +537,20 @@ void MsrpPage::addRelayDiagnosticRow(const MsrpRelayDiagnosticsEvent &event)
 
 void MsrpPage::rebuildSessionTable()
 {
-    m_sessionRows = MsrpSessionStore::instance().snapshot();
+    // m_sessionRows must be cleared BEFORE looping, not pre-assigned the
+    // snapshot: addOrUpdateSessionRow() looks each sessionKey up in
+    // m_sessionRows to decide between insert and update. With the snapshot
+    // already assigned, every key was "found" and the update path ran
+    // against a table that setRowCount(0) had just emptied — item() then
+    // returned null and setText() crashed. That is exactly the live crash
+    // seen when the MSRP page is first built (lazily, on the sidebar click)
+    // while a call with an active MSRP session is in progress; with no
+    // session in the store the loop body never ran, which is why the page
+    // opened fine outside of calls.
+    const QList<MsrpSessionInfo> infos = MsrpSessionStore::instance().snapshot();
+    m_sessionRows.clear();
     m_sessionsTable->setRowCount(0);
-    for (const auto &info : m_sessionRows)
+    for (const auto &info : infos)
         addOrUpdateSessionRow(info);
 }
 
