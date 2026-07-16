@@ -241,6 +241,9 @@ signals:
     // or the remote declined; audio/video are unaffected.
     void rttRequestRejected();
     void rttNegotiationFailed(const QString &reason);
+    // Forwarded from SipCall: the peer withdrew a pending incoming RTT offer
+    // (re-INVITE without m=text) — pending prompts must be dismissed.
+    void rttRequestWithdrawn();
 
 private slots:
     void onAccountRegistrationStateChanged(RegistrationState state,

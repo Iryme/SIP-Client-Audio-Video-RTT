@@ -1137,6 +1137,8 @@ void SipManager::wireActiveCall(SipCall *call)
             this, &SipManager::rttMediaDisconnected);
     connect(call, &SipCall::rttRequestRejected,
             this, &SipManager::rttRequestRejected);
+    connect(call, &SipCall::rttRequestWithdrawn,
+            this, &SipManager::rttRequestWithdrawn);
     connect(call, &SipCall::rttNegotiationFailed,
             this, &SipManager::rttNegotiationFailed);
     connect(call, &SipCall::rttTextReceived,

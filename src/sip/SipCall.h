@@ -264,6 +264,13 @@ signals:
     // RTT offer without sending a new re-INVITE.
     void rttRequestRejected();
 
+    // Emitted when the remote peer withdraws a previously offered RTT/text
+    // channel (a later re-INVITE without m=text) while the incoming request
+    // was still pending user consent. Listeners must dismiss the pending
+    // prompt / RemoteOfferPending state — accepting after this point is
+    // refused as "no pending incoming RTT request".
+    void rttRequestWithdrawn();
+
     // Emitted right before a local RTT re-INVITE is sent (requestRtt(true)
     // or acceptIncomingRttRequest()), so listeners (RttSession) can reflect
     // the "negotiating" state and start a bounded negotiation timeout.

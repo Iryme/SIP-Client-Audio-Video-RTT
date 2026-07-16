@@ -562,6 +562,8 @@ MainWindow::MainWindow(QWidget *parent)
             m_mediaRequestDialog, &MediaRequestDialog::onVideoMediaConnected);
     connect(&SipManager::instance(), &SipManager::rttMediaConnected,
             m_mediaRequestDialog, &MediaRequestDialog::onRttMediaConnected);
+    connect(&SipManager::instance(), &SipManager::rttRequestWithdrawn,
+            m_mediaRequestDialog, &MediaRequestDialog::onRttRequestWithdrawn);
     connect(&SipManager::instance(), &SipManager::videoMediaDisconnected,
             m_mediaRequestDialog, [this]() {
         // Peer withdrew video — dismiss if we were showing a video request popup

@@ -508,7 +508,18 @@ struct SipCall::Impl
                         // Reset so a future remote video request after this one is detected.
                         if (localRequestPending)
                             m_impl->videoRequestNotified = false;
-                        if (!localRequestPending && !m_impl->videoRequestNotified) {
+                        // !videoMediaActive: only notify on the inactive→active
+                        // transition. Once video is running, every later media
+                        // callback (e.g. triggered by an unrelated RTT
+                        // re-INVITE) re-enters this branch with both flags
+                        // cleared and used to re-emit videoRequested() — a
+                        // spurious "peer requests video" popup that, because
+                        // MediaRequestDialog is a single shared dialog, could
+                        // overwrite a genuine pending RTT prompt milliseconds
+                        // after it appeared (seen live: RTT prompt at .481
+                        // replaced by a fake video prompt at .494).
+                        if (!localRequestPending && !m_impl->videoRequestNotified
+                            && !m_impl->videoMediaActive) {
                             m_impl->videoRequestNotified = true;
                             QPointer<SipCall> self = m_impl->q;
                             QMetaObject::invokeMethod(self, [self]() {
@@ -1157,10 +1168,21 @@ struct SipCall::Impl
                     }, Qt::QueuedConnection);
                 }
             } else if (!hasTextOffer && m_impl->rttRequestNotified) {
-                // Peer withdrew the RTT offer.
+                // Peer withdrew the RTT offer. Clearing the internal flag alone
+                // is not enough: the UI prompt and RttSession were left in
+                // RemoteOfferPending, so the user's later "Accept RTT" click
+                // hit acceptIncomingRttRequest()'s "no pending incoming RTT
+                // request" guard and silently did nothing (seen live during
+                // hold/resume, where the hold re-INVITE drops m=text right
+                // after an offer prompt was shown). Tell the Qt side too.
                 m_impl->rttRequestNotified = false;
                 Logger::instance().info(LogCategory::Sip,
                     QStringLiteral("Peer withdrew RTT offer: callId=%1").arg(getId()));
+                QPointer<SipCall> self = m_impl->q;
+                QMetaObject::invokeMethod(self, [self]() {
+                    if (self)
+                        emit self->rttRequestWithdrawn();
+                }, Qt::QueuedConnection);
             }
 
             // If neither video nor text is being offered/changed, nothing further to do.
@@ -2328,6 +2350,21 @@ bool SipCall::requestRtt(bool enabled)
                            "(duplicate request suppressed)"));
         return false;
     }
+    // Requesting RTT while the T.140 stream is already running must not
+    // start a new negotiation: the peer's answer to that redundant offer
+    // never produces an inactive→active transition, so RttSession sat in
+    // LocalOfferPending until its 12 s timeout demoted a perfectly working
+    // session to Failed (seen live: users re-clicked "Request RTT" exactly
+    // because no Active confirmation was visible, making it worse each
+    // time). Re-emit rttMediaConnected() instead so RttSession/the UI
+    // re-sync to Active immediately.
+    if (enabled && m_impl && m_impl->rttMediaActive) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("requestRtt() no-op: RTT text stream already active — "
+                           "re-confirming Active to the session/UI"));
+        emit rttMediaConnected();
+        return true;
+    }
 #endif
     return sendRttOffer(enabled);
 }
@@ -2879,7 +2916,12 @@ bool SipCall::setVideoWindowVisible(bool visible)
         const pj_status_t st = pjsua_vid_win_set_show(wid, visible ? PJ_TRUE : PJ_FALSE);
         if (st != PJ_SUCCESS) {
             ok = false;
-            Logger::instance().warn(LogCategory::Media,
+            // Debug, not warn: the Qt GDI renderer does not implement the
+            // SHOW capability (set_show consistently returns 520008 /
+            // invalid-capability there), so during video calls this fired
+            // twice on every page switch — pure log spam for a harmless
+            // no-op on that render path.
+            Logger::instance().debug(LogCategory::Media,
                 QStringLiteral("setVideoWindowVisible(%1): set_show(%2) failed winId=%3 status=%4")
                     .arg(QString::fromLatin1(label))
                     .arg(visible)

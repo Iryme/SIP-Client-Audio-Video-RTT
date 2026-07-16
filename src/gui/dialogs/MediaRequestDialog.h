@@ -23,6 +23,10 @@ public slots:
     void onCallStateChanged(CallState state, const QString &statusText, int statusCode);
     void onVideoMediaConnected();
     void onRttMediaConnected();
+    // Peer withdrew the pending RTT offer — an Accept click after this point
+    // would be refused ("no pending incoming RTT request"), so dismiss the
+    // stale prompt instead of leaving a dead Accept button on screen.
+    void onRttRequestWithdrawn();
 
 private:
     void updateLayout(MediaType type, const QString &remoteUri);

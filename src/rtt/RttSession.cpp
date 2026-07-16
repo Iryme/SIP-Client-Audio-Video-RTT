@@ -81,6 +81,17 @@ void RttSession::enableForCall(SipCall *call)
     connect(call, &SipCall::rttRequestRejected, this, [this]() {
         onIncomingRttRejected();
     });
+    connect(call, &SipCall::rttRequestWithdrawn, this, [this]() {
+        // The peer withdrew its RTT offer before the user answered the
+        // prompt. Without this, the session stayed RemoteOfferPending
+        // forever and a later Accept hit SipCall's "no pending incoming RTT
+        // request" guard — a dead prompt with no way to ever reach Active.
+        if (m_state == RttState::RemoteOfferPending) {
+            Logger::instance().info(LogCategory::Sip,
+                QStringLiteral("RTT incoming offer withdrawn by peer — back to idle"));
+            setState(RttState::Disabled);
+        }
+    });
     connect(call, &SipCall::rttNegotiationFailed, this, [this](const QString &reason) {
         onNegotiationFailed(reason);
     });

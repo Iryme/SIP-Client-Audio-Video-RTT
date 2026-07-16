@@ -168,3 +168,12 @@ void MediaRequestDialog::onRttMediaConnected()
     if (m_currentType == MediaType::Rtt)
         hide();
 }
+
+void MediaRequestDialog::onRttRequestWithdrawn()
+{
+    if (m_currentType == MediaType::Rtt && isVisible()) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Incoming RTT request withdrawn by peer — dismissing prompt"));
+        hide();
+    }
+}
