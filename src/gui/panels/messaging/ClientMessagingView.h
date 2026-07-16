@@ -79,9 +79,15 @@ private:
 
     // Most recently received-but-not-yet-saved MSRP file transfer offer
     // (Faza 10: no automatic disk write, no local path exposure in history —
-    // the user must explicitly choose where to save via onSaveReceivedFileClicked).
+    // the user must explicitly choose where to save via
+    // onSaveReceivedFileClicked). m_pendingFilePeer scopes the Save button
+    // to the conversation it actually belongs to (Faza 14 isolation) —
+    // switching to a different conversation hides it rather than offering to
+    // save someone else's file under the wrong context.
+    QString    m_pendingFilePeer;
     QString    m_pendingFileName;
     QString    m_pendingFileContentType;
     QByteArray m_pendingFileBody;
     QString    m_pendingFileMessageId;
+    void updateSaveButtonVisibility();
 };

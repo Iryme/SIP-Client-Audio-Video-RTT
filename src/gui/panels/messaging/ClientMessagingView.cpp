@@ -107,15 +107,24 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
     m_contentTypeSelector->addItem(tr("Plain text"), static_cast<int>(MessagingContentKind::PlainText));
     m_contentTypeSelector->addItem(tr("HTML"), static_cast<int>(MessagingContentKind::Html));
     m_contentTypeSelector->addItem(tr("CPIM"), static_cast<int>(MessagingContentKind::Cpim));
+    m_contentTypeSelector->setCurrentIndex(
+        m_contentTypeSelector->findData(AppSettings::clientMessagingContentType()));
+    connect(m_contentTypeSelector, &QComboBox::currentIndexChanged, this, [this](int) {
+        AppSettings::setClientMessagingContentType(m_contentTypeSelector->currentData().toInt());
+    });
     optionsLayout->addWidget(new QLabel(tr("Content:"), optionsGroup));
     optionsLayout->addWidget(m_contentTypeSelector);
 
     m_requestDeliveredCheck = new QCheckBox(tr("Delivered"), optionsGroup);
     m_requestDeliveredCheck->setObjectName(QStringLiteral("messagingRequestDelivered"));
-    m_requestDeliveredCheck->setChecked(AppSettings::requestImdnByDefault());
+    m_requestDeliveredCheck->setChecked(AppSettings::clientMessagingRequestDelivered());
+    connect(m_requestDeliveredCheck, &QCheckBox::toggled, this,
+            &AppSettings::setClientMessagingRequestDelivered);
     m_requestDisplayedCheck = new QCheckBox(tr("Displayed"), optionsGroup);
     m_requestDisplayedCheck->setObjectName(QStringLiteral("messagingRequestDisplayed"));
-    m_requestDisplayedCheck->setChecked(AppSettings::requestImdnByDefault());
+    m_requestDisplayedCheck->setChecked(AppSettings::clientMessagingRequestDisplayed());
+    connect(m_requestDisplayedCheck, &QCheckBox::toggled, this,
+            &AppSettings::setClientMessagingRequestDisplayed);
     optionsLayout->addWidget(new QLabel(tr("Request IMDN:"), optionsGroup));
     optionsLayout->addWidget(m_requestDeliveredCheck);
     optionsLayout->addWidget(m_requestDisplayedCheck);
@@ -260,12 +269,24 @@ void ClientMessagingView::onMsrpFileTransferReceived(const QString &contentType,
                                                      const QByteArray &body,
                                                      const QString &msrpMessageId)
 {
+    // The active call is single-instance, so the peer this file arrived
+    // over is always the active call's remote URI — never inferred from
+    // whichever conversation happens to be selected in the UI right now.
+    m_pendingFilePeer = SipManager::instance().activeCallRemoteUri();
     m_pendingFileName = suggestedFileName;
     m_pendingFileContentType = contentType;
     m_pendingFileBody = body;
     m_pendingFileMessageId = msrpMessageId;
-    m_saveFileBtn->setText(tr("Save: %1").arg(suggestedFileName));
-    m_saveFileBtn->setVisible(true);
+    updateSaveButtonVisibility();
+}
+
+void ClientMessagingView::updateSaveButtonVisibility()
+{
+    const bool belongsToCurrentConversation = !m_pendingFileName.isEmpty()
+        && ConversationModel::normalizePeer(m_pendingFilePeer) == ConversationModel::normalizePeer(currentPeer());
+    if (belongsToCurrentConversation)
+        m_saveFileBtn->setText(tr("Save: %1").arg(m_pendingFileName));
+    m_saveFileBtn->setVisible(belongsToCurrentConversation);
 }
 
 void ClientMessagingView::onSaveReceivedFileClicked()
@@ -286,6 +307,7 @@ void ClientMessagingView::onSaveReceivedFileClicked()
         m_pendingFileName.clear();
         m_pendingFileContentType.clear();
         m_pendingFileMessageId.clear();
+        m_pendingFilePeer.clear();
         m_saveFileBtn->setVisible(false);
     } else {
         m_fallbackStatusLabel->setText(tr("Save failed: %1").arg(result.error));
@@ -407,6 +429,7 @@ void ClientMessagingView::refreshCapabilities()
     // Faza 10: disable Send File (never accidentally fall back to SIP
     // MESSAGE for a file) when no MSRP session is established for this peer.
     m_sendFileBtn->setEnabled(msrpEstablished);
+    updateSaveButtonVisibility();
 
     refreshTransportStatus();
 }

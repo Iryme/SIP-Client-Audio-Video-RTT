@@ -206,6 +206,14 @@ QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
     btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
     btn->setObjectName("NavButton");
     btn->setIconSize(QSize(28, 28));
+    // Faza 18 automation IDs: objectName stays "NavButton" for all nav
+    // buttons (existing #NavButton QSS selector styles checked/hover state
+    // for every one of them) — a stable per-button id goes on
+    // accessibleName instead, which QSS never selects on.
+    QString accessibleId = QStringLiteral("nav") + QString(page).replace(0, 1, page.left(1).toUpper());
+    if (page == QLatin1String("callhistory"))
+        accessibleId = QStringLiteral("navHistory");
+    btn->setAccessibleName(accessibleId);
 
     connect(btn, &QToolButton::clicked, this, [this, page]() {
         emit pageRequested(page);

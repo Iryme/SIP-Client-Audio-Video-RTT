@@ -44,6 +44,16 @@ private slots:
     // Task W097: is-composing history rows.
     void appendInboundTypingStoresState();
     void duplicateInboundTypingIsDeduped();
+
+    // Task W111 (Client Messaging View): transport outcome + MSRP delivery
+    // correlation, a distinct id space from correlateDelivery()'s SIP
+    // Message-ID matching.
+    void updateTransportOutcomeRecordsMsrpMessageId();
+    void updateTransportOutcomeRecordsFallbackReason();
+    void updateTransportOutcomeClearsFallbackReasonWhenNotFallback();
+    void correlateMsrpDeliveryUpgradesMatchingEntry();
+    void correlateMsrpDeliveryIgnoresSipMessageId();
+    void correlateMsrpDeliveryIgnoresUnknownId();
 };
 
 void TestMessageHistory::init()
@@ -385,6 +395,108 @@ void TestMessageHistory::duplicateInboundTypingIsDeduped()
     }
     QCOMPARE(MessageHistoryStore::instance().count(), 1);
     QVERIFY(MessageHistoryStore::instance().snapshot().first().isTypingNotification);
+}
+
+void TestMessageHistory::updateTransportOutcomeRecordsMsrpMessageId()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    const qint64 id = MessageHistoryStore::instance().appendOutbound(SipMessageComposer::compose(opts));
+
+    QSignalSpy spy(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated);
+    MessageHistoryStore::instance().updateTransportOutcome(
+        id, MessagingActualTransport::Msrp, QStringLiteral("msrp-msg-1"));
+
+    QCOMPARE(spy.count(), 1);
+    const MessageHistoryEntry e = MessageHistoryStore::instance().entryById(id);
+    QCOMPARE(e.actualTransport, messagingActualTransportToString(MessagingActualTransport::Msrp));
+    QCOMPARE(e.msrpMessageId, QStringLiteral("msrp-msg-1"));
+    QVERIFY(e.fallbackReason.isEmpty());
+}
+
+void TestMessageHistory::updateTransportOutcomeRecordsFallbackReason()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    const qint64 id = MessageHistoryStore::instance().appendOutbound(SipMessageComposer::compose(opts));
+
+    MessageHistoryStore::instance().updateTransportOutcome(
+        id, MessagingActualTransport::SipMessageFallback, QString(),
+        QStringLiteral("MSRP send failed; fell back to SIP MESSAGE"));
+
+    const MessageHistoryEntry e = MessageHistoryStore::instance().entryById(id);
+    QCOMPARE(e.actualTransport,
+             messagingActualTransportToString(MessagingActualTransport::SipMessageFallback));
+    QCOMPARE(e.fallbackReason, QStringLiteral("MSRP send failed; fell back to SIP MESSAGE"));
+}
+
+void TestMessageHistory::updateTransportOutcomeClearsFallbackReasonWhenNotFallback()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    const qint64 id = MessageHistoryStore::instance().appendOutbound(SipMessageComposer::compose(opts));
+
+    // A caller passing a fallbackReason alongside a non-fallback transport
+    // (e.g. a stale value) must never have it recorded — only
+    // SipMessageFallback carries a meaningful reason.
+    MessageHistoryStore::instance().updateTransportOutcome(
+        id, MessagingActualTransport::SipMessage, QString(), QStringLiteral("should be ignored"));
+
+    QVERIFY(MessageHistoryStore::instance().entryById(id).fallbackReason.isEmpty());
+}
+
+void TestMessageHistory::correlateMsrpDeliveryUpgradesMatchingEntry()
+{
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    const qint64 id = MessageHistoryStore::instance().appendOutbound(SipMessageComposer::compose(opts));
+    MessageHistoryStore::instance().updateTransportOutcome(
+        id, MessagingActualTransport::Msrp, QStringLiteral("msrp-msg-2"));
+
+    QSignalSpy spy(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated);
+    MessageHistoryStore::instance().correlateMsrpDelivery(
+        QStringLiteral("msrp-msg-2"), MessageHistoryEntry::DeliveryState::Delivered);
+
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(MessageHistoryStore::instance().entryById(id).deliveryState,
+             MessageHistoryEntry::DeliveryState::Delivered);
+}
+
+void TestMessageHistory::correlateMsrpDeliveryIgnoresSipMessageId()
+{
+    // Task W096's SIP MESSAGE Message-ID space and Task W111's MSRP
+    // Message-ID space must never be cross-matched.
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:bob@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("Ping");
+    opts.requestImdn = true;
+    const ComposedSipMessage msg = SipMessageComposer::compose(opts);
+    const qint64 id = MessageHistoryStore::instance().appendOutbound(msg);
+
+    QSignalSpy spy(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated);
+    MessageHistoryStore::instance().correlateMsrpDelivery(
+        msg.messageId, MessageHistoryEntry::DeliveryState::Delivered);
+
+    QCOMPARE(spy.count(), 0);
+    QCOMPARE(MessageHistoryStore::instance().entryById(id).deliveryState,
+             MessageHistoryEntry::DeliveryState::None);
+}
+
+void TestMessageHistory::correlateMsrpDeliveryIgnoresUnknownId()
+{
+    QSignalSpy spy(&MessageHistoryStore::instance(), &MessageHistoryStore::entryUpdated);
+    MessageHistoryStore::instance().correlateMsrpDelivery(
+        QStringLiteral("no-such-msrp-id"), MessageHistoryEntry::DeliveryState::Failed);
+    QCOMPARE(spy.count(), 0);
 }
 
 QTEST_GUILESS_MAIN(TestMessageHistory)

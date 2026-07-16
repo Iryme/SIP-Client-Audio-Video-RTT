@@ -111,6 +111,22 @@ public:
     static bool requestImdnByDefault()        { return settings().value(QStringLiteral("messaging/requestImdnByDefault"), false).toBool(); }
     static void setRequestImdnByDefault(bool on) { settings().setValue(QStringLiteral("messaging/requestImdnByDefault"), on); }
 
+    // Client Messaging View (Task W111) UI-only preferences — never
+    // persisted per-conversation (no per-peer settings store exists), and
+    // never a message draft/credential/raw-payload (see docs/
+    // client-messaging-workspace.md for the full persistence rationale).
+    static int  clientMessagingContentType()       { return settings().value(QStringLiteral("ui/clientMessaging/contentType"), 0).toInt(); }
+    static void setClientMessagingContentType(int t) { settings().setValue(QStringLiteral("ui/clientMessaging/contentType"), t); }
+    static bool clientMessagingRequestDelivered()       { return settings().value(QStringLiteral("ui/clientMessaging/requestDelivered"), false).toBool(); }
+    static void setClientMessagingRequestDelivered(bool on) { settings().setValue(QStringLiteral("ui/clientMessaging/requestDelivered"), on); }
+    static bool clientMessagingRequestDisplayed()       { return settings().value(QStringLiteral("ui/clientMessaging/requestDisplayed"), false).toBool(); }
+    static void setClientMessagingRequestDisplayed(bool on) { settings().setValue(QStringLiteral("ui/clientMessaging/requestDisplayed"), on); }
+
+    // Tools page (Task W111): last-selected sub-tab key, so re-opening Tools
+    // returns to where the user left off instead of always SIP Ladder.
+    static QString toolsLastSubTab()             { return settings().value(QStringLiteral("ui/tools/lastSubTab"), QStringLiteral("sipladder")).toString(); }
+    static void setToolsLastSubTab(const QString &key) { settings().setValue(QStringLiteral("ui/tools/lastSubTab"), key); }
+
     // IMDN Foundation (Task W096). Auto Send Delivered defaults ON (a
     // "delivered" report is a transport-level acknowledgement with no
     // privacy implication — it does not disclose whether/when the user

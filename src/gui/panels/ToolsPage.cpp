@@ -1,5 +1,6 @@
 #include "ToolsPage.h"
 
+#include "core/AppSettings.h"
 #include "SipLadderPage.h"
 #include "MessagingDiagnosticsPage.h"
 #include "PresencePage.h"
@@ -11,6 +12,8 @@
 #include <QLabel>
 #include <QTabWidget>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace {
 
@@ -33,6 +36,20 @@ constexpr int kIndexXcap = 3;
 constexpr int kIndexMsrp = 4;
 constexpr int kIndexLogs = 5;
 constexpr int kIndexDiagnostics = 6;
+
+QString keyForIndex(int index)
+{
+    switch (index) {
+    case kIndexSipLadder:   return QStringLiteral("sipladder");
+    case kIndexMessaging:   return QStringLiteral("messaging");
+    case kIndexPresence:    return QStringLiteral("presence");
+    case kIndexXcap:        return QStringLiteral("xcap");
+    case kIndexMsrp:        return QStringLiteral("msrp");
+    case kIndexLogs:        return QStringLiteral("logs");
+    case kIndexDiagnostics: return QStringLiteral("diagnostics");
+    default:                return QString();
+    }
+}
 
 } // namespace
 
@@ -58,12 +75,17 @@ ToolsPage::ToolsPage(QWidget *parent)
 
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int index) {
         ensureSubTab(index);
+        const QString key = keyForIndex(index);
+        if (!key.isEmpty())
+            AppSettings::setToolsLastSubTab(key);
     });
 
-    // Build the first sub-tab (SIP Ladder) immediately since it's shown by
-    // default when Tools is first opened — mirrors MainWindow's Dashboard
-    // eager-build-on-default-page behavior.
-    ensureSubTab(kIndexSipLadder);
+    // Faza 17: reopen on whichever sub-tab the user last visited, instead of
+    // always defaulting to SIP Ladder. Falls back to SIP Ladder for an
+    // unrecognized/first-run value.
+    const int startIndex = std::max(0, indexForKey(AppSettings::toolsLastSubTab()));
+    ensureSubTab(startIndex);
+    m_tabs->setCurrentIndex(startIndex);
 }
 
 void ToolsPage::ensureSubTab(int index)
@@ -73,6 +95,12 @@ void ToolsPage::ensureSubTab(int index)
 
     m_subTabBuilt[index] = true;
 
+    // Note: these panels already setObjectName() themselves in their own
+    // constructors (e.g. "DiagnosticsPanel", used by an existing QSS
+    // selector in ThemeManager.cpp) — renaming them here to
+    // "toolsSipLadder"/"toolsLogs"/etc. would silently break that styling.
+    // Automation should target sub-tabs via m_tabs (objectName "toolsTabs")
+    // + tab index/text instead of a per-page id.
     QWidget *real = nullptr;
     switch (index) {
     case kIndexSipLadder:
