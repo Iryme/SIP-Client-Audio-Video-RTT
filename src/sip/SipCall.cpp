@@ -653,6 +653,7 @@ struct SipCall::Impl
             QPointer<SipCall> self = m_impl->q;
             const bool prevRttActive = m_impl->rttMediaActive;
             m_impl->rttMediaActive = textMediaActive;
+            m_impl->videoMediaActive = videoActive;
             QMetaObject::invokeMethod(self,
                 [self, audioBridgeWired, videoActive, videoIncomingWinId, videoCapDevId,
                  textMediaActive, prevRttActive]() {
@@ -1094,7 +1095,16 @@ struct SipCall::Impl
                     .arg(hasTextOffer  ? QStringLiteral("yes") : QStringLiteral("no")));
 
             // ── Video consent ───────────────────────────────────────────────
-            if (hasVideoOffer && !m_impl->videoRequestPendingLocal) {
+            // The !videoMediaActive check mirrors the RTT guard below: without
+            // it, any re-INVITE the peer sends for an unrelated reason (e.g.
+            // toggling RTT) while video is already active still contains an
+            // "m=video" line describing that already-active stream. Without
+            // this check that was misread as a brand-new incoming video
+            // request and auto-declined (prm.opt.videoCount = 0), which
+            // genuinely answered the re-INVITE with video removed and tore
+            // down video that was working fine (W110 live two-device
+            // follow-up: "remote camera doesn't render"/video drops mid-call).
+            if (hasVideoOffer && !m_impl->videoRequestPendingLocal && !m_impl->videoMediaActive) {
                 // Remote requesting video — decline in auto-response; user must accept.
                 prm.opt.videoCount = 0;
                 if (!m_impl->videoRequestNotified) {
@@ -1383,6 +1393,7 @@ struct SipCall::Impl
     bool                rttRequestNotified{false};    // incoming RTT request notified to UI; reset on RTT active
     bool                rttRequestPendingLocal{false}; // local user requested RTT and is awaiting completion
     bool                rttMediaActive{false};         // true while T.140 text stream is active
+    bool                videoMediaActive{false};       // true while video stream is active (mirrors rttMediaActive)
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
     bool                videoActiveBeforeHold{false};  // video was negotiated when local hold was sent
     bool                rttActiveBeforeHold{false};    // T.140 text was active when local hold was sent
