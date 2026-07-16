@@ -13,6 +13,7 @@
 #include <QAudioFormat>
 #include <QAudioSink>
 #include <QBuffer>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -141,6 +142,20 @@ void MediaSettingsPanel::buildUi()
         headerRow->addWidget(title, 1);
         headerRow->addWidget(m_resetBtn);
         root->addLayout(headerRow);
+    }
+
+    // ── Redirected/RDP audio devices (off by default) ──────────────────────
+    {
+        m_allowRedirectedAudioCheck = new QCheckBox(
+            tr("Allow redirected/RDP audio devices (e.g. \"Remote Audio\")"), this);
+        m_allowRedirectedAudioCheck->setToolTip(
+            tr("Off by default: redirected endpoints are hidden so a real microphone/"
+               "speaker is never silently bypassed. Turn this on only on a machine with "
+               "no physical audio hardware at all (e.g. a VM reached only via RDP), "
+               "where the redirected device is the only usable one."));
+        m_allowRedirectedAudioCheck->setChecked(AppSettings::allowRedirectedAudioDevices());
+        m_allowRedirectedAudioCheck->setStyleSheet("color: #b7c4d6; font-size: 11px;");
+        root->addWidget(m_allowRedirectedAudioCheck);
     }
 
     // ── Microphone ──────────────────────────────────────────────────────────
@@ -285,6 +300,8 @@ void MediaSettingsPanel::buildUi()
             this, &MediaSettingsPanel::onTestSpeakerClicked);
     connect(m_testMicBtn, &QPushButton::clicked,
             this, &MediaSettingsPanel::onTestMicrophoneClicked);
+    connect(m_allowRedirectedAudioCheck, &QCheckBox::toggled,
+            this, &MediaSettingsPanel::onAllowRedirectedAudioToggled);
 }
 
 void MediaSettingsPanel::populateDevices()
@@ -489,6 +506,15 @@ void MediaSettingsPanel::onRefreshClicked()
     m_refreshBtn->setText(tr("Refreshing…"));
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("MediaSettingsPanel: manual device refresh requested"));
+    MediaDeviceManager::instance().refreshDevices();
+}
+
+void MediaSettingsPanel::onAllowRedirectedAudioToggled(bool checked)
+{
+    AppSettings::setAllowRedirectedAudioDevices(checked);
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("Allow redirected/RDP audio devices: %1")
+            .arg(checked ? QStringLiteral("ON") : QStringLiteral("OFF")));
     MediaDeviceManager::instance().refreshDevices();
 }
 

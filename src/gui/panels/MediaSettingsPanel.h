@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class QComboBox;
+class QCheckBox;
 class QLabel;
 class QProgressBar;
 class QPushButton;
@@ -43,6 +44,7 @@ private slots:
     void onTestSpeakerClicked();
     void onTestToneStateChanged(QAudio::State state);
     void onTestMicrophoneClicked();
+    void onAllowRedirectedAudioToggled(bool checked);
 
 private:
     void buildUi();
@@ -62,6 +64,7 @@ private:
     QPushButton *m_resetBtn{nullptr};
     QPushButton *m_testSpeakerBtn{nullptr};
     QPushButton *m_testMicBtn{nullptr};
+    QCheckBox   *m_allowRedirectedAudioCheck{nullptr};
     QLabel      *m_micWarningLabel{nullptr};
     QLabel      *m_spkWarningLabel{nullptr};
     QLabel      *m_micStatusLabel{nullptr};

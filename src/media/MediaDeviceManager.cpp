@@ -1,5 +1,6 @@
 #include "MediaDeviceManager.h"
 #include "media/QtMediaDeviceBackend.h"
+#include "core/AppSettings.h"
 #include "core/Logger.h"
 #include <QDateTime>
 #include <QThread>
@@ -9,7 +10,10 @@
 // input/output devices (e.g. Windows Remote Desktop's redirected "Remote
 // Audio" endpoint). These are not physical hardware — offering them as a
 // selectable Speaker/Microphone can silently route call audio away from the
-// real device, so they are excluded from the physical device lists.
+// real device, so they are excluded from the physical device lists by
+// default. AppSettings::allowRedirectedAudioDevices() is an explicit opt-in
+// for machines with no physical audio hardware at all (e.g. a VM reached
+// only via RDP), where a redirected endpoint is the only usable device.
 static bool isInternalAudioEndpoint(const QString &displayName)
 {
     static const QStringList kBlocked = { QStringLiteral("remote audio") };
@@ -23,6 +27,8 @@ static bool isInternalAudioEndpoint(const QString &displayName)
 
 static QList<MediaDevice> filterPhysicalAudioDevices(const QList<MediaDevice> &devices)
 {
+    if (AppSettings::allowRedirectedAudioDevices())
+        return devices;
     QList<MediaDevice> out;
     out.reserve(devices.size());
     for (const MediaDevice &d : devices) {

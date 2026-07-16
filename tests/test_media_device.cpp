@@ -56,6 +56,7 @@ private slots:
     void deviceTypeFiltering();
     void remoteAudioExcludedFromPhysicalDeviceLists();
     void defaultSpeakerAndMicrophoneNeverRemoteAudio();
+    void allowRedirectedAudioDevicesOptInSurfacesRemoteAudio();
 };
 
 static void purgeTestSettings()
@@ -247,6 +248,38 @@ void TestMediaDevice::defaultSpeakerAndMicrophoneNeverRemoteAudio()
 
     QCOMPARE(mgr.defaultMicrophone().id, QStringLiteral("mic-2"));
     QVERIFY(mgr.defaultSpeaker().isNull());
+}
+
+// ---------------------------------------------------------------------------
+// 7. allowRedirectedAudioDevicesOptInSurfacesRemoteAudio
+//    AppSettings::allowRedirectedAudioDevices() is an explicit opt-in (off by
+//    default, see tests 5/6 above) for machines with no physical audio
+//    hardware at all -- when enabled, "Remote Audio" must appear and be
+//    selectable/default like any other device.
+// ---------------------------------------------------------------------------
+void TestMediaDevice::allowRedirectedAudioDevicesOptInSurfacesRemoteAudio()
+{
+    AppSettings::setAllowRedirectedAudioDevices(true);
+
+    auto *stub = new StubMediaDeviceBackend;
+    stub->m_mics = {
+        StubMediaDeviceBackend::makeDevice("mic-1", "Remote Audio",
+                                           MediaDeviceType::Microphone, /*isDefault=*/true)
+    };
+    stub->m_speakers = {
+        StubMediaDeviceBackend::makeDevice("spk-1", "Remote Audio",
+                                           MediaDeviceType::Speaker, /*isDefault=*/true)
+    };
+    injectStub(stub);
+
+    auto &mgr = MediaDeviceManager::instance();
+
+    QCOMPARE(mgr.listMicrophones().size(), 1);
+    QCOMPARE(mgr.listSpeakers().size(), 1);
+    QCOMPARE(mgr.defaultMicrophone().id, QStringLiteral("mic-1"));
+    QCOMPARE(mgr.defaultSpeaker().id, QStringLiteral("spk-1"));
+
+    AppSettings::setAllowRedirectedAudioDevices(false);
 }
 
 QTEST_GUILESS_MAIN(TestMediaDevice)

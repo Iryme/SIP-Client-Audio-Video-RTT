@@ -64,6 +64,15 @@ public:
     static void saveSpeakerVolume   (int percent) { settings().setValue("media/volume/speaker", percent); }
     static int  loadSpeakerVolume   ()             { return settings().value("media/volume/speaker", 100).toInt(); }
 
+    // Off by default: redirected/virtual audio endpoints (e.g. Windows Remote
+    // Desktop's "Remote Audio") are normally excluded from the selectable
+    // microphone/speaker lists so a real device is never silently bypassed.
+    // On machines with no physical audio hardware at all (e.g. a VM reached
+    // only via RDP), that leaves nothing to select -- this opt-in setting
+    // allows those endpoints back into the lists for that specific machine.
+    static bool allowRedirectedAudioDevices()        { return settings().value(QStringLiteral("media/allowRedirectedAudioDevices"), false).toBool(); }
+    static void setAllowRedirectedAudioDevices(bool on) { settings().setValue(QStringLiteral("media/allowRedirectedAudioDevices"), on); }
+
     // Call type selector — persisted as int matching CallType enum
     // (0 = AudioOnly, the default when unset).
     static int  loadLastCallType()        { return settings().value(QStringLiteral("call/lastType"), 0).toInt(); }
