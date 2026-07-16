@@ -556,6 +556,21 @@ void MediaSettingsPanel::onTestSpeakerClicked()
         }
     }
 
+    // A machine with no audio hardware Qt Multimedia can see (e.g. a VM
+    // reached only via RDP, where QMediaDevices enumerates zero devices —
+    // see AppSettings::allowRedirectedAudioDevices()) has no valid device to
+    // construct a QAudioSink from. Constructing/starting one anyway crashed
+    // in the platform audio backend instead of failing gracefully.
+    if (outDevice.isNull()) {
+        Logger::instance().warn(LogCategory::Media,
+            QStringLiteral("Test Speaker: no audio output device available "
+                           "(Qt Multimedia sees none on this machine) — skipped"));
+        if (m_spkStatusLabel)
+            m_spkStatusLabel->setText(
+                tr("No speaker device available to test on this machine."));
+        return;
+    }
+
     QAudioFormat format;
     format.setSampleRate(44100);
     format.setChannelCount(1);
