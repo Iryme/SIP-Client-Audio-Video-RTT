@@ -124,6 +124,7 @@ set(SOURCES
     src/gui/panels/PresencePage.cpp
     src/gui/panels/XcapPage.cpp
     src/gui/panels/MsrpPage.cpp
+    src/gui/panels/ToolsPage.cpp
     src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
@@ -274,6 +275,7 @@ set(HEADERS
     src/gui/panels/PresencePage.h
     src/gui/panels/XcapPage.h
     src/gui/panels/MsrpPage.h
+    src/gui/panels/ToolsPage.h
     src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h

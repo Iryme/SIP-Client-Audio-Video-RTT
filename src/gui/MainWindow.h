@@ -9,15 +9,9 @@ class NavRail;
 class ContactsPanel;
 class VideoPanel;
 class RttPanel;
-class DiagnosticsPanel;
 class SettingsPanel;
-class SipLadderPage;
-class MessagingDiagnosticsPage;
-class PresencePage;
-class XcapPage;
-class MsrpPage;
+class ToolsPage;
 class CallHistoryPanel;
-class DiagnosticsCenterPanel;
 class AppStatusBar;
 class QDialog;
 class QSplitter;
@@ -56,15 +50,14 @@ private:
     void saveLayout();
     QWidget *buildDashboardPage();
     QWidget *buildClientsPage();
-    QWidget *buildLogsPage();
     QWidget *buildCallHistoryPage();
-    QWidget *buildDiagnosticsCenterPage();
 
     // Build page[index] on first request and replace its placeholder.
     void ensurePage(int index);
 
     // Tracks which pages have been built (false = still a placeholder).
-    static constexpr int kPageCount = 11;
+    // Pages: 0 Dashboard, 1 Clients, 2 Tools, 3 Call History, 4 Settings.
+    static constexpr int kPageCount = 5;
     bool m_pageBuilt[kPageCount]{};
 
     // Dashboard page (kept for signal wiring in buildDashboardPage)
@@ -77,15 +70,9 @@ private:
     VideoPanel       *m_clientsVideoPanel{nullptr};
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};
-    DiagnosticsPanel *m_diagnostics{nullptr};
     SettingsPanel    *m_settingsPanel{nullptr};
-    SipLadderPage    *m_ladderPage{nullptr};
-    MessagingDiagnosticsPage *m_messagingPage{nullptr};
-    PresencePage     *m_presencePage{nullptr};
-    XcapPage         *m_xcapPage{nullptr};
-    MsrpPage         *m_msrpPage{nullptr};
+    ToolsPage        *m_toolsPage{nullptr};
     CallHistoryPanel *m_callHistoryPanel{nullptr};
-    DiagnosticsCenterPanel *m_diagnosticsCenterPanel{nullptr};
     AppStatusBar     *m_statusBar{nullptr};
     QDialog              *m_settingsDialog{nullptr};
     IncomingCallDialog   *m_incomingCallDialog{nullptr};

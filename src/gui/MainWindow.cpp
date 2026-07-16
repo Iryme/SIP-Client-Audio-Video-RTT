@@ -6,15 +6,9 @@
 #include "gui/dashboard/DashboardPage.h"
 #include "gui/panels/CallHistoryPanel.h"
 #include "gui/panels/ContactsPanel.h"
-#include "gui/panels/DiagnosticsPanel.h"
-#include "gui/panels/DiagnosticsCenterPanel.h"
 #include "gui/panels/NavRail.h"
 #include "gui/panels/SettingsPanel.h"
-#include "gui/panels/SipLadderPage.h"
-#include "gui/panels/MessagingDiagnosticsPage.h"
-#include "gui/panels/PresencePage.h"
-#include "gui/panels/XcapPage.h"
-#include "gui/panels/MsrpPage.h"
+#include "gui/panels/ToolsPage.h"
 #include "gui/widgets/AudioLevelMeter.h"
 #include "gui/widgets/FlowLayout.h"
 #include "gui/widgets/StatusCard.h"
@@ -1597,12 +1591,6 @@ QWidget *MainWindow::buildClientsPage()
     return page;
 }
 
-QWidget *MainWindow::buildLogsPage()
-{
-    m_diagnostics = new DiagnosticsPanel(this);
-    return m_diagnostics;
-}
-
 QWidget *MainWindow::buildCallHistoryPage()
 {
     m_callHistoryPanel = new CallHistoryPanel(this);
@@ -1617,16 +1605,6 @@ QWidget *MainWindow::buildCallHistoryPage()
         }
     });
     return m_callHistoryPanel;
-}
-
-QWidget *MainWindow::buildDiagnosticsCenterPage()
-{
-    m_diagnosticsCenterPanel = new DiagnosticsCenterPanel(this);
-    connect(m_diagnosticsCenterPanel, &DiagnosticsCenterPanel::openSipLadderRequested,
-            this, [this]() { onNavPageRequested(QStringLiteral("sipladder")); });
-    connect(m_diagnosticsCenterPanel, &DiagnosticsCenterPanel::openLogsRequested,
-            this, [this]() { onNavPageRequested(QStringLiteral("logs")); });
-    return m_diagnosticsCenterPanel;
 }
 
 void MainWindow::exportConfiguration()
@@ -1771,11 +1749,11 @@ void MainWindow::buildCentralWidget()
     m_pageStack = new QStackedWidget(central);
     rootLayout->addWidget(m_pageStack, 1);
 
-    // All 6 pages start as lightweight placeholders — real content is built lazily
+    // All pages start as lightweight placeholders — real content is built lazily
     // on first navigation via ensurePage(). This keeps the constructor fast so
     // MainWindow::show() is called before any heavy page construction.
     static const char *const kPageNames[] = {
-        "Dashboard", "Clients", "SIP Ladder", "Messaging", "Presence", "XCAP", "MSRP", "Call History", "Logs", "Settings", "Diagnostics"
+        "Dashboard", "Clients", "Tools", "Call History", "Settings"
     };
     for (int i = 0; i < kPageCount; ++i) {
         m_pageStack->addWidget(makePlaceholder(tr(kPageNames[i]), m_pageStack));
@@ -1813,32 +1791,14 @@ void MainWindow::ensurePage(int index)
     case 0: real = buildDashboardPage();                         break;
     case 1: real = buildClientsPage();                           break;
     case 2:
-        m_ladderPage = new SipLadderPage(m_pageStack);
-        real = m_ladderPage;
+        m_toolsPage = new ToolsPage(m_pageStack);
+        real = m_toolsPage;
         break;
-    case 3:
-        m_messagingPage = new MessagingDiagnosticsPage(m_pageStack);
-        real = m_messagingPage;
-        break;
+    case 3: real = buildCallHistoryPage();                       break;
     case 4:
-        m_presencePage = new PresencePage(m_pageStack);
-        real = m_presencePage;
-        break;
-    case 5:
-        m_xcapPage = new XcapPage(m_pageStack);
-        real = m_xcapPage;
-        break;
-    case 6:
-        m_msrpPage = new MsrpPage(m_pageStack);
-        real = m_msrpPage;
-        break;
-    case 7: real = buildCallHistoryPage();                       break;
-    case 8: real = buildLogsPage();                              break;
-    case 9:
         m_settingsPanel = new SettingsPanel(m_pageStack);
         real = m_settingsPanel;
         break;
-    case 10: real = buildDiagnosticsCenterPage();                break;
     default:
         return;
     }
@@ -1866,6 +1826,17 @@ void MainWindow::onNavPageRequested(const QString &page)
 {
     QString activePage = page;
     int pageIndex = -1;
+    QString toolsSubTab;
+
+    // Old top-level ids for the technical/diagnostic pages that now live as
+    // Tools sub-tabs. Kept working so existing deep-link emitters (Dashboard
+    // shortcut cards, DiagnosticsCenterPanel's openSipLadderRequested/
+    // openLogsRequested) don't need to change what id they emit.
+    const bool isToolsSubTabId =
+        page == QLatin1String("sipladder") || page == QLatin1String("messaging")
+        || page == QLatin1String("presence") || page == QLatin1String("xcap")
+        || page == QLatin1String("msrp") || page == QLatin1String("logs")
+        || page == QLatin1String("diagnostics");
 
     if (page == QLatin1String("dashboard")) {
         pageIndex = 0;
@@ -1873,27 +1844,19 @@ void MainWindow::onNavPageRequested(const QString &page)
                || page == QLatin1String("contacts") || page == QLatin1String("dialpad")) {
         pageIndex = 1;
         activePage = QStringLiteral("clients");
-    } else if (page == QLatin1String("sipladder")) {
+    } else if (page == QLatin1String("tools")) {
         pageIndex = 2;
-    } else if (page == QLatin1String("messaging")) {
-        pageIndex = 3;
-    } else if (page == QLatin1String("presence")) {
-        pageIndex = 4;
-    } else if (page == QLatin1String("xcap")) {
-        pageIndex = 5;
-    } else if (page == QLatin1String("msrp")) {
-        pageIndex = 6;
+    } else if (isToolsSubTabId) {
+        pageIndex = 2;
+        toolsSubTab = page;
+        activePage = QStringLiteral("tools");
     } else if (page == QLatin1String("callhistory")) {
-        pageIndex = 7;
-    } else if (page == QLatin1String("logs")) {
-        pageIndex = 8;
+        pageIndex = 3;
     } else if (page == QLatin1String("settings")) {
-        pageIndex = 9;
+        pageIndex = 4;
     } else if (page == QLatin1String("settings-video")) {
-        pageIndex = 9;
+        pageIndex = 4;
         activePage = QStringLiteral("settings");
-    } else if (page == QLatin1String("diagnostics")) {
-        pageIndex = 10;
     }
 
     if (pageIndex >= 0) {
@@ -1902,6 +1865,8 @@ void MainWindow::onNavPageRequested(const QString &page)
                 .arg(page).arg(pageIndex).arg(PerfScope::msecsSinceAppStart()));
         ensurePage(pageIndex);
         m_pageStack->setCurrentIndex(pageIndex);
+        if (!toolsSubTab.isEmpty() && m_toolsPage)
+            m_toolsPage->openSubTab(toolsSubTab);
         if (page == QLatin1String("settings-video") && m_settingsPanel)
             m_settingsPanel->focusVideoTab();
     }

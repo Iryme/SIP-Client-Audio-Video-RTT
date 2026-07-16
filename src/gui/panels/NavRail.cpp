@@ -30,25 +30,6 @@ static const QByteArray kIconClients = R"(
   <circle cx="12" cy="7" r="3"/>
 </svg>)";
 
-static const QByteArray kIconSipLadder = R"(
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-  <line x1="5" y1="3" x2="5" y2="21"/>
-  <line x1="19" y1="3" x2="19" y2="21"/>
-  <line x1="5" y1="8" x2="19" y2="8"/>
-  <polyline points="15,5 19,8 15,11"/>
-  <line x1="19" y1="16" x2="5" y2="16"/>
-  <polyline points="9,13 5,16 9,19"/>
-</svg>)";
-
-static const QByteArray kIconMessaging = R"(
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M4 5h16v11H8l-4 4V5z"/>
-  <line x1="8" y1="9" x2="16" y2="9"/>
-  <line x1="8" y1="13" x2="13" y2="13"/>
-</svg>)";
-
 static const QByteArray kIconHistory = R"(
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -58,19 +39,10 @@ static const QByteArray kIconHistory = R"(
   <path d="M19 3l3 3"/>
 </svg>)";
 
-static const QByteArray kIconLogs = R"(
+static const QByteArray kIconTools = R"(
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="4" y="3" width="16" height="18" rx="2"/>
-  <line x1="8" y1="8" x2="16" y2="8"/>
-  <line x1="8" y1="12" x2="16" y2="12"/>
-  <line x1="8" y1="16" x2="12" y2="16"/>
-</svg>)";
-
-static const QByteArray kIconDiagnostics = R"(
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M3 12h4l2 7 4-14 2 7h6"/>
+  <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2 2.5-2.5z"/>
 </svg>)";
 
 static const QByteArray kIconSettings = R"(
@@ -169,14 +141,8 @@ NavRail::NavRail(QWidget *parent)
 
     addNavButton(layout, QString{}, "Dashboard", "dashboard");
     addNavButton(layout, QString{}, "Clients",   "clients");
-    addNavButton(layout, QString{}, "SIP Ladder","sipladder");
-    addNavButton(layout, QString{}, "Messaging", "messaging");
-    addNavButton(layout, QString{}, "Presence",  "presence");
-    addNavButton(layout, QString{}, "XCAP",      "xcap");
-    addNavButton(layout, QString{}, "MSRP",      "msrp");
     addNavButton(layout, QString{}, "History",   "callhistory");
-    addNavButton(layout, QString{}, "Logs",      "logs");
-    addNavButton(layout, QString{}, "Diagnostics", "diagnostics");
+    addNavButton(layout, QString{}, "Tools",     "tools");
     addNavButton(layout, QString{}, "Settings",  "settings");
 
     // Push bottom actions to the bottom
@@ -226,14 +192,8 @@ QToolButton *NavRail::addNavButton(QVBoxLayout *layout,
     QByteArray svgData;
     if (page == QLatin1String("dashboard"))  svgData = kIconDashboard;
     else if (page == QLatin1String("clients")) svgData = kIconClients;
-    else if (page == QLatin1String("sipladder")) svgData = kIconSipLadder;
-    else if (page == QLatin1String("messaging")) svgData = kIconMessaging;
-    else if (page == QLatin1String("presence")) svgData = kIconDiagnostics; // reused icon; no dedicated Presence glyph yet
-    else if (page == QLatin1String("xcap")) svgData = kIconConfig; // reused icon; no dedicated XCAP glyph yet
-    else if (page == QLatin1String("msrp")) svgData = kIconMessaging; // reused icon; no dedicated MSRP glyph yet
     else if (page == QLatin1String("callhistory")) svgData = kIconHistory;
-    else if (page == QLatin1String("logs"))   svgData = kIconLogs;
-    else if (page == QLatin1String("diagnostics")) svgData = kIconDiagnostics;
+    else if (page == QLatin1String("tools")) svgData = kIconTools;
     else if (page == QLatin1String("settings")) svgData = kIconSettings;
 
     auto *btn = new QToolButton(this);
