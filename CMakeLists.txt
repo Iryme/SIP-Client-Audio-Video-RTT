@@ -20,6 +20,18 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# Release builds otherwise ship with no .pdb, so any crash dump collected from
+# a Release install (the only config end users run) can only be symbolicated
+# down to "SIPClient.exe+0x<offset>" -- useless for root-causing a live crash
+# report. /Zi + /DEBUG add a PDB without disabling optimizations (/O2 from
+# CMake's default Release flags is untouched), so this costs nothing at
+# runtime and turns future crash dumps into real source-level stack traces.
+if (MSVC)
+    string(APPEND CMAKE_CXX_FLAGS_RELEASE " /Zi")
+    string(APPEND CMAKE_EXE_LINKER_FLAGS_RELEASE " /DEBUG /OPT:REF /OPT:ICF")
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS_RELEASE " /DEBUG /OPT:REF /OPT:ICF")
+endif()
+
 # --- CMake modules ---
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 

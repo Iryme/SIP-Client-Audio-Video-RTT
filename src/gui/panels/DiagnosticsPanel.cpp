@@ -95,6 +95,13 @@ DiagnosticsPanel::DiagnosticsPanel(QWidget *parent)
 
     connect(&Logger::instance(), &Logger::entryAdded,
             this, &DiagnosticsPanel::onEntryAdded);
+    // Seed with everything already logged before this panel existed: pages
+    // are built lazily (see MainWindow), so by the time the user opens this
+    // tab, startup/SIP-init/registration logging has already happened and
+    // entryAdded() alone would only show whatever is logged from here on —
+    // Logger::recentEntries() is the same ring buffer the bundle exporter
+    // already reads, so this makes the live view match the exported bundle.
+    m_entries = Logger::instance().recentEntries();
     connect(m_search, &QLineEdit::textChanged, this, &DiagnosticsPanel::onFilterChanged);
     connect(m_severityFilter, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DiagnosticsPanel::onFilterChanged);
