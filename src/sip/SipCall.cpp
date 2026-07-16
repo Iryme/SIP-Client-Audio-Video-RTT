@@ -1105,6 +1105,37 @@ struct SipCall::Impl
                     .arg(hasVideoOffer ? QStringLiteral("yes") : QStringLiteral("no"))
                     .arg(hasTextOffer  ? QStringLiteral("yes") : QStringLiteral("no")));
 
+            // videoMediaActive/rttMediaActive are only true while PJSIP reports
+            // PJSUA_CALL_MEDIA_ACTIVE; a held stream reports LOCAL_HOLD/
+            // REMOTE_HOLD instead, so those flags go false for the whole
+            // hold→resume window. Query the live (pre-answer) media status
+            // here too so a resume re-INVITE — which still carries "m=video"/
+            // "m=text" for a stream that was merely held, not withdrawn — is
+            // not misread as a brand-new request. This affects BOTH sides of
+            // a hold: the side that called hold()/resume() (its cached flags
+            // go stale exactly the same way) and the peer, who never called
+            // hold() locally and has no other way to know the stream was only
+            // held (W110 live two-device follow-up: video consent popup
+            // reappeared on resume even though video had never been turned
+            // off, on both the resuming side and the peer).
+            bool videoActiveOrHeld = false;
+            bool textActiveOrHeld  = false;
+            if (m_impl->pjCall) {
+                try {
+                    const pj::CallInfo ci = m_impl->pjCall->getInfo();
+                    for (const auto &mi : ci.media) {
+                        const bool activeOrHeld =
+                            mi.status == PJSUA_CALL_MEDIA_ACTIVE
+                            || mi.status == PJSUA_CALL_MEDIA_LOCAL_HOLD
+                            || mi.status == PJSUA_CALL_MEDIA_REMOTE_HOLD;
+                        if (mi.type == PJMEDIA_TYPE_VIDEO && activeOrHeld)
+                            videoActiveOrHeld = true;
+                        else if (mi.type == PJMEDIA_TYPE_TEXT && activeOrHeld)
+                            textActiveOrHeld = true;
+                    }
+                } catch (...) {}
+            }
+
             // ── Video consent ───────────────────────────────────────────────
             // The !videoMediaActive check mirrors the RTT guard below: without
             // it, any re-INVITE the peer sends for an unrelated reason (e.g.
@@ -1115,7 +1146,8 @@ struct SipCall::Impl
             // genuinely answered the re-INVITE with video removed and tore
             // down video that was working fine (W110 live two-device
             // follow-up: "remote camera doesn't render"/video drops mid-call).
-            if (hasVideoOffer && !m_impl->videoRequestPendingLocal && !m_impl->videoMediaActive) {
+            if (hasVideoOffer && !m_impl->videoRequestPendingLocal
+                && !m_impl->videoMediaActive && !videoActiveOrHeld) {
                 // Remote requesting video — decline in auto-response; user must accept.
                 prm.opt.videoCount = 0;
                 if (!m_impl->videoRequestNotified) {
@@ -1153,7 +1185,8 @@ struct SipCall::Impl
             // instead of auto-declining and re-prompting, which previously
             // caused an endless "Accept RTT" ping-pong between both sides
             // (W110 live two-device follow-up).
-            if (hasTextOffer && !m_impl->rttRequestPendingLocal && !m_impl->rttMediaActive) {
+            if (hasTextOffer && !m_impl->rttRequestPendingLocal
+                && !m_impl->rttMediaActive && !textActiveOrHeld) {
                 // Remote requesting RTT — decline in auto-response; user must accept.
                 prm.opt.textCount = 0;
                 if (!m_impl->rttRequestNotified) {
