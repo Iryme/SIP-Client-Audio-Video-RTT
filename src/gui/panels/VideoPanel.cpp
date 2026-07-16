@@ -293,6 +293,26 @@ void VideoPanel::resizeEvent(QResizeEvent *event)
         m_resizeDebounceTimer.start();
 }
 
+void VideoPanel::hideEvent(QHideEvent *event)
+{
+    QWidget::hideEvent(event);
+    // A page switch (e.g. navigating away to another tab in MainWindow's
+    // QStackedWidget) hides this widget while PJSIP may still be actively
+    // rendering into its native window (attachVideoWindows()'s Qt GDI
+    // renderer target) — leaving that unpaused raced Qt's own widget hide
+    // machinery against PJSIP's render callback and crashed deep inside
+    // Qt6Widgets.dll. Pause rendering first; showEvent() resumes it.
+    if (m_remoteAttached || m_videoActive)
+        VideoMediaManager::instance().setVideoWindowVisible(false);
+}
+
+void VideoPanel::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    if (m_remoteAttached || m_videoActive)
+        VideoMediaManager::instance().setVideoWindowVisible(true);
+}
+
 void VideoPanel::repositionOverlays()
 {
     const int margin = 8;

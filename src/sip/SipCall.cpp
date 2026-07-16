@@ -2847,6 +2847,48 @@ bool SipCall::attachVideoWindows(WId remoteWidget, WId localPreview)
 #endif
 }
 
+bool SipCall::setVideoWindowVisible(bool visible)
+{
+#if defined(HAVE_PJSIP) && defined(_WIN32)
+    if (!m_impl)
+        return true;
+    bool ok = true;
+
+    // Only the non-native (our Qt GDI renderer) path supports set_show();
+    // this app never registers a native-window video renderer, so that
+    // branch is not expected in practice — attachVideoWindows()'s own
+    // is_native handling is left untouched for that case.
+    auto pauseResumeWindow = [&ok, visible](pjsua_vid_win_id wid, const char *label) {
+        if (wid == PJSUA_INVALID_ID)
+            return;
+        pjsua_vid_win_info wi;
+        pj_bzero(&wi, sizeof(wi));
+        if (pjsua_vid_win_get_info(wid, &wi) != PJ_SUCCESS || wi.is_native)
+            return;
+        const pj_status_t st = pjsua_vid_win_set_show(wid, visible ? PJ_TRUE : PJ_FALSE);
+        if (st != PJ_SUCCESS) {
+            ok = false;
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("setVideoWindowVisible(%1): set_show(%2) failed winId=%3 status=%4")
+                    .arg(QString::fromLatin1(label))
+                    .arg(visible)
+                    .arg(wid)
+                    .arg(st));
+        }
+    };
+
+    pauseResumeWindow(m_impl->videoIncomingWinId, "remote");
+    if (m_impl->videoCapDev >= PJMEDIA_VID_DEFAULT_CAPTURE_DEV) {
+        const auto capDev = static_cast<pjmedia_vid_dev_index>(m_impl->videoCapDev);
+        pauseResumeWindow(pjsua_vid_preview_get_win(capDev), "local");
+    }
+    return ok;
+#else
+    Q_UNUSED(visible)
+    return true;
+#endif
+}
+
 void SipCall::reset(const QString &reason)
 {
     Logger::instance().info(LogCategory::Sip,

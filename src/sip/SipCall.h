@@ -162,6 +162,17 @@ public:
     // false means the attach is incomplete and should be retried.
     bool attachVideoWindows(WId remoteWidget, WId localPreview);
 
+    // Pauses/resumes PJSIP's rendering into the remote video window without
+    // touching the HWND association attachVideoWindows() set up. Call this
+    // from the hosting widget's hideEvent()/showEvent(): a widget that gets
+    // hidden by a page switch (e.g. QStackedWidget::setCurrentIndex) while
+    // PJSIP is still actively rendering into its native window is a real
+    // crash risk (Qt's own hide/paint machinery colliding with PJSIP's GDI
+    // renderer target) — this lets the caller stop that traffic first.
+    // No-op (returns true) on non-Windows/stub builds or when no video
+    // window is currently attached.
+    bool setVideoWindowVisible(bool visible);
+
     // Send a T.140 RTT text block via the active RTP text stream.
     // No-op in stub mode or when the text stream is not active.
     void sendRttText(const QString &text);

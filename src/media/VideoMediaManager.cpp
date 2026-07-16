@@ -113,6 +113,13 @@ bool VideoMediaManager::attachVideoToWidgets(WId remoteWidget, WId localPreviewW
     return m_call->attachVideoWindows(remoteWidget, localPreviewWidget);
 }
 
+bool VideoMediaManager::setVideoWindowVisible(bool visible)
+{
+    if (!m_call)
+        return true;
+    return m_call->setVideoWindowVisible(visible);
+}
+
 void VideoMediaManager::setCamera(const QString &deviceId)
 {
     const MediaDevice dev = MediaDeviceManager::instance().findDevice(

@@ -51,6 +51,14 @@ public:
     // Returns true when the attach completed and needs no retry.
     bool attachVideoToWidgets(WId remoteWidget, WId localPreviewWidget);
 
+    // Pauses/resumes PJSIP's rendering into the attached video window(s)
+    // without dropping the attachment — call from the hosting widget's
+    // hideEvent()/showEvent() so a page switch that hides the video widget
+    // (e.g. QStackedWidget::setCurrentIndex) doesn't race PJSIP's renderer
+    // against Qt's own widget hide/paint machinery. No-op when no active
+    // call or on non-Windows/stub builds.
+    bool setVideoWindowVisible(bool visible);
+
 public slots:
     void setVideoMuted(bool muted);
 
