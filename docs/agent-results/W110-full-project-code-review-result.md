@@ -139,13 +139,13 @@ referenced throughout.
     pre-existing + 2 new) as part of this task's project-status.md update.
     `CMakeUserPresets.json` is tracked in git with a machine-specific path
     (W110-F013, left for owner decision, not a code bug).
-41. **Număr total findings**: 20 (plus one informational/non-bug item,
+41. **Număr total findings**: 21 (plus one informational/non-bug item,
     W110-F020, excluded from the count).
 42. **Critical**: 0.
 43. **High**: 5 (W110-F001 through F005).
 44. **Medium**: 9 (W110-F006 through F014).
-45. **Low**: 6 (W110-F015 through F021, minus the informational one).
-46. **Findings remediate**: 6 — W110-F002, F004, F012, F014, F019, F021.
+45. **Low**: 7 (W110-F015 through F022, minus the informational F020).
+46. **Findings remediate**: 7 — W110-F002, F004, F012, F014, F019, F021, F022.
 47. **Findings rămase**: 14, all with acceptance criteria in
     [reviews/W110-remediation-roadmap.md](../reviews/W110-remediation-roadmap.md)
     (tasks W111–W115) or explicitly left for owner decision (W110-F013).

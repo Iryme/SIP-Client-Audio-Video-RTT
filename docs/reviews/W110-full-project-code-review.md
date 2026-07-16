@@ -157,8 +157,8 @@ current API.
 | Critical | 0 | — | — |
 | High | 5 | 2 (F002, F004) | 3 (F001 → W112, F003 → W113, F005 → W115) |
 | Medium | 9 | 2 (F012, F014) | 7 (F006 → W111, F007/F008/F009/F010 → W114, F011 → W115, F013 → owner decision) |
-| Low | 6 | 2 (F019, F021) | 4 (F015/F016 → W114, F017 → W112, F018 → opportunistic) |
-| **Total** | **20** | **6** | **14** |
+| Low | 7 | 3 (F019, F021, F022) | 4 (F015/F016 → W114, F017 → W112, F018 → opportunistic) |
+| **Total** | **21** | **7** | **14** |
 
 (One additional item, W110-F020, is informational/not-a-bug and excluded
 from the count — see [W110-findings.md](W110-findings.md).)
@@ -189,6 +189,9 @@ none exists yet — see W110-F005) a documented manual code-path verification:
 6. **W110-F021** — fixed a Qt6 `QHash::remove()` bool-vs-count comparison
    in `MsrpSessionStore.cpp`, surfaced by an MSVC warning during the
    Release build.
+7. **W110-F022** — fixed a discarded `[[nodiscard]]` `QFile::open()` result
+   in a test helper (`test_diagnostics_bundle.cpp`), also surfaced by the
+   Release build.
 
 No pjproject sources were modified. No architectural refactors were
 performed — every other finding above Low severity that would require
@@ -199,9 +202,10 @@ tasks (W111–W115) per this task's own rules.
 
 | Configuration | Result |
 |---|---|
-| Debug, `ENABLE_PJSIP=ON`, `BUILD_TESTS=ON` — rebuild after fixes | 0 errors, 0 warnings. |
-| CTest (Debug/PJSIP) after fixes | **77/77 passed**, 0 failed (`build/ctest_after_fixes.log`). |
-| Release, `ENABLE_PJSIP=ON`, `BUILD_TESTS=ON` — rebuild after fixes | See `build-release/` logs (rebuilt after W110-F021's fix touched a Release-only-surfaced warning). |
+| Debug, `ENABLE_PJSIP=ON`, `BUILD_TESTS=ON` — rebuild after fixes | 0 errors, 0 warnings (`build/nmake_build_final.log`). |
+| CTest (Debug/PJSIP) after fixes | **77/77 passed**, 0 failed, 16.92s (`build/ctest_final_debug.log`). |
+| Release, `ENABLE_PJSIP=ON`, `BUILD_TESTS=ON` — rebuild after fixes | 0 errors, 0 warnings (`build-release/nmake_build_final.log`) — confirms both W110-F021 (QHash::remove) and W110-F022 (nodiscard) are resolved. |
+| CTest (Release/PJSIP) after fixes | **77/77 passed**, 0 failed, 14.70s (`build-release/ctest_release_final.log`). |
 
 No regressions were observed in REGISTER, audio, video, RTT, SIP MESSAGE,
 MSRP (direct or relay), CPIM, IMDN, is-composing, Presence, XCAP, file

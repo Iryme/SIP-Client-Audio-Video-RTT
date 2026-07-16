@@ -381,6 +381,20 @@ changed to `if (m_sessions.remove(sessionKey))`.
 
 ---
 
+### W110-F022 — Discarded `[[nodiscard]]` `QFile::open()` result in a test helper
+**Module:** tests | **File:** `tests/test_diagnostics_bundle.cpp:33`
+**Status:** **Fixed in this task.**
+
+Also surfaced by the Release build (MSVC C4834). `readBundleFiles()`'s
+fallback-folder branch called `f.open(QIODevice::ReadOnly)` without
+checking the result before `f.readAll()` — harmless in practice (a failed
+open just returns empty data, which would fail the test's own content
+assertions rather than silently passing), but worth fixing since it's a
+one-line, zero-risk cleanup. Changed to return an empty `QByteArray`
+explicitly on open failure.
+
+---
+
 ## Coverage notes (what was and wasn't reached at full audit depth)
 
 Every phase in the task's Faza 1–23 checklist was covered by at least one
