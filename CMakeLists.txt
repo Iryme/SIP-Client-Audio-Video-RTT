@@ -109,7 +109,6 @@ set(SOURCES
     src/gui/panels/NavRail.cpp
     src/gui/panels/SidebarPanel.cpp
     src/gui/panels/ContactsPanel.cpp
-    src/gui/panels/CallPanel.cpp
     src/gui/panels/CallHistoryPanel.cpp
     src/gui/panels/VideoPanel.cpp
     src/gui/CameraController.cpp
@@ -132,6 +131,8 @@ set(SOURCES
     src/gui/panels/messaging/ConversationListModel.cpp
     src/gui/panels/messaging/ConversationFilterProxyModel.cpp
     src/gui/panels/ConversationWorkspacePanel.cpp
+    src/gui/panels/call/CallInfoModel.cpp
+    src/gui/panels/CallWorkspacePanel.cpp
     src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
@@ -267,7 +268,6 @@ set(HEADERS
     src/gui/panels/NavRail.h
     src/gui/panels/SidebarPanel.h
     src/gui/panels/ContactsPanel.h
-    src/gui/panels/CallPanel.h
     src/gui/panels/CallHistoryPanel.h
     src/gui/panels/VideoPanel.h
     src/gui/CameraController.h
@@ -290,6 +290,8 @@ set(HEADERS
     src/gui/panels/messaging/ConversationListModel.h
     src/gui/panels/messaging/ConversationFilterProxyModel.h
     src/gui/panels/ConversationWorkspacePanel.h
+    src/gui/panels/call/CallInfoModel.h
+    src/gui/panels/CallWorkspacePanel.h
     src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h

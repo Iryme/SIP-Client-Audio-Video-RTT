@@ -226,7 +226,7 @@ QMenu::separator { height: 1px; background: __B1__; margin: 4px 0; }
 }
 
 /* --- Call panel --- */
-#CallPanel { background-color: __BG1__; }
+#CallWorkspacePanel { background-color: __BG1__; }
 #CallCtrlBtn {
     background-color: __BG3__;
     color: __T0__;

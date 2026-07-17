@@ -1477,6 +1477,23 @@ target_link_libraries(test_conversation_list_model PRIVATE
 
 add_test(NAME test_conversation_list_model COMMAND test_conversation_list_model)
 
+# ---- test_call_info_model (Task W113) --------------------------------------
+qt_add_executable(test_call_info_model
+    test_call_info_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/panels/call/CallInfoModel.cpp
+)
+
+target_include_directories(test_call_info_model PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_call_info_model PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_call_info_model COMMAND test_call_info_model)
+
 # ---- test_windows_trace_json_export ---------------------------------------
 qt_add_executable(test_windows_trace_json_export
     test_windows_trace_json_export.cpp

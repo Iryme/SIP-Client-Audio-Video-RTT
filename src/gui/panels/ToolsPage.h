@@ -26,6 +26,11 @@ public:
     // top-level nav ids like "sipladder"/"logs" into this page's sub-tabs).
     void openSubTab(const QString &key);
 
+    // Task W113 (Call Workspace) deep link: ensures the SIP Ladder sub-tab
+    // exists, then filters it by callId. Callers should switch to Tools /
+    // call openSubTab("sipladder") first so the tab is visible.
+    void filterSipLadderByCallId(const QString &callId);
+
     static constexpr int kSubTabCount = 7;
 
 private:

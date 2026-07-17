@@ -87,6 +87,12 @@ SipLadderPage::SipLadderPage(QWidget *parent)
     applyFilters();
 }
 
+void SipLadderPage::filterByCallId(const QString &callId)
+{
+    m_callIdFilter->setText(callId);
+    applyFilters();
+}
+
 void SipLadderPage::applyFilters()
 {
     m_ladder->setCallIdFilter(m_callIdFilter->text());

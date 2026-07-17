@@ -15,6 +15,11 @@ class SipLadderPage : public QWidget
 public:
     explicit SipLadderPage(QWidget *parent = nullptr);
 
+    // Task W113 (Call Workspace) deep link: sets the Call-ID filter and
+    // re-applies filters immediately, so "Open in SIP Ladder" from a call
+    // lands pre-filtered to that call's messages.
+    void filterByCallId(const QString &callId);
+
 private slots:
     void applyFilters();
     void onClear();

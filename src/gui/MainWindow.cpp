@@ -10,6 +10,7 @@
 #include "gui/panels/SettingsPanel.h"
 #include "gui/panels/ToolsPage.h"
 #include "gui/panels/ConversationWorkspacePanel.h"
+#include "gui/panels/CallWorkspacePanel.h"
 #include "gui/panels/messaging/ClientMessagingController.h"
 #include "gui/panels/messaging/ClientMessagingView.h"
 #include "AppVersion.h"
@@ -644,12 +645,6 @@ QWidget *MainWindow::buildClientsPage()
         return btn;
     };
 
-    auto makeStatusCard = [](const QString &title, const QString &tip, QWidget *parent) {
-        auto *card = new StatusCard(title, parent);
-        card->setTooltipText(tip);
-        return card;
-    };
-
     // ------------------------------------------------------------------
     // LEFT COLUMN: call control + dialpad + contacts (wrapped in scroll area)
     // ------------------------------------------------------------------
@@ -676,46 +671,11 @@ QWidget *MainWindow::buildClientsPage()
     m_clientsTargetInput->setMinimumHeight(34);
     callLayout->addWidget(m_clientsTargetInput);
 
-    auto *btnFlowHost = new QWidget(callGroup);
-    auto *btnGrid = new QGridLayout(btnFlowHost);
-    btnGrid->setContentsMargins(0, 0, 0, 0);
-    btnGrid->setHorizontalSpacing(6);
-    btnGrid->setVerticalSpacing(6);
-    btnGrid->setColumnStretch(0, 1);
-    btnGrid->setColumnStretch(1, 1);
-    btnGrid->setColumnStretch(2, 1);
-    btnGrid->setColumnStretch(3, 1);
-    auto *callBtn = makeActionButton(tr("Call"), btnFlowHost);
-    auto *answerBtn = makeActionButton(tr("Answer"), btnFlowHost);
-    auto *rejectBtn = makeActionButton(tr("Reject"), btnFlowHost);
-    auto *hangupBtn = makeActionButton(tr("Hangup"), btnFlowHost);
-    auto *muteBtn = makeActionButton(tr("Mute"), btnFlowHost, true);
-    auto *holdBtn = makeActionButton(tr("Pause"), btnFlowHost, true);
-    auto *requestVideoBtn = makeActionButton(tr("Request Video"), btnFlowHost, true);
-    auto *requestRttBtn = makeActionButton(tr("Request RTT"), btnFlowHost, true);
-    callBtn->setProperty("callRole", QStringLiteral("call"));
-    answerBtn->setProperty("callRole", QStringLiteral("answer"));
-    rejectBtn->setProperty("callRole", QStringLiteral("reject"));
-    hangupBtn->setProperty("callRole", QStringLiteral("hangup"));
-    muteBtn->setProperty("callRole", QStringLiteral("mute"));
-    holdBtn->setProperty("callRole", QStringLiteral("pause"));
-    requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
-    requestRttBtn->setProperty("callRole", QStringLiteral("requestRtt"));
-    // Initial visibility: no active call at startup
-    answerBtn->setVisible(false);
-    rejectBtn->setVisible(false);
-    hangupBtn->setVisible(false);
-
-    btnGrid->addWidget(callBtn, 0, 0);
-    btnGrid->addWidget(answerBtn, 0, 1);
-    btnGrid->addWidget(rejectBtn, 0, 2);
-    btnGrid->addWidget(hangupBtn, 0, 3);
-    btnGrid->addWidget(muteBtn, 1, 0);
-    btnGrid->addWidget(holdBtn, 1, 1);
-    btnGrid->addWidget(requestVideoBtn, 1, 2);
-    btnGrid->addWidget(requestRttBtn, 1, 3);
-    callLayout->addWidget(btnFlowHost);
-
+    // Task W113: the call-control buttons (call/answer/reject/hangup/mute/
+    // hold/request-video/request-RTT) moved into CallWorkspacePanel, which
+    // now owns every call-control widget — see the CENTER COLUMN section
+    // below. This group keeps only the shared dial target input and its
+    // clear/backspace helpers.
     auto *actionRow = new QHBoxLayout();
     actionRow->setSpacing(6);
     auto *clearTargetBtn = makeActionButton(tr("Clear"), callGroup);
@@ -777,11 +737,8 @@ QWidget *MainWindow::buildClientsPage()
     });
     connect(m_conversationWorkspacePanel, &ConversationWorkspacePanel::callRequested,
             this, [this](const QString &peerUri) {
-        if (!SipManager::instance().makeCall(peerUri)) {
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("Call from conversation failed for %1 (call already active or invalid URI)")
-                    .arg(peerUri));
-        }
+        if (m_callWorkspacePanel)
+            m_callWorkspacePanel->placeCall(peerUri);
     });
 
     split->addWidget(leftContainer);
@@ -794,123 +751,27 @@ QWidget *MainWindow::buildClientsPage()
     centerLayout->setContentsMargins(12, 12, 12, 12);
     centerLayout->setSpacing(10);
 
-    auto *statusGroup = new QGroupBox(tr("Status / Device"), centerWidget);
-    auto *statusLayout = new QVBoxLayout(statusGroup);
-    statusLayout->setContentsMargins(10, 10, 10, 10);
-    statusLayout->setSpacing(8);
-
-    auto *cardsArea = new QScrollArea(statusGroup);
-    cardsArea->setWidgetResizable(true);
-    cardsArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    cardsArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    cardsArea->setFrameShape(QFrame::NoFrame);
-    cardsArea->setMinimumHeight(160);
-
-    auto *cardsHost = new QWidget(cardsArea);
-    auto *cardsFlow = new FlowLayout(cardsHost, 4, 5, 5);
-    cardsHost->setLayout(cardsFlow);
-
-    auto *cardState       = makeStatusCard(tr("Call State"), tr("Current SIP call state"), cardsHost);
-    auto *cardDuration    = makeStatusCard(tr("Duration"), tr("Elapsed call duration"), cardsHost);
-    auto *cardAudio       = makeStatusCard(tr("Audio"), tr("Audio media state"), cardsHost);
-    auto *cardVideo       = makeStatusCard(tr("SIP Video"), tr("Video request / media state"), cardsHost);
-    auto *cardRtt         = makeStatusCard(tr("RTT"), tr("RTT request / media state"), cardsHost);
-    auto *cardLmpe        = makeStatusCard(tr("LMPE"), tr("LMPE capability state"), cardsHost);
-    auto *cardLocalVideo  = makeStatusCard(tr("Local Video"), tr("Local camera preview state"), cardsHost);
-    auto *cardRemoteVideo = makeStatusCard(tr("Remote Video"), tr("Remote video stream state"), cardsHost);
-    auto *cardVideoCodec  = makeStatusCard(tr("Video Codec"), tr("Preferred video codec"), cardsHost);
-    auto *cardBitrate     = makeStatusCard(tr("Bitrate"), tr("Configured video bitrate"), cardsHost);
-    auto *cardResolution  = makeStatusCard(tr("Resolution"), tr("Configured video resolution"), cardsHost);
-    auto *cardFps         = makeStatusCard(tr("FPS"), tr("Local preview frame rate"), cardsHost);
-    auto *cardRemoteUri   = makeStatusCard(tr("Remote URI"), tr("Remote SIP URI"), cardsHost);
-    auto *cardLocalAccount= makeStatusCard(tr("Local Account"), tr("Active SIP account URI"), cardsHost);
-    auto *cardPacketLoss  = makeStatusCard(tr("Packet Loss"), tr("Frame drops this second"), cardsHost);
-    auto *cardJitter      = makeStatusCard(tr("Jitter"), tr("RTP jitter"), cardsHost);
-    auto *cardLatency     = makeStatusCard(tr("Latency"), tr("Round-trip latency"), cardsHost);
-    auto *cardCamera      = makeStatusCard(tr("Camera"), tr("Hardware camera state"), cardsHost);
-
-    auto callStartTime = std::make_shared<QDateTime>();
-    auto *durationTimer = new QTimer(page);
-    durationTimer->setInterval(1000);
-
-    StatusCard *allCards[] = {
-        cardState, cardDuration, cardAudio, cardVideo, cardRtt, cardLmpe, cardLocalVideo,
-        cardRemoteVideo, cardCamera, cardVideoCodec, cardBitrate, cardResolution, cardFps,
-        cardRemoteUri, cardLocalAccount, cardPacketLoss, cardJitter, cardLatency
-    };
-    for (StatusCard *card : allCards)
-        cardsFlow->addWidget(card);
-
-    cardCamera->setValue(tr("On"));
-    cardCamera->setStatus(QStringLiteral("ok"));
-
-    cardsArea->setWidget(cardsHost);
-    statusLayout->addWidget(cardsArea);
-
-    // Live audio level meters (green→red): microphone capture + speaker output.
-    {
-        auto *meterGrid = new QGridLayout();
-        meterGrid->setHorizontalSpacing(6);
-        meterGrid->setVerticalSpacing(4);
-
-        auto *micMeterLabel = new QLabel(tr("Mic level"), statusGroup);
-        micMeterLabel->setStyleSheet("color: #888; font-size: 10px;");
-        auto *micMeter = new AudioLevelMeter(statusGroup);
-        micMeter->setToolTip(tr("Microphone input level of the active call"));
-
-        auto *spkMeterLabel = new QLabel(tr("Speaker level"), statusGroup);
-        spkMeterLabel->setStyleSheet("color: #888; font-size: 10px;");
-        auto *spkMeter = new AudioLevelMeter(statusGroup);
-        spkMeter->setToolTip(tr("Speaker output level of the active call"));
-
-        meterGrid->addWidget(micMeterLabel, 0, 0);
-        meterGrid->addWidget(micMeter,      0, 1);
-        meterGrid->addWidget(spkMeterLabel, 1, 0);
-        meterGrid->addWidget(spkMeter,      1, 1);
-        meterGrid->setColumnStretch(1, 1);
-        statusLayout->addLayout(meterGrid);
-
-        connect(&AudioMediaManager::instance(), &AudioMediaManager::inputLevelChanged,
-                micMeter, &AudioLevelMeter::setLevel);
-        connect(&AudioMediaManager::instance(), &AudioMediaManager::outputLevelChanged,
-                spkMeter, &AudioLevelMeter::setLevel);
-    }
-
-    auto *deviceRow = new QHBoxLayout();
-    deviceRow->setSpacing(6);
-
-    auto *micLabel = new QLabel(tr("Microphone"), statusGroup);
-    auto *speakerLabel = new QLabel(tr("Speaker"), statusGroup);
-    auto *cameraLabel = new QLabel(tr("Camera"), statusGroup);
-    auto *micCombo = new QComboBox(statusGroup);
-    auto *speakerCombo = new QComboBox(statusGroup);
-    auto *cameraCombo = new QComboBox(statusGroup);
-    micCombo->setMinimumHeight(28);
-    speakerCombo->setMinimumHeight(28);
-    cameraCombo->setMinimumHeight(28);
-    deviceRow->addWidget(micLabel);
-    deviceRow->addWidget(micCombo, 1);
-    deviceRow->addWidget(speakerLabel);
-    deviceRow->addWidget(speakerCombo, 1);
-    deviceRow->addWidget(cameraLabel);
-    deviceRow->addWidget(cameraCombo, 1);
-    statusLayout->addLayout(deviceRow);
-
-    // Camera On/Off button: controls local hardware camera (NOT SIP video negotiation)
-    auto *cameraCtrlRow = new QHBoxLayout();
-    cameraCtrlRow->setSpacing(6);
-    auto *cameraOnOffBtn = new QPushButton(tr("Camera Off"), statusGroup);
-    cameraOnOffBtn->setObjectName(QStringLiteral("CameraOnOffBtn"));
-    cameraOnOffBtn->setCheckable(true);
-    cameraOnOffBtn->setChecked(false); // starts as "camera is on, click to turn off"
-    cameraOnOffBtn->setMinimumHeight(32);
-    cameraOnOffBtn->setProperty("callRole", QStringLiteral("cameraOff"));
-    cameraCtrlRow->addWidget(new QLabel(tr("Hardware Camera:"), statusGroup));
-    cameraCtrlRow->addWidget(cameraOnOffBtn);
-    cameraCtrlRow->addStretch(1);
-    statusLayout->addLayout(cameraCtrlRow);
-
-    centerLayout->addWidget(statusGroup, 0);
+    // Task W113: every call control (header, media status grid, device
+    // status, jitter/loss/RTT stats, selected/negotiated media, the
+    // emergency-call test-mode section) is now consolidated into
+    // CallWorkspacePanel, a single source of truth (CallInfoModel) instead
+    // of the ad hoc lambdas previously inlined here. It reads/writes the
+    // shared dial target input so calls launched from the dialpad,
+    // conversation list, call history, or contacts all go through the same
+    // normalization + CallMediaOptions path (placeCall()).
+    m_callWorkspacePanel = new CallWorkspacePanel(m_clientsTargetInput, centerWidget);
+    connect(m_callWorkspacePanel, &CallWorkspacePanel::statusMessageRequested,
+            this, [this](const QString &message, int timeoutMs) {
+        if (m_statusBar)
+            m_statusBar->showMessage(message, timeoutMs);
+    });
+    connect(m_callWorkspacePanel, &CallWorkspacePanel::openSipLadderRequested,
+            this, [this](const QString &callId) {
+        onNavPageRequested(QStringLiteral("sipladder"));
+        if (m_toolsPage)
+            m_toolsPage->filterSipLadderByCallId(callId);
+    });
+    centerLayout->addWidget(m_callWorkspacePanel, 0);
 
     m_clientsVideoPanel = new VideoPanel(centerWidget);
     m_clientsVideoPanel->setObjectName("ClientsVideoPanel");
@@ -969,43 +830,26 @@ QWidget *MainWindow::buildClientsPage()
             m_clientMessagingView->setPeerUri(text);
     });
 
+
     // ------------------------------------------------------------------
     // Wiring
     // ------------------------------------------------------------------
-    auto refreshSelectionCombos = [this, micCombo, speakerCombo, cameraCombo]() {
-        const MediaDeviceSelectionModel sel(&MediaDeviceManager::instance());
-        const QString curMic = sel.selectedMicrophone().id;
-        const QString curSpk = sel.selectedSpeaker().id;
-        const QString curCam = sel.selectedCamera().id;
-
-        const auto fillCombo = [](QComboBox *combo, const QList<MediaDevice> &devices,
-                                  const QString &currentId, const QString &defaultLabel) {
-            const QSignalBlocker blocker(combo);
-            combo->clear();
-            combo->addItem(defaultLabel, QString{});
-            for (const MediaDevice &d : devices)
-                combo->addItem(d.displayName, d.id);
-            for (int i = 0; i < combo->count(); ++i) {
-                if (combo->itemData(i).toString() == currentId) {
-                    combo->setCurrentIndex(i);
-                    return;
-                }
-            }
-        };
-
-        fillCombo(micCombo, MediaDeviceManager::instance().listMicrophones(), curMic,
-                  MainWindow::tr("Default"));
-        fillCombo(speakerCombo, MediaDeviceManager::instance().listSpeakers(), curSpk,
-                  MainWindow::tr("Default"));
-        fillCombo(cameraCombo, MediaDeviceManager::instance().listCameras(), curCam,
-                  MainWindow::tr("Default"));
-    };
-
-    refreshSelectionCombos();
-
+    // Task W113: device-combo population, call-control button behavior,
+    // status-card refresh, and all SipManager/VideoMediaManager/RttSession
+    // signal handling now live inside CallWorkspacePanel (constructed
+    // above, in the CENTER COLUMN section) — it is self-contained and
+    // connects to those singletons itself. What remains here is only what
+    // MainWindow itself must still own: the shared dial target input's
+    // clear/backspace helpers, and the other call-launch entrypoints
+    // (contacts, call history, conversation list) routed through
+    // CallWorkspacePanel::placeCall() so they all get the same URI
+    // normalization + CallMediaOptions + status-bar-feedback behavior the
+    // dialpad already had.
     connect(m_contactsPanel, &ContactsPanel::dialRequested, this, [this](const QString &uri) {
         if (m_clientsTargetInput)
             m_clientsTargetInput->setText(uri);
+        if (m_callWorkspacePanel)
+            m_callWorkspacePanel->placeCall(uri);
     });
 
     connect(clearTargetBtn, &QPushButton::clicked, this, [this]() {
@@ -1017,638 +861,23 @@ QWidget *MainWindow::buildClientsPage()
             m_clientsTargetInput->backspace();
     });
 
-    auto refreshHoldButton = [holdBtn]() {
-        const CallState state = SipManager::instance().callState();
-        const bool held = (state == CallState::Held);
-        const bool active = (state == CallState::Active || state == CallState::Held);
-        QSignalBlocker blocker(holdBtn);
-        holdBtn->setEnabled(active);
-        holdBtn->setChecked(held);
-        holdBtn->setText(held ? MainWindow::tr("Resume") : MainWindow::tr("Pause"));
-        holdBtn->setProperty("callRole", held ? QStringLiteral("resume") : QStringLiteral("pause"));
-        holdBtn->style()->unpolish(holdBtn);
-        holdBtn->style()->polish(holdBtn);
-    };
-
-    auto videoRequestFailed = std::make_shared<bool>(false);
-    auto videoRequestPending = std::make_shared<bool>(false);
-    auto videoRequestBlinkOn = std::make_shared<bool>(false);
-    auto rttRequestFailed = std::make_shared<bool>(false);
-    auto rttRequestPending = std::make_shared<bool>(false); // incoming RTT request awaiting user accept
-
-    auto holdConfirmTimer = new QTimer(page);
-    holdConfirmTimer->setSingleShot(true);
-    holdConfirmTimer->setInterval(1200);
-    auto videoRequestBlinkTimer = new QTimer(page);
-    videoRequestBlinkTimer->setSingleShot(false);
-    videoRequestBlinkTimer->setInterval(500);
-
-    // Returns the label to use for the RTT/text button based on real profile capability.
-    // RTT is the only functionally implemented text protocol; LMPE is infrastructure only.
-    auto textProtocolLabel = []() -> QString {
-        const SipProfile prof = SipProfileManager::instance().activeProfile();
-        if (!prof.isNull() && prof.enableLmpe && !prof.enableRtt)
-            return QStringLiteral("LMPE"); // Profile configured for LMPE-only (infrastructure)
-        return QStringLiteral("RTT");      // Default: RTT is functional
-    };
-
-    auto refreshRequestRttButton = [requestRttBtn, rttRequestPending, textProtocolLabel]() {
-        const bool rttActive  = SipManager::instance().rttSession()->isActive();
-        const bool acceptMode = *rttRequestPending && !rttActive;
-        const QString proto   = textProtocolLabel();
-        QSignalBlocker b(requestRttBtn);
-        if (rttActive) {
-            requestRttBtn->setText(MainWindow::tr("%1 Active").arg(proto));
-            requestRttBtn->setProperty("callRole", QStringLiteral("rttActive"));
-            requestRttBtn->setEnabled(false);
-            requestRttBtn->setChecked(true);
-        } else if (acceptMode) {
-            requestRttBtn->setText(MainWindow::tr("Accept %1").arg(proto));
-            requestRttBtn->setProperty("callRole", QStringLiteral("acceptRtt"));
-            requestRttBtn->setEnabled(true);
-            requestRttBtn->setChecked(false);
-        } else {
-            requestRttBtn->setText(MainWindow::tr("Request %1").arg(proto));
-            requestRttBtn->setProperty("callRole", QStringLiteral("requestRtt"));
-            requestRttBtn->setEnabled(true);
-            requestRttBtn->setChecked(false);
-        }
-        requestRttBtn->style()->unpolish(requestRttBtn);
-        requestRttBtn->style()->polish(requestRttBtn);
-    };
-
-    auto refreshRequestVideoButton = [requestVideoBtn, videoRequestPending, videoRequestBlinkOn]() {
-        const bool videoActive = VideoMediaManager::instance().isVideoActive();
-        const bool acceptMode  = *videoRequestPending && !videoActive;
-        QSignalBlocker blocker(requestVideoBtn);
-        if (videoActive) {
-            // Video stream is active — button shows "Video On", disabled.
-            // The user cannot toggle it off; video ends via the remote or hangup.
-            requestVideoBtn->setText(MainWindow::tr("Video On"));
-            requestVideoBtn->setProperty("callRole", QStringLiteral("videoActive"));
-            requestVideoBtn->setProperty("videoAlert", false);
-            requestVideoBtn->setEnabled(false);
-            requestVideoBtn->setChecked(true);
-        } else if (acceptMode) {
-            requestVideoBtn->setText(MainWindow::tr("Accept Video"));
-            requestVideoBtn->setProperty("callRole", QStringLiteral("acceptVideo"));
-            requestVideoBtn->setProperty("videoAlert", *videoRequestBlinkOn);
-            requestVideoBtn->setEnabled(true);
-            requestVideoBtn->setChecked(false); // must be unchecked so click fires toggled(true)
-        } else {
-            requestVideoBtn->setText(MainWindow::tr("Request Video"));
-            requestVideoBtn->setProperty("callRole", QStringLiteral("requestVideo"));
-            requestVideoBtn->setProperty("videoAlert", false);
-            requestVideoBtn->setEnabled(true);
-            requestVideoBtn->setChecked(false);
-        }
-        requestVideoBtn->style()->unpolish(requestVideoBtn);
-        requestVideoBtn->style()->polish(requestVideoBtn);
-    };
-    connect(videoRequestBlinkTimer, &QTimer::timeout, this, [videoRequestBlinkOn, refreshRequestVideoButton]() {
-        *videoRequestBlinkOn = !*videoRequestBlinkOn;
-        refreshRequestVideoButton();
-    });
-
-    connect(callBtn, &QPushButton::clicked, this, [this, requestVideoBtn, requestRttBtn]() {
-        const QString raw = m_clientsTargetInput ? m_clientsTargetInput->text().trimmed() : QString{};
-        if (raw.isEmpty()) {
-            if (m_statusBar)
-                m_statusBar->showMessage(tr("Enter a SIP URI or number to call"), 4000);
-            return;
-        }
-        const QString fallbackDomain = SipProfileManager::instance().activeProfile().sipDomain;
-        const SipUriNormalizer::Result result = SipUriNormalizer::normalize(raw, fallbackDomain);
-        if (!result.isValid) {
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("Dial URI invalid: input=\"%1\" error=\"%2\"")
-                    .arg(raw, result.error));
-            if (m_statusBar)
-                m_statusBar->showMessage(tr("Invalid URI: %1").arg(result.error), 5000);
-            return;
-        }
-        if (m_clientsTargetInput && result.uri != raw)
-            m_clientsTargetInput->setText(result.uri);
-        CallType callType = CallType::AudioOnly;
-        if (requestVideoBtn->isChecked() && requestRttBtn->isChecked())
-            callType = CallType::AudioVideoRtt;
-        else if (requestVideoBtn->isChecked())
-            callType = CallType::AudioVideo;
-        else if (requestRttBtn->isChecked())
-            callType = CallType::AudioRtt;
-        const CallMediaOptions opts = CallMediaOptions::fromType(callType);
-        Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("Placing call from Clients layout: uri=%1 type=%2")
-                .arg(result.uri, callTypeName(callType)));
-        if (!SipManager::instance().makeCall(result.uri, opts)) {
-            // makeCall() returns false without any other user-visible signal
-            // (no callStateChanged/callFailed is ever emitted, since no
-            // SipCall was created) — most commonly because a call is
-            // already active. Without this, the Call button silently did
-            // nothing, which is indistinguishable from a hang.
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("Call to %1 rejected — see the warning above/in Diagnostics for the exact reason")
-                    .arg(result.uri));
-            if (m_statusBar)
-                m_statusBar->showMessage(
-                    tr("Call could not be started (see Diagnostics log for details)"), 5000);
-        }
-    });
-    connect(answerBtn, &QPushButton::clicked, this, []() { SipManager::instance().answerCall(); });
-    connect(rejectBtn, &QPushButton::clicked, this, []() { SipManager::instance().rejectCall(); });
-    connect(hangupBtn, &QPushButton::clicked, this, []() { SipManager::instance().hangupCall(); });
-    connect(muteBtn, &QPushButton::toggled, this, [](bool on) {
-        SipManager::instance().setCallMuted(on);
-    });
-    connect(holdBtn, &QPushButton::toggled, this, [this, holdBtn, holdConfirmTimer, refreshHoldButton](bool on) {
-        Logger::instance().info(LogCategory::Sip,
-            on ? QStringLiteral("Pause requested") : QStringLiteral("Resume requested"));
-        holdBtn->setText(on ? tr("Pausing...") : tr("Resuming..."));
-        holdConfirmTimer->start();
-        const bool ok = on ? SipManager::instance().holdCall() : SipManager::instance().resumeCall();
-        if (!ok) {
-            holdConfirmTimer->stop();
-            Logger::instance().warn(LogCategory::Sip, QStringLiteral("Pause/resume failed"));
-            refreshHoldButton();
-        }
-    });
-
-    connect(holdConfirmTimer, &QTimer::timeout, this, [this, holdBtn, refreshHoldButton]() {
-        const CallState state = SipManager::instance().callState();
-        const bool desiredHold = holdBtn->isChecked();
-        const bool confirmed = desiredHold ? (state == CallState::Held)
-                                           : (state == CallState::Active);
-        if (confirmed) {
-            Logger::instance().info(LogCategory::Sip,
-                desiredHold ? QStringLiteral("Pause active") : QStringLiteral("Resume active"));
-            refreshHoldButton();
-            return;
-        }
-
-        Logger::instance().warn(LogCategory::Sip, QStringLiteral("Pause/resume failed"));
-        QSignalBlocker blocker(holdBtn);
-        holdBtn->setChecked(state == CallState::Held);
-        refreshHoldButton();
-    });
-
-    connect(requestVideoBtn, &QPushButton::toggled, this,
-            [this, cardVideo, requestVideoBtn, videoRequestFailed, videoRequestPending,
-             videoRequestBlinkOn, refreshRequestVideoButton, videoRequestBlinkTimer](bool enabled) {
-        *videoRequestFailed = false;
-        const bool acceptMode = *videoRequestPending && !VideoMediaManager::instance().isVideoActive();
-        if (enabled && !SipManager::instance().hasPjsipVideoCapture()) {
-            // PJSIP has no capture backend (PJMEDIA_VIDEO_DEV_HAS_DSHOW=0).
-            // Video can only be received, not transmitted.
-            cardVideo->setValue(tr("Receive-only video"));
-            cardVideo->setStatus(QStringLiteral("warn"));
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("PJSIP video capture backend unavailable; "
-                               "Qt preview is local only."));
-        } else {
-            cardVideo->setValue(enabled ? tr("Requested") : tr("Not requested"));
-            cardVideo->setStatus(enabled ? QStringLiteral("warn") : QString{});
-        }
-        if (SipManager::instance().callState() == CallState::Idle
-            || SipManager::instance().callState() == CallState::Failed) {
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Request Video %1 will apply on next call")
-                    .arg(enabled ? QStringLiteral("ON") : QStringLiteral("OFF")));
-            return;
-        }
-        // In acceptMode, the button click always means "Accept Video" (send re-INVITE with
-        // video ON), regardless of whether the click unchecked or checked the button.
-        // Without this, a button that was previously checked=true (from "Video On") will
-        // fire toggled(false) when clicked in acceptMode, wrongly sending video=OFF.
-        const bool sendEnabled = acceptMode ? true : enabled;
-        if (acceptMode) {
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Accepting pending incoming video request"));
-        }
-        if (!SipManager::instance().requestCallVideo(sendEnabled)) {
-            *videoRequestFailed = true;
-            cardVideo->setValue(tr("Failed"));
-            cardVideo->setStatus(QStringLiteral("err"));
-            if (acceptMode) {
-                *videoRequestPending = true;
-                *videoRequestBlinkOn = true;
-                videoRequestBlinkTimer->start();
-            }
-            refreshRequestVideoButton();
-        } else if (acceptMode) {
-            *videoRequestPending = false;
-            *videoRequestBlinkOn = false;
-            videoRequestBlinkTimer->stop();
-            refreshRequestVideoButton();
-        }
-    });
-    connect(requestRttBtn, &QPushButton::toggled, this,
-            [this, cardRtt, requestRttBtn, rttRequestFailed, rttRequestPending,
-             refreshRequestRttButton, textProtocolLabel](bool checked) {
-        *rttRequestFailed = false;
-        const bool acceptMode = *rttRequestPending && !SipManager::instance().rttSession()->isActive();
-        const QString proto = textProtocolLabel();
-        if (acceptMode) {
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Accepting text request: protocol=%1").arg(proto));
-            if (!SipManager::instance().acceptIncomingRtt()) {
-                *rttRequestFailed = true;
-                cardRtt->setValue(tr("Failed"));
-                cardRtt->setStatus(QStringLiteral("err"));
-                *rttRequestPending = true;
-                refreshRequestRttButton();
-            } else {
-                *rttRequestPending = false;
-                refreshRequestRttButton();
-            }
-            return;
-        }
-        if (SipManager::instance().callState() == CallState::Idle
-            || SipManager::instance().callState() == CallState::Failed) {
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Requesting text protocol: protocol=%1 (will apply on next call)").arg(proto));
-            cardRtt->setValue(checked ? tr("Requested") : tr("Not requested"));
-            cardRtt->setStatus(checked ? QStringLiteral("warn") : QString{});
-            return;
-        }
-        Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("Requesting text protocol: protocol=%1 enabled=%2").arg(proto).arg(checked));
-        cardRtt->setValue(checked ? tr("Requested") : tr("Not requested"));
-        cardRtt->setStatus(checked ? QStringLiteral("warn") : QString{});
-        if (!SipManager::instance().requestCallRtt(checked)) {
-            *rttRequestFailed = true;
-            cardRtt->setValue(tr("Failed"));
-            cardRtt->setStatus(QStringLiteral("err"));
-        }
-        refreshRequestRttButton();
-    });
-
-    connect(micCombo, &QComboBox::currentIndexChanged, this, [micCombo](int idx) {
-        AudioMediaManager::instance().setMicrophone(micCombo->itemData(idx).toString());
-    });
-    connect(speakerCombo, &QComboBox::currentIndexChanged, this, [speakerCombo](int idx) {
-        AudioMediaManager::instance().setSpeaker(speakerCombo->itemData(idx).toString());
-    });
-    connect(cameraCombo, &QComboBox::currentIndexChanged, this, [cameraCombo](int idx) {
-        VideoMediaManager::instance().setCamera(cameraCombo->itemData(idx).toString());
-    });
-
-    // Camera On/Off: delegates to CameraController singleton so Settings and
-    // Clients always reflect the same hardware state; LED turns off when released.
-    connect(cameraOnOffBtn, &QPushButton::clicked, this,
-            [cameraOnOffBtn](bool checked) {
-        // checked = camera OFF requested (button shows "Camera On" when camera is off)
-        CameraController::instance().setEnabled(!checked,
-            QStringLiteral("Clients"));
-        cameraOnOffBtn->style()->unpolish(cameraOnOffBtn);
-        cameraOnOffBtn->style()->polish(cameraOnOffBtn);
-    });
-
-    // Sync button + cards whenever CameraController changes (Settings, VideoPanel, or here)
-    connect(&CameraController::instance(), &CameraController::enabledChanged,
-            page, [cameraOnOffBtn, cardCamera](bool enabled) {
-        QSignalBlocker b(cameraOnOffBtn);
-        cameraOnOffBtn->setChecked(!enabled);
-        cameraOnOffBtn->setText(enabled ? MainWindow::tr("Camera Off")
-                                        : MainWindow::tr("Camera On"));
-        cameraOnOffBtn->setProperty("callRole",
-            enabled ? QStringLiteral("cameraOff") : QStringLiteral("cameraOn"));
-        cameraOnOffBtn->style()->unpolish(cameraOnOffBtn);
-        cameraOnOffBtn->style()->polish(cameraOnOffBtn);
-        cardCamera->setValue(enabled ? MainWindow::tr("On") : MainWindow::tr("Off"));
-        cardCamera->setStatus(enabled ? QStringLiteral("ok") : QStringLiteral("warn"));
-    });
-
-    auto refreshCards = [=]() {
-        const CallState state = SipManager::instance().callState();
-        const QString statusText = SipManager::instance().callStatusText();
-        const bool active = (state == CallState::Active || state == CallState::Held);
-        const bool audioActive = (state != CallState::Idle && state != CallState::Failed);
-        const bool videoActive = VideoMediaManager::instance().isVideoActive();
-        const bool localVideo = VideoMediaManager::instance().isLocalVideoAvailable();
-        const bool remoteVideo = VideoMediaManager::instance().isRemoteVideoAvailable();
-        const QString remoteUri = SipManager::instance().activeCallRemoteUri();
-        const QString localAccount = SipProfileManager::instance().activeProfile().isNull()
-            ? QString{} : SipProfileManager::instance().activeProfile().effectiveSipUri();
-        const VideoSettings vs = VideoQualityManager::instance().current();
-
-        cardState->setValue(statusText.isEmpty() ? tr("—") : statusText);
-        cardState->setStatus(active ? QStringLiteral("ok")
-                                    : (state == CallState::Idle ? QString{} : QStringLiteral("warn")));
-
-        if (state == CallState::Active)
-            cardDuration->setStatus(QStringLiteral("ok"));
-        else if (state == CallState::Held)
-            cardDuration->setStatus(QStringLiteral("warn"));
-        else
-            cardDuration->setStatus({});
-
-        cardDuration->setValue((state == CallState::Active || state == CallState::Held)
-                                   ? QStringLiteral("00:00:00")
-                                   : QStringLiteral("—"));
-        cardAudio->setValue(audioActive ? tr("Connected") : QStringLiteral("—"));
-        cardAudio->setStatus(audioActive ? QStringLiteral("ok") : QString{});
-        if (*videoRequestFailed) {
-            cardVideo->setValue(tr("Failed"));
-            cardVideo->setStatus(QStringLiteral("err"));
-        } else {
-            const bool acceptMode = *videoRequestPending && !videoActive;
-            const bool noCapture = videoActive && !SipManager::instance().hasPjsipVideoCapture();
-            cardVideo->setValue(videoActive
-                                    ? (noCapture ? tr("Negotiated, no local capture") : tr("Active"))
-                                    : (acceptMode
-                                           ? tr("Accept Video")
-                                           : (requestVideoBtn->isChecked()
-                                           ? (SipManager::instance().hasPjsipVideoCapture()
-                                                  ? tr("Requested")
-                                                  : tr("Receive-only video"))
-                                           : tr("Not requested"))));
-            cardVideo->setStatus(videoActive ? QStringLiteral("ok")
-                                             : (acceptMode || requestVideoBtn->isChecked()
-                                                    ? QStringLiteral("warn")
-                                                    : QString{}));
-        }
-        if (*rttRequestFailed) {
-            cardRtt->setValue(tr("Failed"));
-            cardRtt->setStatus(QStringLiteral("err"));
-        } else {
-            cardRtt->setValue(SipManager::instance().rttSession()->isActive()
-                                  ? tr("Active")
-                                  : (requestRttBtn->isChecked()
-                                         ? tr("Requested")
-                                         : tr("Not requested")));
-            cardRtt->setStatus(SipManager::instance().rttSession()->isActive()
-                                   ? QStringLiteral("ok")
-                                   : (requestRttBtn->isChecked()
-                                          ? QStringLiteral("warn")
-                                          : QString{}));
-        }
-        cardLmpe->setValue(QStringLiteral("—"));
-        cardLmpe->setStatus({});
-        cardLocalVideo->setValue(localVideo ? tr("On") : tr("Off"));
-        cardLocalVideo->setStatus(localVideo ? QStringLiteral("ok") : QString{});
-        cardRemoteVideo->setValue(remoteVideo ? tr("On") : tr("Off"));
-        cardRemoteVideo->setStatus(remoteVideo ? QStringLiteral("ok") : QString{});
-        if (videoActive || localVideo) {
-            // Prefer what was actually negotiated for the active call; the
-            // configured settings are only a fallback while negotiating.
-            const VideoCodecInfo neg = SipManager::instance().activeVideoCodecInfo();
-            if (neg.isValid()) {
-                cardVideoCodec->setValue(neg.name);
-                cardBitrate->setValue(neg.bitrate > 0
-                    ? QStringLiteral("%1 kbps").arg(neg.bitrate / 1000)
-                    : QStringLiteral("—"));
-                cardResolution->setValue((neg.width > 0 && neg.height > 0)
-                    ? QStringLiteral("%1x%2").arg(neg.width).arg(neg.height)
-                    : QStringLiteral("—"));
-            } else {
-                cardVideoCodec->setValue(vs.codecOrder.isEmpty() ? QStringLiteral("—")
-                                                                 : vs.codecOrder.first());
-                cardBitrate->setValue(QStringLiteral("%1 kbps").arg(vs.bitrateKbps));
-                cardResolution->setValue(QStringLiteral("%1x%2")
-                                             .arg(vs.resolution.width())
-                                             .arg(vs.resolution.height()));
-            }
-            cardVideoCodec->setStatus(QStringLiteral("ok"));
-            cardBitrate->setStatus(QStringLiteral("ok"));
-            cardResolution->setStatus(QStringLiteral("ok"));
-            cardFps->setValue(QStringLiteral("%1 fps").arg(QString::number(vs.fps, 'f', 1)));
-        } else {
-            cardVideoCodec->setValue(QStringLiteral("—"));
-            cardVideoCodec->setStatus({});
-            cardBitrate->setValue(QStringLiteral("—"));
-            cardBitrate->setStatus({});
-            cardResolution->setValue(QStringLiteral("—"));
-            cardResolution->setStatus({});
-            cardFps->setValue(QStringLiteral("—"));
-        }
-        cardFps->setStatus((videoActive || localVideo)
-                               ? QStringLiteral("ok")
-                               : QString{});
-        cardRemoteUri->setValue(remoteUri.isEmpty() ? QStringLiteral("—") : remoteUri);
-        cardRemoteUri->setStatus(remoteUri.isEmpty() ? QString{} : QStringLiteral("ok"));
-        cardLocalAccount->setValue(localAccount.isEmpty() ? QStringLiteral("—") : localAccount);
-        cardLocalAccount->setStatus(localAccount.isEmpty() ? QString{} : QStringLiteral("ok"));
-        // RTP quality metrics from live RTCP stats; "—" when not reported.
-        {
-            const RtpStatsSnapshot rtp = SipManager::instance().currentRtpStats();
-            if (rtp.available && rtp.packetLossAvailable) {
-                cardPacketLoss->setValue(QStringLiteral("%1 %")
-                    .arg(rtp.packetLossPercent, 0, 'f', 1));
-                cardPacketLoss->setStatus(rtp.packetLossPercent > 1.0
-                    ? QStringLiteral("warn") : QStringLiteral("ok"));
-            } else {
-                cardPacketLoss->setValue(QStringLiteral("—"));
-                cardPacketLoss->setStatus({});
-            }
-            if (rtp.available && rtp.jitterAvailable) {
-                cardJitter->setValue(QStringLiteral("%1 ms").arg(rtp.jitterMs, 0, 'f', 1));
-                cardJitter->setStatus(rtp.jitterMs > 50.0
-                    ? QStringLiteral("warn") : QStringLiteral("ok"));
-            } else {
-                cardJitter->setValue(QStringLiteral("—"));
-                cardJitter->setStatus({});
-            }
-            if (rtp.available && rtp.rttAvailable) {
-                cardLatency->setValue(QStringLiteral("%1 ms").arg(rtp.rttMs, 0, 'f', 1));
-                cardLatency->setStatus(rtp.rttMs > 300.0
-                    ? QStringLiteral("warn") : QStringLiteral("ok"));
-            } else {
-                cardLatency->setValue(QStringLiteral("—"));
-                cardLatency->setStatus({});
-            }
-        }
-        refreshRequestVideoButton();
-    };
-    connect(&SipManager::instance(), &SipManager::rtpStatsChanged,
-            page, [=](const RtpStatsSnapshot &) { refreshCards(); });
-
-    connect(&SipManager::instance(), &SipManager::callStateChanged,
-            this, [=](CallState state, const QString &, int) {
-        const bool hasCall = (state != CallState::Idle && state != CallState::Failed);
-        answerBtn->setVisible(state == CallState::IncomingRinging);
-        rejectBtn->setVisible(state == CallState::IncomingRinging);
-        hangupBtn->setVisible(hasCall && state != CallState::IncomingRinging);
-        holdBtn->setEnabled(state == CallState::Active || state == CallState::Held);
-        muteBtn->setEnabled(state == CallState::Active);
-        callBtn->setEnabled(SipManager::instance().registrationState() == RegistrationState::Registered
-                            && (state == CallState::Idle || state == CallState::Failed));
-        if (state == CallState::Idle || state == CallState::Failed)
-            durationTimer->stop();
-        if (state == CallState::Idle || state == CallState::Failed)
-            *callStartTime = QDateTime();
-        if (state == CallState::Idle || state == CallState::Failed) {
-            *videoRequestPending = false;
-            *videoRequestBlinkOn = false;
-            videoRequestBlinkTimer->stop();
-            *rttRequestPending = false;
-            refreshRequestVideoButton();
-            refreshRequestRttButton();
-        }
-        if (state == CallState::Active || state == CallState::Held)
-            holdConfirmTimer->stop();
-        refreshHoldButton();
-        cardState->setValue(callStateDisplayText(state));
-        refreshCards();
-    });
-
     connect(&SipManager::instance(), &SipManager::registrationStateChanged,
-            this, [=](RegistrationState state, const QString &, int) {
-        callBtn->setEnabled(state == RegistrationState::Registered);
-        refreshCards();
-    });
-
-    connect(&SipManager::instance(), &SipManager::callConnected,
-            this, [=](const QString &) { refreshCards(); });
-    connect(&SipManager::instance(), &SipManager::callDisconnected,
-            this, [=](const QString &, const QString &, int) {
-        *videoRequestPending = false;
-        *videoRequestBlinkOn = false;
-        videoRequestBlinkTimer->stop();
-        *rttRequestPending = false;
-        refreshRequestVideoButton();
-        refreshRequestRttButton();
-        refreshCards();
-    });
-    connect(&SipManager::instance(), &SipManager::callFailed,
-            this, [=](const QString &, const QString &, int) {
-        *videoRequestPending = false;
-        *videoRequestBlinkOn = false;
-        videoRequestBlinkTimer->stop();
-        *rttRequestPending = false;
-        refreshRequestVideoButton();
-        refreshRequestRttButton();
-        refreshCards();
-    });
-    connect(&SipManager::instance(), &SipManager::audioMediaConnected,
-            this, [=]() { refreshCards(); });
-    connect(&SipManager::instance(), &SipManager::audioMediaDisconnected,
-            this, [=]() { refreshCards(); });
-    connect(&SipManager::instance(), &SipManager::videoMediaConnected,
-            this, [=]() {
-        *videoRequestFailed = false;
-        *videoRequestPending = false;
-        *videoRequestBlinkOn = false;
-        videoRequestBlinkTimer->stop();
-        refreshRequestVideoButton();
-        refreshCards();
-    });
-    connect(&SipManager::instance(), &SipManager::videoMediaDisconnected,
-            this, [=]() {
-        *videoRequestPending = false;
-        *videoRequestBlinkOn = false;
-        videoRequestBlinkTimer->stop();
-        refreshRequestVideoButton();
-        refreshCards();
-    });
-    connect(&SipManager::instance(), &SipManager::videoRequested,
-            this, [=]() {
-        *videoRequestFailed = false;
-        *videoRequestPending = true;
-        *videoRequestBlinkOn = true;
-        refreshRequestVideoButton();
-        videoRequestBlinkTimer->start();
-        refreshCards();
-    });
-    connect(&SipManager::instance(), &SipManager::rttRequested,
-            this, [=]() {
-        *rttRequestPending = true;
-        *rttRequestFailed  = false;
-        refreshRequestRttButton();
-        refreshCards();
-        Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("Incoming text request pending: protocol=RTT"));
-    });
-    connect(&SipManager::instance(), &SipManager::rttMediaConnected,
-            this, [=]() {
-        *rttRequestFailed  = false;
-        *rttRequestPending = false;
-        Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("Text protocol active: protocol=RTT"));
-        refreshRequestRttButton();
-        refreshCards();
-    });
-    connect(&SipManager::instance(), &SipManager::rttMediaDisconnected,
-            this, [=]() { refreshRequestRttButton(); refreshCards(); });
-    connect(&SipManager::instance(), &SipManager::rttRequestRejected,
-            this, [=]() {
-        *rttRequestPending = false;
-        *rttRequestFailed  = false;
-        Logger::instance().info(LogCategory::Sip,
-            QStringLiteral("Text protocol request rejected: protocol=RTT"));
-        refreshRequestRttButton();
-        refreshCards();
-    });
-    connect(&SipManager::instance(), &SipManager::rttNegotiationFailed,
-            this, [=](const QString &reason) {
-        *rttRequestPending = false;
-        *rttRequestFailed  = true;
-        Logger::instance().warn(LogCategory::Sip,
-            QStringLiteral("Text protocol negotiation failed: protocol=RTT reason=%1").arg(reason));
-        refreshRequestRttButton();
-        refreshCards();
-    });
-    connect(&VideoStatistics::instance(), &VideoStatistics::statsUpdated,
-            this, [=](float fps, int drops) {
-        if (VideoMediaManager::instance().isVideoActive() || VideoMediaManager::instance().isLocalVideoAvailable()) {
-            cardFps->setValue(QStringLiteral("%1 fps").arg(QString::number(fps, 'f', 1)));
-            cardFps->setStatus(QStringLiteral("ok"));
-            cardPacketLoss->setValue(QStringLiteral("%1").arg(drops));
-            cardPacketLoss->setStatus(drops > 0 ? QStringLiteral("warn") : QStringLiteral("ok"));
-        }
-    });
-    connect(&MediaDeviceManager::instance(), &MediaDeviceManager::devicesChanged,
-            this, [=]() { refreshSelectionCombos(); refreshCards(); });
-    connect(&VideoMediaManager::instance(), &VideoMediaManager::cameraChanged,
-            this, [=]() { refreshSelectionCombos(); });
-
-    connect(m_contactsPanel, &ContactsPanel::dialRequested,
-            this, [this, callBtn](const QString &uri) {
-        if (m_clientsTargetInput)
-            m_clientsTargetInput->setText(uri);
-        if (callBtn->isEnabled())
-            callBtn->click();
-    });
-
-    connect(&SipManager::instance(), &SipManager::registrationStateChanged,
-            this, [=](RegistrationState state, const QString &, int) {
+            this, [this](RegistrationState state, const QString &, int) {
         if (m_clientsTargetInput)
             m_clientsTargetInput->setEnabled(state == RegistrationState::Registered);
     });
 
     if (m_clientsTargetInput) {
-        connect(m_clientsTargetInput, &QLineEdit::returnPressed,
-                callBtn, &QPushButton::click);
+        connect(m_clientsTargetInput, &QLineEdit::returnPressed, this, [this]() {
+            if (m_callWorkspacePanel)
+                m_callWorkspacePanel->placeCall(m_clientsTargetInput->text());
+        });
     }
 
     const bool registeredNow = (SipManager::instance().registrationState() == RegistrationState::Registered);
-    callBtn->setEnabled(registeredNow);
     if (m_clientsTargetInput)
         m_clientsTargetInput->setEnabled(registeredNow);
-    refreshHoldButton();
 
-    connect(&SipManager::instance(), &SipManager::callConnected,
-            this, [=](const QString &) mutable {
-        *callStartTime = QDateTime::currentDateTime();
-        durationTimer->start();
-    });
-    connect(durationTimer, &QTimer::timeout, this, [=]() mutable {
-        if (!callStartTime->isValid()) {
-            cardDuration->setValue(QStringLiteral("00:00:00"));
-            return;
-        }
-        const int secs = callStartTime->secsTo(QDateTime::currentDateTime());
-        const int h = secs / 3600;
-        const int m = (secs % 3600) / 60;
-        const int s = secs % 60;
-        cardDuration->setValue(QStringLiteral("%1:%2:%3")
-            .arg(h, 2, 10, QLatin1Char('0'))
-            .arg(m, 2, 10, QLatin1Char('0'))
-            .arg(s, 2, 10, QLatin1Char('0')));
-    });
-
-    refreshCards();
-    refreshRequestRttButton();
-    QTimer::singleShot(0, page, [=]() { refreshCards(); refreshRequestRttButton(); });
     m_rttPanel->setRttSession(SipManager::instance().rttSession());
     return page;
 }
@@ -1660,11 +889,9 @@ QWidget *MainWindow::buildCallHistoryPage()
             this, [this](const QString &uri) {
         if (m_clientsTargetInput)
             m_clientsTargetInput->setText(uri);
-        onNavPageRequested(QStringLiteral("clients"));
-        if (!SipManager::instance().makeCall(uri)) {
-            Logger::instance().warn(LogCategory::Sip,
-                QStringLiteral("Call Back failed for %1 (call already active or invalid URI)").arg(uri));
-        }
+        onNavPageRequested(QStringLiteral("clients")); // ensurePage(1) runs synchronously
+        if (m_callWorkspacePanel)
+            m_callWorkspacePanel->placeCall(uri);
     });
     return m_callHistoryPanel;
 }

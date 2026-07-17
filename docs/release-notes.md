@@ -4,6 +4,68 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.0 — Call Workspace
+
+**Status:** complete
+**Branch:** `feature/w113-call-workspace`
+**Version bump type:** MINOR
+**Scope:** Second task of the W112–W117 roadmap. Consolidates every call
+control (header, identity, presence, duration, hold/mute/camera/video/RTT,
+media status grid, device status, jitter/loss/RTT stats, selected/
+negotiated media, a SIP Ladder deep link, and the emergency-call test-mode
+section) into one widget, `CallWorkspacePanel`, replacing ~1000 lines of ad
+hoc lambdas previously inlined in `MainWindow::buildClientsPage()`.
+
+### Features
+
+**`CallWorkspacePanel` (`src/gui/panels/CallWorkspacePanel.*`, new)**
+- Single source of truth for call display state via a new `CallInfoModel`
+  (`src/gui/panels/call/CallInfoModel.*`) — fed via setters, never inferred
+  from a button's checked-state.
+- Selected (what was requested at call-launch), negotiated (what the SDP
+  exchange produced), and actual (live RTP stats + video FPS/drops) media
+  are tracked as three distinct concepts, never conflated.
+- "Open in SIP Ladder" deep-links to Tools → SIP Ladder, pre-filtered to
+  the active call's Call-ID (new `SipLadderPage::filterByCallId()` /
+  `ToolsPage::filterSipLadderByCallId()`).
+- Supersedes the previously-orphaned `src/gui/panels/CallPanel` (compiled
+  but never instantiated anywhere) — folds in its emergency-call test-mode
+  section (the only GUI entrypoint for emergency calling, unreachable
+  before this task), audio-codec card, and initial-offer/selected-media
+  card. `CallPanel.{h,cpp}` is deleted.
+
+### Bug fixes
+
+- **Packet-loss / video-drop conflation**: a single status card was
+  previously overwritten by two unrelated data sources (RTCP packet-loss
+  percentage and the local video pipeline's frame-drop count). Now two
+  separate cards.
+- **`callRequested`/`redialRequested` skipped normalization**: calls placed
+  from the conversation list or call history previously bypassed URI
+  normalization and always placed audio-only calls, with failures never
+  surfaced to the user. All four call-launch entrypoints (dialpad,
+  conversation list, call history, contacts) now go through one
+  `CallWorkspacePanel::placeCall()`.
+
+### Limitations
+
+- "Multiple call isolation" means rigorous state reset between sequential
+  calls (`CallInfoModel::reset()` on every Idle/Failed transition) —
+  `SipManager` remains single-active-call by design; true concurrent calls
+  are out of scope, matching the same documented limitation from W111/W112.
+
+### Validation
+
+- Debug + Release rebuilt clean after every step.
+- Full CTest: 80/80 passed on both configs (79 baseline from W112 + 1 new
+  `test_call_info_model` suite).
+- Manual GUI smoke: app launch/idle reachable, no crash. Interactive
+  click-through (place a call, toggle hold/mute/video/RTT, SIP Ladder deep
+  link, emergency test-mode button) is NOT RUN in this session — no live
+  peer or input-automation tooling available.
+
+---
+
 ## v1.5.0 — Conversation Workspace
 
 **Status:** complete

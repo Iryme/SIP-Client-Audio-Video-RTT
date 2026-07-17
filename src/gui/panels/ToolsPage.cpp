@@ -166,3 +166,10 @@ void ToolsPage::openSubTab(const QString &key)
     ensureSubTab(index);
     m_tabs->setCurrentIndex(index);
 }
+
+void ToolsPage::filterSipLadderByCallId(const QString &callId)
+{
+    ensureSubTab(kIndexSipLadder);
+    if (m_ladderPage)
+        m_ladderPage->filterByCallId(callId);
+}
