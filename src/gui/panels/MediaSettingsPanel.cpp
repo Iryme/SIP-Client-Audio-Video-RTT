@@ -96,7 +96,7 @@ MediaSettingsPanel::MediaSettingsPanel(QWidget *parent)
     connect(&AudioMediaManager::instance(), &AudioMediaManager::speakerVolumeChanged,
             this, &MediaSettingsPanel::onSpeakerVolumeChanged);
     // Keep this panel's combos/status labels in sync when device selection
-    // changes elsewhere (e.g. CallPanel's own device combos).
+    // changes elsewhere (e.g. CallWorkspacePanel's own device combos).
     connect(&AudioMediaManager::instance(), &AudioMediaManager::audioDeviceSelectionChanged,
             this, &MediaSettingsPanel::onDeviceSelectionChanged);
     // The "actual active device" status line can only be queried from PJSIP

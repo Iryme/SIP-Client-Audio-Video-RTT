@@ -4,6 +4,51 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.3 — Camera LED Stays On After Camera Off
+
+**Status:** complete
+**Branch:** `fix/w113c-camera-led-stays-on`
+**Version bump type:** PATCH
+**Scope:** Bug fix reported directly by the user: after clicking "Camera
+Off" (outside an active call), the physical camera's hardware LED stayed
+lit even though the app correctly showed the camera as disabled.
+
+### Root cause and fix
+
+`CameraController` is a pure flag+signal bus — it holds no camera handle
+itself; every subscriber must actually release its own capture device.
+`VideoPanel`'s idle preview (`m_clientsVideoPanel`, auto-started at app
+init, independent of any call) is one such subscriber:
+`VideoPanel::stopIdlePreview()` called `m_previewCamera->stop()` then
+immediately `delete m_previewCamera` while it was still wired into
+`m_previewSession` (`m_previewSession->setCamera(m_previewCamera)` was
+never cleared). Qt Multimedia's Windows Media Foundation backend tears
+down the device topology asynchronously after `stop()`; deleting the
+`QCamera` object while still attached to a live capture session can leave
+that teardown incomplete, so the physical device stays open at the driver
+level (LED lit) even though the app's own state is correctly "off". This
+is the same class of bug already fixed for the in-call PJSIP capture path
+(`SipCall::pauseCapture()`/`resumeCapture()`, commit `9326d0f`) — this
+task applies the analogous fix to the idle Qt-side preview.
+`stopIdlePreview()` now detaches the camera from the session
+(`setVideoSink(nullptr)`, `setCamera(nullptr)`) before stopping/deleting
+it. Also updated three stale comments left over from the deleted
+`CallPanel` class (renamed to `CallWorkspacePanel` in W113) that referred
+to it by its old name.
+
+### Validation
+
+- Debug + Release rebuilt clean. Full CTest: 80/80 (unchanged — no tested
+  logic touched; `QCamera`/hardware teardown isn't unit-testable without a
+  real capture device).
+- Manual interactive verification (click Camera Off while idle, confirm
+  the physical LED turns off) NOT RUN in this session — no camera hardware
+  or interactive session available; the fix follows directly from the
+  documented Qt Multimedia teardown-ordering issue and mirrors the
+  already-proven fix pattern used for the in-call path.
+
+---
+
 ## v1.6.2 — Tools Tab-Switching Fix
 
 **Status:** complete

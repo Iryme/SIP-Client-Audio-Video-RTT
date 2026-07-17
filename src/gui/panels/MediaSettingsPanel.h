@@ -17,7 +17,7 @@ class QBuffer;
 //
 // Device selection and volume are delegated to AudioMediaManager, which
 // persists them (AppSettings) and applies them to the active call's PJSIP
-// audio media immediately when one exists. CallPanel uses the same
+// audio media immediately when one exists. CallWorkspacePanel uses the same
 // AudioMediaManager API, so changes made here are reflected there and vice
 // versa (both listen to AudioMediaManager's *Changed signals).
 class MediaSettingsPanel : public QWidget

@@ -19,7 +19,7 @@ class QLabel;
 //   - Bottom-left overlay: remote participant label (informational only)
 //
 // All interactive controls (camera toggle, video mute, swap) have been moved
-// to CallPanel so the video window contains no overlay buttons.
+// to CallWorkspacePanel so the video window contains no overlay buttons.
 //
 // Before a call the panel shows a placeholder paintEvent with a crosshair.
 class VideoPanel : public QWidget

@@ -205,7 +205,7 @@ VideoPanel::VideoPanel(QWidget *parent, bool autoStartIdlePreview)
             this, [this]() { stopIdlePreview(); });
 
     // Global camera on/off — start/stop preview when camera state changes.
-    // Interactive camera toggle button lives in CallPanel.
+    // Interactive camera toggle button lives in CallWorkspacePanel.
     connect(&CameraController::instance(), &CameraController::enabledChanged,
             this, [this](bool enabled) {
         if (enabled) {
@@ -587,6 +587,20 @@ void VideoPanel::stopIdlePreview()
     QElapsedTimer stopTimer;
     stopTimer.start();
 
+    // Detach the camera from the capture session *before* stopping/deleting
+    // it. Qt Multimedia's Windows Media Foundation backend tears down the
+    // device topology (source reader -> media session) asynchronously when
+    // a QCamera is stopped; deleting the QCamera immediately afterward while
+    // it is still wired into m_previewSession can leave that teardown
+    // incomplete, so the physical device (and its LED) stays open at the
+    // driver level even though the app's own state is correctly "off". This
+    // is the same class of bug already fixed for the in-call PJSIP capture
+    // path (see SipCall::pauseCapture()/resumeCapture()) — detaching first
+    // gives the backend a clean point to release the device.
+    if (m_previewSession) {
+        m_previewSession->setVideoSink(nullptr);
+        m_previewSession->setCamera(nullptr);
+    }
     if (m_previewCamera) {
         m_previewCamera->stop();
         delete m_previewCamera;
