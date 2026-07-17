@@ -67,6 +67,7 @@
 #include <QWidget>
 #include <QMessageBox>
 #include <QGroupBox>
+#include <QTabWidget>
 #include <memory>
 
 namespace {
@@ -632,7 +633,7 @@ QWidget *MainWindow::buildClientsPage()
     // Constructed early (Task W112) so the left column's
     // ConversationWorkspacePanel can share its ClientMessagingController
     // (and therefore its single ConversationModel instance) — actually
-    // placed into the splitter further down, in its original far-right slot.
+    // placed into the RIGHT COLUMN's tab widget further down (Task W113a).
     m_clientMessagingView = new ClientMessagingView(split);
 
     auto makeActionButton = [](const QString &text, QWidget *parent, bool checkable = false) {
@@ -646,89 +647,48 @@ QWidget *MainWindow::buildClientsPage()
     };
 
     // ------------------------------------------------------------------
-    // LEFT COLUMN: call control + dialpad + contacts (wrapped in scroll area)
+    // LEFT COLUMN: dial target + Conversations/Contacts (tabbed)
+    //
+    // Task W113a (layout/usability pass): the numeric dialpad and the
+    // separate "Call Control" group box are gone — SIP URIs/numbers are
+    // typed directly into the shared target input below, and it no longer
+    // needs a titled box of its own. Conversations and Contacts (both
+    // contact-selection surfaces, previously stacked on top of each other
+    // fighting for vertical space) are now two tabs of one QTabWidget, each
+    // getting the tab widget's full height instead of a fraction of a
+    // stacked column.
     // ------------------------------------------------------------------
-    auto *leftScroll = new QScrollArea(split);
-    leftScroll->setWidgetResizable(true);
-    leftScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    leftScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    leftScroll->setFrameShape(QFrame::NoFrame);
-    auto *leftWidget = new QWidget(leftScroll);
-    leftScroll->setWidget(leftWidget);
-    auto *leftLayout = new QVBoxLayout(leftWidget);
-    leftLayout->setContentsMargins(12, 12, 12, 12);
-    leftLayout->setSpacing(10);
+    auto *leftContainer = new QWidget(split);
+    auto *leftContainerLayout = new QVBoxLayout(leftContainer);
+    leftContainerLayout->setContentsMargins(8, 8, 8, 8);
+    leftContainerLayout->setSpacing(6);
 
-    auto *callGroup = new QGroupBox(tr("Call Control"), leftWidget);
-    auto *callLayout = new QVBoxLayout(callGroup);
-    callLayout->setContentsMargins(10, 10, 10, 10);
-    callLayout->setSpacing(8);
-
-    m_clientsTargetInput = new QLineEdit(callGroup);
+    m_clientsTargetInput = new QLineEdit(leftContainer);
     m_clientsTargetInput->setObjectName(QStringLiteral("ClientsTargetEdit"));
     m_clientsTargetInput->setPlaceholderText(tr("Enter SIP URI or number"));
     m_clientsTargetInput->setClearButtonEnabled(true);
     m_clientsTargetInput->setMinimumHeight(34);
-    callLayout->addWidget(m_clientsTargetInput);
+    leftContainerLayout->addWidget(m_clientsTargetInput);
 
-    // Task W113: the call-control buttons (call/answer/reject/hangup/mute/
-    // hold/request-video/request-RTT) moved into CallWorkspacePanel, which
-    // now owns every call-control widget — see the CENTER COLUMN section
-    // below. This group keeps only the shared dial target input and its
-    // clear/backspace helpers.
-    auto *actionRow = new QHBoxLayout();
-    actionRow->setSpacing(6);
-    auto *clearTargetBtn = makeActionButton(tr("Clear"), callGroup);
-    auto *backspaceBtn   = makeActionButton(tr("Backspace"), callGroup);
-    actionRow->addWidget(clearTargetBtn);
-    actionRow->addWidget(backspaceBtn);
-    actionRow->addStretch(1);
-    callLayout->addLayout(actionRow);
+    auto *targetActionRow = new QHBoxLayout();
+    targetActionRow->setSpacing(6);
+    auto *clearTargetBtn = makeActionButton(tr("Clear"), leftContainer);
+    auto *backspaceBtn   = makeActionButton(tr("Backspace"), leftContainer);
+    targetActionRow->addWidget(clearTargetBtn);
+    targetActionRow->addWidget(backspaceBtn);
+    targetActionRow->addStretch(1);
+    leftContainerLayout->addLayout(targetActionRow);
 
-    leftLayout->addWidget(callGroup);
-
-    auto *dialGroup = new QGroupBox(tr("Dialpad"), leftWidget);
-    auto *dialGrid = new QGridLayout(dialGroup);
-    dialGrid->setContentsMargins(10, 10, 10, 10);
-    dialGrid->setHorizontalSpacing(6);
-    dialGrid->setVerticalSpacing(6);
-    const QString keys[] = {QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("3"),
-                            QStringLiteral("4"), QStringLiteral("5"), QStringLiteral("6"),
-                            QStringLiteral("7"), QStringLiteral("8"), QStringLiteral("9"),
-                            QStringLiteral("*"), QStringLiteral("0"), QStringLiteral("#")};
-    for (int i = 0; i < 12; ++i) {
-        auto *btn = makeActionButton(keys[i], dialGroup);
-        btn->setMinimumSize(54, 42);
-        const int row = i / 3;
-        const int col = i % 3;
-        dialGrid->addWidget(btn, row, col);
-        connect(btn, &QPushButton::clicked, this, [this, keys, i]() {
-            if (m_clientsTargetInput)
-                m_clientsTargetInput->insert(keys[i]);
-        });
-    }
-    leftLayout->addWidget(dialGroup);
-
-    m_contactsPanel = new ContactsPanel(leftWidget);
-    leftLayout->addWidget(m_contactsPanel, 1);
-
-    // ------------------------------------------------------------------
-    // Task W112: Conversation Workspace becomes the primary navigation
-    // surface (Contact -> Conversation -> Messaging -> Call, not the
-    // reverse) — placed above the existing call-control/dialpad/contacts
-    // scroll area, outside of it (a QListView needs its own scrolling, not
-    // nested inside another QScrollArea). The call-control column itself is
-    // left as-is; a full call-control overhaul is W113's job, not this one.
-    // ------------------------------------------------------------------
-    auto *leftContainer = new QWidget(split);
-    auto *leftContainerLayout = new QVBoxLayout(leftContainer);
-    leftContainerLayout->setContentsMargins(0, 0, 0, 0);
-    leftContainerLayout->setSpacing(6);
+    auto *leftTabs = new QTabWidget(leftContainer);
+    leftTabs->setObjectName(QStringLiteral("ClientsLeftTabs"));
+    leftContainerLayout->addWidget(leftTabs, 1);
 
     m_conversationWorkspacePanel =
-        new ConversationWorkspacePanel(m_clientMessagingView->controller(), leftContainer);
-    leftContainerLayout->addWidget(m_conversationWorkspacePanel, 2);
-    leftContainerLayout->addWidget(leftScroll, 1);
+        new ConversationWorkspacePanel(m_clientMessagingView->controller(), leftTabs);
+    leftTabs->addTab(m_conversationWorkspacePanel, tr("Conversations"));
+
+    m_contactsPanel = new ContactsPanel(leftTabs);
+    leftTabs->addTab(m_contactsPanel, tr("Contacts"));
 
     connect(m_conversationWorkspacePanel, &ConversationWorkspacePanel::conversationSelected,
             this, [this](const QString &peerUri) {
@@ -781,37 +741,47 @@ QWidget *MainWindow::buildClientsPage()
     split->addWidget(centerWidget);
 
     // ------------------------------------------------------------------
-    // RIGHT COLUMN: RTT / LMPE
+    // RIGHT COLUMN: Messaging / RTT (tabbed)
+    //
+    // Task W113a: these were two separate always-visible columns. Folded
+    // into one QTabWidget — both keep receiving live signal updates while
+    // their tab isn't the active one (Qt doesn't suspend hidden widgets'
+    // slots), so nothing about their behavior changes, only how much
+    // screen width the page needs at once.
     // ------------------------------------------------------------------
-    m_rttPanel = new RttPanel(split);
-    split->addWidget(m_rttPanel);
+    auto *rightTabs = new QTabWidget(split);
+    rightTabs->setObjectName(QStringLiteral("ClientsRightTabs"));
 
-    // ------------------------------------------------------------------
-    // FAR RIGHT COLUMN: Client Messaging View (Task W111) — SIP MESSAGE/
-    // MSRP/CPIM/IMDN/is-composing/presence/file-transfer, integrated
-    // directly into the call UI instead of requiring a separate technical
-    // page. Constructed earlier (Task W112, see above); placed into the
-    // splitter here, in its original far-right slot.
-    // ------------------------------------------------------------------
-    split->addWidget(m_clientMessagingView);
+    // m_clientMessagingView was constructed earlier (Task W112, see above
+    // in this function) so ConversationWorkspacePanel could share its
+    // ClientMessagingController; it's placed into its tab here.
+    rightTabs->addTab(m_clientMessagingView, tr("Messaging"));
+
+    m_rttPanel = new RttPanel(rightTabs);
+    rightTabs->addTab(m_rttPanel, tr("RTT"));
+
+    split->addWidget(rightTabs);
 
     split->setStretchFactor(0, 1);
     split->setStretchFactor(1, 2);
     split->setStretchFactor(2, 1);
-    split->setStretchFactor(3, 1);
 
-    // Restore persisted column widths; fall back to default proportions
+    // Restore persisted column widths; fall back to default proportions.
+    // QSplitter::restoreState() returns false (and leaves sizes untouched)
+    // when the saved state's widget count doesn't match the current
+    // splitter — which is always true the first time a user opens this
+    // page after the W113a layout change (the old state was saved for 4
+    // columns, this splitter now has 3), so fall back to the new default
+    // sizes in that case instead of ending up with an unproportioned/empty
+    // restore.
     const QByteArray savedSplit = AppSettings::loadSplitterState(QStringLiteral("clients"));
-    if (savedSplit.isEmpty())
-        split->setSizes(QList<int>{340, 680, 320, 340});
-    else
-        split->restoreState(savedSplit);
+    if (savedSplit.isEmpty() || !split->restoreState(savedSplit))
+        split->setSizes(QList<int>{300, 700, 380});
 
     // Minimum widths prevent columns from collapsing to nothing
     if (split->widget(0)) split->widget(0)->setMinimumWidth(260);
     if (split->widget(1)) split->widget(1)->setMinimumWidth(300);
-    if (split->widget(2)) split->widget(2)->setMinimumWidth(200);
-    if (split->widget(3)) split->widget(3)->setMinimumWidth(260);
+    if (split->widget(2)) split->widget(2)->setMinimumWidth(320);
 
     connect(split, &QSplitter::splitterMoved, this, [this]() {
         if (m_clientsSplitter)

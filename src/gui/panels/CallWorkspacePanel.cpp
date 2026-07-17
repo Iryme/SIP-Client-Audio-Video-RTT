@@ -12,6 +12,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include "core/AppSettings.h"
@@ -133,21 +134,58 @@ CallWorkspacePanel::CallWorkspacePanel(QLineEdit *targetInput, QWidget *parent)
     cardsArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     cardsArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     cardsArea->setFrameShape(QFrame::NoFrame);
-    cardsArea->setMinimumHeight(160);
+    cardsArea->setMinimumHeight(120);
 
     auto *cardsHost = new QWidget(cardsArea);
-    auto *cardsFlow = new FlowLayout(cardsHost, 4, 5, 5);
-    cardsHost->setLayout(cardsFlow);
+    auto *cardsHostLayout = new QVBoxLayout(cardsHost);
+    cardsHostLayout->setContentsMargins(0, 0, 0, 0);
+    cardsHostLayout->setSpacing(4);
+
+    // Essential — always visible, at-a-glance call status.
+    auto *essentialHost = new QWidget(cardsHost);
+    auto *essentialFlow = new FlowLayout(essentialHost, 4, 5, 5);
+    essentialHost->setLayout(essentialFlow);
 
     m_cardState = makeStatusCard(tr("Call State"), tr("Current SIP call state"));
     m_cardDuration = makeStatusCard(tr("Duration"), tr("Elapsed call duration"));
     m_cardRemoteUri = makeStatusCard(tr("Remote URI"), tr("Remote SIP URI / display name"));
     m_cardPresence = makeStatusCard(tr("Presence"), tr("Remote party's presence status"));
     m_cardAudio = makeStatusCard(tr("Audio"), tr("Audio media state"));
-    m_cardAudioCodec = makeStatusCard(tr("Audio Codec"), tr("Negotiated audio codec"));
-    m_cardLocalVideo = makeStatusCard(tr("Local Video"), tr("Local camera preview state"));
     m_cardRemoteVideo = makeStatusCard(tr("Remote Video"), tr("Remote video stream state"));
     m_cardRtt = makeStatusCard(tr("RTT"), tr("RTT request / media state"));
+    m_cardCamera = makeStatusCard(tr("Camera"), tr("Hardware camera state"));
+
+    StatusCard *essentialCards[] = {
+        m_cardState, m_cardDuration, m_cardRemoteUri, m_cardPresence,
+        m_cardAudio, m_cardRemoteVideo, m_cardRtt, m_cardCamera
+    };
+    for (StatusCard *card : essentialCards)
+        essentialFlow->addWidget(card);
+
+    m_cardCamera->setValue(tr("On"));
+    m_cardCamera->setStatus(QStringLiteral("ok"));
+
+    cardsHostLayout->addWidget(essentialHost);
+
+    // Task W113a layout pass: everything else (codecs, bitrate/resolution/
+    // fps, selected media, local account, packet loss/video drops/jitter/
+    // latency, LMPE) is secondary diagnostic detail, not needed at a glance
+    // during a normal call — tucked behind a disclosure, collapsed by
+    // default, so the panel doesn't force ~21 cards into view at once.
+    m_advancedToggle = new QToolButton(cardsHost);
+    m_advancedToggle->setCheckable(true);
+    m_advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_advancedToggle->setArrowType(Qt::RightArrow);
+    m_advancedToggle->setText(tr("Advanced diagnostics"));
+    m_advancedToggle->setAutoRaise(true);
+    cardsHostLayout->addWidget(m_advancedToggle);
+
+    m_advancedHost = new QWidget(cardsHost);
+    auto *advancedFlow = new FlowLayout(m_advancedHost, 4, 5, 5);
+    m_advancedHost->setLayout(advancedFlow);
+
+    m_cardAudioCodec = makeStatusCard(tr("Audio Codec"), tr("Negotiated audio codec"));
+    m_cardLocalVideo = makeStatusCard(tr("Local Video"), tr("Local camera preview state"));
     m_cardLmpe = makeStatusCard(tr("LMPE"), tr("LMPE capability state"));
     m_cardVideoCodec = makeStatusCard(tr("Video Codec"), tr("Negotiated video codec"));
     m_cardBitrate = makeStatusCard(tr("Bitrate"), tr("Negotiated/configured video bitrate"));
@@ -159,20 +197,22 @@ CallWorkspacePanel::CallWorkspacePanel(QLineEdit *targetInput, QWidget *parent)
     m_cardVideoDrops = makeStatusCard(tr("Video Drops"), tr("Local video pipeline frame drops this second"));
     m_cardJitter = makeStatusCard(tr("Jitter"), tr("RTP jitter"));
     m_cardLatency = makeStatusCard(tr("Latency"), tr("Round-trip latency"));
-    m_cardCamera = makeStatusCard(tr("Camera"), tr("Hardware camera state"));
 
-    StatusCard *allCards[] = {
-        m_cardState, m_cardDuration, m_cardRemoteUri, m_cardPresence, m_cardAudio,
-        m_cardAudioCodec, m_cardLocalVideo, m_cardRemoteVideo, m_cardCamera, m_cardRtt,
-        m_cardLmpe, m_cardVideoCodec, m_cardBitrate, m_cardResolution, m_cardFps,
-        m_cardInitialOffer, m_cardLocalAccount, m_cardPacketLoss, m_cardVideoDrops,
-        m_cardJitter, m_cardLatency
+    StatusCard *advancedCards[] = {
+        m_cardAudioCodec, m_cardLocalVideo, m_cardLmpe, m_cardVideoCodec, m_cardBitrate,
+        m_cardResolution, m_cardFps, m_cardInitialOffer, m_cardLocalAccount,
+        m_cardPacketLoss, m_cardVideoDrops, m_cardJitter, m_cardLatency
     };
-    for (StatusCard *card : allCards)
-        cardsFlow->addWidget(card);
+    for (StatusCard *card : advancedCards)
+        advancedFlow->addWidget(card);
 
-    m_cardCamera->setValue(tr("On"));
-    m_cardCamera->setStatus(QStringLiteral("ok"));
+    cardsHostLayout->addWidget(m_advancedHost);
+
+    const bool advancedExpanded = AppSettings::callWorkspaceAdvancedDiagnosticsExpanded();
+    m_advancedToggle->setChecked(advancedExpanded);
+    m_advancedToggle->setArrowType(advancedExpanded ? Qt::DownArrow : Qt::RightArrow);
+    m_advancedHost->setVisible(advancedExpanded);
+    connect(m_advancedToggle, &QToolButton::toggled, this, &CallWorkspacePanel::onAdvancedDiagnosticsToggled);
 
     cardsArea->setWidget(cardsHost);
     root->addWidget(cardsArea, 1);
@@ -1155,6 +1195,13 @@ void CallWorkspacePanel::onCameraEnabledChanged(bool enabled)
     m_cardCamera->setValue(enabled ? tr("On") : tr("Off"));
     m_cardCamera->setStatus(enabled ? QStringLiteral("ok") : QStringLiteral("warn"));
     m_btnVideoMute->setEnabled(m_videoConnected || m_localVideoActive);
+}
+
+void CallWorkspacePanel::onAdvancedDiagnosticsToggled(bool expanded)
+{
+    m_advancedToggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+    m_advancedHost->setVisible(expanded);
+    AppSettings::setCallWorkspaceAdvancedDiagnosticsExpanded(expanded);
 }
 
 // ---------------------------------------------------------------------------

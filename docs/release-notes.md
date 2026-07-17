@@ -4,6 +4,40 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.1 — Clients Page Layout Reorganization
+
+**Status:** complete
+**Branch:** `fix/w113a-client-workspace-layout`
+**Version bump type:** PATCH
+**Scope:** Usability follow-up requested directly after W113, before
+continuing the roadmap to W114 — the Clients page's 4-column layout was
+too wide and columns 1/2 too internally dense. See
+[clients-page-layout.md](../clients-page-layout.md) for the full
+before/after breakdown.
+
+### Changes
+
+- Clients page reduced from 4 to 3 splitter columns: Conversations/
+  Contacts (tabbed, dialpad removed), Call Workspace + Video (unchanged
+  position), Messaging/RTT (tabbed).
+- `CallWorkspacePanel`'s 21 status cards split into an always-visible
+  essential row (8 cards) and a collapsed-by-default "Advanced
+  diagnostics" disclosure (13 cards), persisted via a new
+  `AppSettings::callWorkspaceAdvancedDiagnosticsExpanded()` key.
+- `QSplitter::restoreState()` now guarded against the widget-count
+  mismatch a 4→3-column upgrade produces, falling back to new default
+  sizes instead of a broken/unproportioned restore.
+
+### Validation
+
+- Debug + Release rebuilt clean. Full CTest: 80/80 (unchanged — this task
+  touches only widget layout/grouping, no tested logic).
+- Manual GUI smoke: app launch/idle reachable, no crash. Full interactive
+  click-through (tab switching, expand/collapse advanced diagnostics) NOT
+  RUN in this session — no input-automation tooling available.
+
+---
+
 ## v1.6.0 — Call Workspace
 
 **Status:** complete

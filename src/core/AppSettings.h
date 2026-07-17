@@ -146,6 +146,20 @@ public:
         settings().setValue(QStringLiteral("ui/conversations/pinned"), list);
     }
 
+    // Call Workspace (Task W113a layout pass): whether the "Advanced
+    // diagnostics" disclosure (codecs/bitrate/resolution/fps/packet-loss/
+    // jitter/latency/etc.) is expanded. Collapsed by default so the panel
+    // shows only the essential at-a-glance cards; persisted so a user who
+    // expands it once doesn't have to re-expand it every session.
+    static bool callWorkspaceAdvancedDiagnosticsExpanded()
+    {
+        return settings().value(QStringLiteral("ui/callWorkspace/advancedDiagnosticsExpanded"), false).toBool();
+    }
+    static void setCallWorkspaceAdvancedDiagnosticsExpanded(bool expanded)
+    {
+        settings().setValue(QStringLiteral("ui/callWorkspace/advancedDiagnosticsExpanded"), expanded);
+    }
+
     // IMDN Foundation (Task W096). Auto Send Delivered defaults ON (a
     // "delivered" report is a transport-level acknowledgement with no
     // privacy implication — it does not disclose whether/when the user

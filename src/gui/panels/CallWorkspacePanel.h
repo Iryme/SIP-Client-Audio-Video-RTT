@@ -16,6 +16,7 @@ class QComboBox;
 class QLineEdit;
 class QPlainTextEdit;
 class QPushButton;
+class QToolButton;
 class StatusCard;
 class EmergencyCallController;
 class StaticLocationProvider;
@@ -94,6 +95,7 @@ private slots:
     void onEmergencyFailed(const QString &reason);
     void onGeneratePidfClicked();
     void onLocationUpdateClicked();
+    void onAdvancedDiagnosticsToggled(bool expanded);
 
 private:
     void populateDeviceCombos();
@@ -155,6 +157,15 @@ private:
     StatusCard *m_cardJitter{nullptr};
     StatusCard *m_cardLatency{nullptr};
     StatusCard *m_cardCamera{nullptr};
+
+    // Task W113a layout pass: essential cards (state/duration/identity/
+    // presence/audio/remote-video/RTT/camera) are always visible; everything
+    // else (codecs, bitrate/resolution/fps, selected media, local account,
+    // packet loss/video drops/jitter/latency, LMPE) lives in m_advancedHost,
+    // shown only when the disclosure button is expanded (persisted via
+    // AppSettings::callWorkspaceAdvancedDiagnosticsExpanded()).
+    QWidget *m_advancedHost{nullptr};
+    QToolButton *m_advancedToggle{nullptr};
 
     QPushButton *m_btnOpenSipLadder{nullptr};
 

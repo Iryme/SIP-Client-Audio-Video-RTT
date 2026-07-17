@@ -15,12 +15,19 @@ below it, unchanged.
   optimistic-UI + timeout-confirm pattern as before), request video /
   request RTT (same accept-mode blink-timer behavior as before), camera
   on/off, video mute.
-- **Media status grid**: audio/video/RTT state, negotiated audio/video
-  codec, bitrate, resolution, FPS, selected media (what was requested when
-  the call was placed), local account, device status, RTP jitter/latency,
-  RTP packet loss (%), and local video frame drops — the last two are
-  deliberately separate cards (see
-  [call-state-and-media-model.md](call-state-and-media-model.md)).
+- **Media status grid**: split (Task W113a) into an always-visible
+  **essential** row (Call State, Duration, Remote URI, Presence, Audio,
+  Remote Video, RTT, Camera) and a collapsed-by-default **Advanced
+  diagnostics** disclosure (negotiated audio/video codec, bitrate,
+  resolution, FPS, selected media, local account, RTP jitter/latency, RTP
+  packet loss %, and local video frame drops — the last two deliberately
+  separate cards, see
+  [call-state-and-media-model.md](call-state-and-media-model.md)). The
+  expanded/collapsed state persists via
+  `AppSettings::callWorkspaceAdvancedDiagnosticsExpanded()`. No card's
+  underlying data or update logic changed — this is purely a
+  visibility/grouping change so the panel doesn't force all ~21 cards into
+  view during a normal call.
 - **Diagnostics**: an "Open in SIP Ladder" button that deep-links to
   Tools → SIP Ladder, pre-filtered to the active call's Call-ID.
 - **Emergency test-mode section**: hidden unless
