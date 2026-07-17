@@ -7,6 +7,8 @@
 #include "core/Logger.h"
 #include "core/PerfScope.h"
 
+#include "AppVersion.h"
+
 #include <QTimer>
 
 Application::Application(int &argc, char **argv)
@@ -18,7 +20,10 @@ Application::Application(int &argc, char **argv)
 
     setApplicationName("SIP Client");
     setApplicationDisplayName("SIP Client - Audio / Video / RTT");
-    setApplicationVersion("0.1.0");
+    // Sourced from CMake's project(VERSION ...) via the generated
+    // AppVersion.h (same header DiagnosticsCollector reads) — never a
+    // second hardcoded literal that could silently drift from it again.
+    setApplicationVersion(QStringLiteral(APP_VERSION_STRING));
     setOrganizationName("SIPClient");
     setOrganizationDomain("sipclient.local");
 
@@ -27,7 +32,11 @@ Application::Application(int &argc, char **argv)
         loadStyleSheet();
     }
 
-    Logger::instance().info(LogCategory::App, "Application starting v0.1.0");
+    const QString buildType = QStringLiteral(APP_BUILD_TYPE_STRING).isEmpty()
+        ? QStringLiteral("Unknown") : QStringLiteral(APP_BUILD_TYPE_STRING);
+    Logger::instance().info(LogCategory::App,
+        QStringLiteral("Application starting v%1 (commit %2, %3)")
+            .arg(QStringLiteral(APP_VERSION_STRING), QStringLiteral(APP_GIT_COMMIT_HASH), buildType));
 
     // Start recording call history as soon as SipManager's signals are
     // available. Touching instance() wires the connections; no PJSIP

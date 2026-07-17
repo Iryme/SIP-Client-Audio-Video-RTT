@@ -7,7 +7,7 @@ set(CMAKE_DEPENDS_USE_COMPILER FALSE CACHE BOOL
     "Use CMake dependency discovery instead of compiler-generated deps" FORCE)
 
 project(SIPClient
-    VERSION 0.1.0
+    VERSION 1.5.0
     DESCRIPTION "Generic SIP Multimedia Client - Audio / Video / RTT"
     LANGUAGES CXX
 )
@@ -129,6 +129,9 @@ set(SOURCES
     src/gui/panels/messaging/ClientMessagingController.cpp
     src/gui/panels/messaging/ClientMessagingView.cpp
     src/gui/panels/messaging/FileTransferModel.cpp
+    src/gui/panels/messaging/ConversationListModel.cpp
+    src/gui/panels/messaging/ConversationFilterProxyModel.cpp
+    src/gui/panels/ConversationWorkspacePanel.cpp
     src/gui/MessagingMessageDetailsDialog.cpp
     src/gui/theme/ThemeManager.cpp
     src/gui/widgets/FlowLayout.cpp
@@ -284,6 +287,9 @@ set(HEADERS
     src/gui/panels/messaging/ClientMessagingController.h
     src/gui/panels/messaging/ClientMessagingView.h
     src/gui/panels/messaging/FileTransferModel.h
+    src/gui/panels/messaging/ConversationListModel.h
+    src/gui/panels/messaging/ConversationFilterProxyModel.h
+    src/gui/panels/ConversationWorkspacePanel.h
     src/gui/MessagingMessageDetailsDialog.h
     src/sip/SipMessageTrace.h
     src/sip/SipTraceLogger.h
