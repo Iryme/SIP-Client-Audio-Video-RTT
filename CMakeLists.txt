@@ -7,7 +7,7 @@ set(CMAKE_DEPENDS_USE_COMPILER FALSE CACHE BOOL
     "Use CMake dependency discovery instead of compiler-generated deps" FORCE)
 
 project(SIPClient
-    VERSION 1.6.2
+    VERSION 1.6.3
     DESCRIPTION "Generic SIP Multimedia Client - Audio / Video / RTT"
     LANGUAGES CXX
 )
