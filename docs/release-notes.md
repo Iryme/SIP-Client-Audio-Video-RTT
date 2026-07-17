@@ -4,6 +4,65 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.5.0 — Conversation Workspace
+
+**Status:** complete
+**Branch:** `feature/w112-conversation-workspace`
+**Version bump type:** MINOR
+**Scope:** First task of the W112–W117 product-stabilization roadmap. Inverts
+the Clients page from call-centric to Contact → Conversation → Messaging →
+Call. Also reconciles a real version-source drift found during this task's
+audit — see below.
+
+### Version reconciliation
+
+`CMakeLists.txt`'s `project(VERSION)` had been frozen at `0.1.0` since the
+project's early skeleton, disconnected from the real release history
+(`v1.2.0`…`v1.4.1` tags, this file's own entries). `Application.cpp` also
+carried two independent hardcoded `"0.1.0"` string literals never wired to
+CMake at all. This release bumps from the real baseline (`1.4.1`) to `1.5.0`
+and wires `Application.cpp`'s version reporting to the generated
+`AppVersion.h` so it can't drift again. The `v1.4.1` entry above still shows
+"Status: in development" despite a `v1.4.1` tag already existing — a
+pre-existing inconsistency this task flags but does not silently rewrite.
+
+### Features
+
+**Conversation Workspace (`src/gui/panels/ConversationWorkspacePanel.*`, new)**
+- A searchable, sortable conversation list becomes the primary surface in
+  the Clients page — pinned conversations first, then most-recent-activity
+  first. Rows are the union of saved contacts (`ContactStore`) and peers
+  with message history (`ConversationModel`, Task W111), so a saved contact
+  with no messages yet still shows up.
+- Each row shows last-message preview, timestamp, unread count, presence,
+  remote typing state, actual transport of the last sent message, and the
+  peer's call state when it's the currently active call.
+- Selecting a row drives the existing `ClientMessagingView`
+  (`setPeerUri()`) and the dial-target field; a "Call" button starts a call
+  from the conversation (`SipManager::makeCall()`) rather than the previous
+  dial-first model. A "Pin" toggle persists per-conversation (new
+  `AppSettings` keys, contact-level preference).
+
+**Unread tracking (`ConversationModel`, extended)**
+- New `unreadCountFor()`/`markRead()` — an in-memory, session-only read
+  cursor (deliberately not persisted: `MessageHistoryStore` itself resets
+  every app restart, so a cross-restart cursor referencing its entry ids
+  would be meaningless).
+
+### Validation
+
+- Build Debug: PASS (MSVC/NMake, `ENABLE_PJSIP=ON`)
+- Build Release: PASS
+- ctest Debug: 79/79 passed (78 baseline + new `test_conversation_list_model`;
+  `test_conversation_model` extended in place)
+- ctest Release: 79/79 passed
+- Manual GUI pass: app launch/idle smoke PASS; full interactive
+  click-through of the new workspace NOT RUN this session (no live SIP peer
+  or input-automation tooling available) — see
+  `docs/agent-results/W112-conversation-workspace-result.md`.
+
+---
+
 ## v1.4.1 — Release Validation Bug Fixes
 
 **Status:** in development

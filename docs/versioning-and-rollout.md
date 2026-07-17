@@ -47,8 +47,27 @@ A version may be tagged and released **only after** all three gates pass:
 | Branch | Purpose |
 |--------|---------|
 | `feature/project-skeleton` | Integration branch (treated as `main` for this project phase) |
-| `feature/web-ui-tabs-sip-ladder-details` | Current active feature branch |
 | `feature/*` | One branch per feature group; merged via PR |
+
+> **Task W112 update**: the table above had gone stale — it still named
+> `feature/web-ui-tabs-sip-ladder-details` as "current active feature
+> branch," a branch long superseded by the actual chain of work
+> (`feature/w1xx-*` task branches, each starting from the previous one,
+> current tip `feature/w112-conversation-workspace`). This policy doc
+> tracks the general *model* (one branch per feature group), not a
+> snapshot of whichever branch happens to be active — no attempt is made
+> here to keep a literal "current branch" cell up to date going forward;
+> `docs/project-status.md`'s "Active branch" line is the authoritative
+> place for that.
+>
+> Also reconciled this task: `CMakeLists.txt`'s `project(VERSION)` and
+> `Application.cpp`'s `setApplicationVersion()` had drifted to `0.1.0`,
+> disconnected from the real tagged release history this file's SemVer
+> policy governs (`v1.2.0`…`v1.4.1`). Fixed as of `v1.5.0` — see
+> [release-notes.md](release-notes.md)'s `v1.5.0` entry. Separately, the
+> `v1.4.1` entry in release-notes.md still says "Status: in development"
+> even though a `v1.4.1` git tag already exists — flagged, not silently
+> rewritten, since this task did not re-run that release's own rollout gate.
 
 ---
 
