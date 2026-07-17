@@ -144,6 +144,16 @@ void ToolsPage::ensureSubTab(int index)
     m_tabs->removeTab(index);
     m_tabs->insertTab(index, real, label);
     old->deleteLater();
+
+    // removeTab() on the tab that was just clicked (the common case, since
+    // ensureSubTab() is called from the currentChanged handler) shifts
+    // QTabWidget's current index to a neighboring tab before insertTab()
+    // puts the real page back at `index` — insertTab() does not restore
+    // selection on its own. Without this, the click a user makes on a
+    // not-yet-built tab visibly lands on the *next* tab instead of the one
+    // they clicked (the placeholder briefly reads "Loading ..." on the
+    // clicked tab, then the tab to its right becomes selected).
+    m_tabs->setCurrentIndex(index);
 }
 
 int ToolsPage::indexForKey(const QString &key) const

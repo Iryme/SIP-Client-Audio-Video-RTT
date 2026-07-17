@@ -4,6 +4,38 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.2 — Tools Tab-Switching Fix
+
+**Status:** complete
+**Branch:** `fix/w113b-tools-tab-switch-bug`
+**Version bump type:** PATCH
+**Scope:** Bug fix reported directly by the user: clicking a not-yet-built
+Tools sub-tab showed its "Loading …" placeholder and then selection
+visibly jumped to the *next* tab instead of the one clicked.
+
+### Root cause and fix
+
+`ToolsPage::ensureSubTab()` lazily replaces a tab's placeholder with the
+real page via `removeTab(index)` followed by `insertTab(index, real, label)`.
+When called from the `QTabWidget::currentChanged` handler (the normal path
+for a user clicking a tab), `removeTab()` on the tab that was just made
+current shifts `QTabWidget`'s current index to a neighboring tab —
+`insertTab()` does not restore selection on its own. `ensureSubTab()` now
+calls `m_tabs->setCurrentIndex(index)` after re-inserting the real page,
+so the clicked tab stays selected.
+
+### Validation
+
+- Debug + Release rebuilt clean. Full CTest: 80/80 (unchanged — no tested
+  logic touched).
+- Manual interactive verification (click a not-yet-visited Tools sub-tab)
+  NOT RUN in this session — no input-automation tooling available; the fix
+  follows directly from the `QTabWidget`/`removeTab`/`insertTab` mechanics
+  described above, not from reproducing the visible symptom in this
+  session.
+
+---
+
 ## v1.6.1 — Clients Page Layout Reorganization
 
 **Status:** complete
