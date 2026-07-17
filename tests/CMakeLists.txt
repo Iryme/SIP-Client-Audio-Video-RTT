@@ -1459,6 +1459,24 @@ target_link_libraries(test_conversation_model PRIVATE
 
 add_test(NAME test_conversation_model COMMAND test_conversation_model)
 
+# ---- test_conversation_list_model (Task W112) ------------------------------
+qt_add_executable(test_conversation_list_model
+    test_conversation_list_model.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/panels/messaging/ConversationListModel.cpp
+    ${CMAKE_SOURCE_DIR}/src/gui/panels/messaging/ConversationFilterProxyModel.cpp
+)
+
+target_include_directories(test_conversation_list_model PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(test_conversation_list_model PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+
+add_test(NAME test_conversation_list_model COMMAND test_conversation_list_model)
+
 # ---- test_windows_trace_json_export ---------------------------------------
 qt_add_executable(test_windows_trace_json_export
     test_windows_trace_json_export.cpp

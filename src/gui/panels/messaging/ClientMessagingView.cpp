@@ -60,18 +60,14 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
     root->setContentsMargins(8, 8, 8, 8);
     root->setSpacing(6);
 
-    // ---- Conversation / target selection ----
+    // ---- Target (Task W112: conversation selection itself now lives in
+    // ConversationWorkspacePanel; this field is the "To" override for
+    // composing to a brand-new URI that isn't a conversation yet) ----
     auto *targetRow = new QHBoxLayout();
-    m_conversationSelector = new QComboBox(this);
-    m_conversationSelector->setObjectName(QStringLiteral("messagingContactSelector"));
-    m_conversationSelector->setEditable(false);
-    m_conversationSelector->setMinimumWidth(160);
-    targetRow->addWidget(new QLabel(tr("Conversation:"), this));
-    targetRow->addWidget(m_conversationSelector, 1);
-
     m_toUriEdit = new QLineEdit(this);
     m_toUriEdit->setObjectName(QStringLiteral("messagingToUriEdit"));
     m_toUriEdit->setPlaceholderText(tr("SIP URI to message"));
+    targetRow->addWidget(new QLabel(tr("To:"), this));
     targetRow->addWidget(m_toUriEdit, 1);
     root->addLayout(targetRow);
 
@@ -172,8 +168,6 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
     sendRow->addWidget(m_sendBtn);
     root->addLayout(sendRow);
 
-    connect(m_conversationSelector, &QComboBox::currentIndexChanged,
-            this, &ClientMessagingView::onConversationSelectionChanged);
     connect(m_sendBtn, &QPushButton::clicked, this, &ClientMessagingView::onSendClicked);
     connect(m_sendFileBtn, &QPushButton::clicked, this, &ClientMessagingView::onSendFileClicked);
     connect(m_saveFileBtn, &QPushButton::clicked, this, &ClientMessagingView::onSaveReceivedFileClicked);
@@ -182,14 +176,11 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
             this, &ClientMessagingView::onMsrpFileTransferReceived);
     connect(m_controller->conversationModel(), &ConversationModel::conversationUpdated,
             this, &ClientMessagingView::onConversationUpdated);
-    connect(m_controller->conversationModel(), &ConversationModel::conversationListChanged,
-            this, &ClientMessagingView::onConversationListChanged);
     connect(&PresenceStore::instance(), &PresenceStore::presenceUpdated,
             this, &ClientMessagingView::onPresenceUpdated);
     connect(&MsrpSessionStore::instance(), &MsrpSessionStore::sessionUpdated,
             this, &ClientMessagingView::refreshCapabilities);
 
-    reloadConversationList();
     refreshCapabilities();
 }
 
@@ -201,21 +192,15 @@ void ClientMessagingView::setPeerUri(const QString &peerUri)
     m_toUriEdit->setText(peerUri);
     reloadHistory();
     refreshCapabilities();
+    // Viewing a conversation marks it read (Task W112) — never on mere
+    // message arrival while a different conversation stays selected.
+    m_controller->conversationModel()->markRead(peerUri);
 }
 
 QString ClientMessagingView::currentPeer() const
 {
     const QString typed = m_toUriEdit->text().trimmed();
     return typed.isEmpty() ? m_peerUri : typed;
-}
-
-void ClientMessagingView::onConversationSelectionChanged()
-{
-    const QString peer = m_conversationSelector->currentData().toString();
-    if (!peer.isEmpty())
-        m_toUriEdit->setText(peer);
-    reloadHistory();
-    refreshCapabilities();
 }
 
 void ClientMessagingView::onSendClicked()
@@ -324,31 +309,18 @@ void ClientMessagingView::onBodyTextChanged()
 
 void ClientMessagingView::onConversationUpdated(const QString &peerUri)
 {
-    if (ConversationModel::normalizePeer(currentPeer()) == peerUri)
+    if (ConversationModel::normalizePeer(currentPeer()) == peerUri) {
         reloadHistory();
-}
-
-void ClientMessagingView::onConversationListChanged()
-{
-    reloadConversationList();
+        // A new message arriving while this conversation is already the one
+        // being viewed should never accumulate as unread — markRead() is a
+        // no-op once the cursor is already current, so this can't recurse.
+        m_controller->conversationModel()->markRead(peerUri);
+    }
 }
 
 void ClientMessagingView::onPresenceUpdated()
 {
     refreshCapabilities();
-}
-
-void ClientMessagingView::reloadConversationList()
-{
-    const QString previouslySelected = m_conversationSelector->currentData().toString();
-    m_conversationSelector->blockSignals(true);
-    m_conversationSelector->clear();
-    for (const QString &peer : m_controller->conversationModel()->conversationPeers())
-        m_conversationSelector->addItem(peer, peer);
-    const int idx = m_conversationSelector->findData(previouslySelected);
-    if (idx >= 0)
-        m_conversationSelector->setCurrentIndex(idx);
-    m_conversationSelector->blockSignals(false);
 }
 
 void ClientMessagingView::reloadHistory()

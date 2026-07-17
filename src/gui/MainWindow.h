@@ -10,6 +10,7 @@ class ContactsPanel;
 class VideoPanel;
 class RttPanel;
 class ClientMessagingView;
+class ConversationWorkspacePanel;
 class SettingsPanel;
 class ToolsPage;
 class CallHistoryPanel;
@@ -72,6 +73,7 @@ private:
     VideoPanel       *m_videoPanel{nullptr};
     RttPanel         *m_rttPanel{nullptr};
     ClientMessagingView *m_clientMessagingView{nullptr};
+    ConversationWorkspacePanel *m_conversationWorkspacePanel{nullptr};
     SettingsPanel    *m_settingsPanel{nullptr};
     ToolsPage        *m_toolsPage{nullptr};
     CallHistoryPanel *m_callHistoryPanel{nullptr};

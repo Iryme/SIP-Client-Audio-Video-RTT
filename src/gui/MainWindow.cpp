@@ -9,7 +9,10 @@
 #include "gui/panels/NavRail.h"
 #include "gui/panels/SettingsPanel.h"
 #include "gui/panels/ToolsPage.h"
+#include "gui/panels/ConversationWorkspacePanel.h"
+#include "gui/panels/messaging/ClientMessagingController.h"
 #include "gui/panels/messaging/ClientMessagingView.h"
+#include "AppVersion.h"
 #include "gui/widgets/AudioLevelMeter.h"
 #include "gui/widgets/FlowLayout.h"
 #include "gui/widgets/StatusCard.h"
@@ -625,6 +628,12 @@ QWidget *MainWindow::buildClientsPage()
     split->setChildrenCollapsible(false);
     split->setHandleWidth(6);
 
+    // Constructed early (Task W112) so the left column's
+    // ConversationWorkspacePanel can share its ClientMessagingController
+    // (and therefore its single ConversationModel instance) — actually
+    // placed into the splitter further down, in its original far-right slot.
+    m_clientMessagingView = new ClientMessagingView(split);
+
     auto makeActionButton = [](const QString &text, QWidget *parent, bool checkable = false) {
         auto *btn = new QPushButton(text, parent);
         btn->setObjectName(QStringLiteral("CallCtrlBtn"));
@@ -743,7 +752,39 @@ QWidget *MainWindow::buildClientsPage()
     m_contactsPanel = new ContactsPanel(leftWidget);
     leftLayout->addWidget(m_contactsPanel, 1);
 
-    split->addWidget(leftScroll);
+    // ------------------------------------------------------------------
+    // Task W112: Conversation Workspace becomes the primary navigation
+    // surface (Contact -> Conversation -> Messaging -> Call, not the
+    // reverse) — placed above the existing call-control/dialpad/contacts
+    // scroll area, outside of it (a QListView needs its own scrolling, not
+    // nested inside another QScrollArea). The call-control column itself is
+    // left as-is; a full call-control overhaul is W113's job, not this one.
+    // ------------------------------------------------------------------
+    auto *leftContainer = new QWidget(split);
+    auto *leftContainerLayout = new QVBoxLayout(leftContainer);
+    leftContainerLayout->setContentsMargins(0, 0, 0, 0);
+    leftContainerLayout->setSpacing(6);
+
+    m_conversationWorkspacePanel =
+        new ConversationWorkspacePanel(m_clientMessagingView->controller(), leftContainer);
+    leftContainerLayout->addWidget(m_conversationWorkspacePanel, 2);
+    leftContainerLayout->addWidget(leftScroll, 1);
+
+    connect(m_conversationWorkspacePanel, &ConversationWorkspacePanel::conversationSelected,
+            this, [this](const QString &peerUri) {
+        m_clientsTargetInput->setText(peerUri);
+        m_clientMessagingView->setPeerUri(peerUri);
+    });
+    connect(m_conversationWorkspacePanel, &ConversationWorkspacePanel::callRequested,
+            this, [this](const QString &peerUri) {
+        if (!SipManager::instance().makeCall(peerUri)) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Call from conversation failed for %1 (call already active or invalid URI)")
+                    .arg(peerUri));
+        }
+    });
+
+    split->addWidget(leftContainer);
 
     // ------------------------------------------------------------------
     // CENTER COLUMN: status/device controls + video PIP
@@ -888,9 +929,9 @@ QWidget *MainWindow::buildClientsPage()
     // FAR RIGHT COLUMN: Client Messaging View (Task W111) — SIP MESSAGE/
     // MSRP/CPIM/IMDN/is-composing/presence/file-transfer, integrated
     // directly into the call UI instead of requiring a separate technical
-    // page. Follows the same target as the dial input (wired below).
+    // page. Constructed earlier (Task W112, see above); placed into the
+    // splitter here, in its original far-right slot.
     // ------------------------------------------------------------------
-    m_clientMessagingView = new ClientMessagingView(split);
     split->addWidget(m_clientMessagingView);
 
     split->setStretchFactor(0, 1);
@@ -1717,11 +1758,17 @@ void MainWindow::importConfiguration()
 
 void MainWindow::showAboutDialog()
 {
+    const QString buildType = QStringLiteral(APP_BUILD_TYPE_STRING).isEmpty()
+        ? tr("Unknown") : QStringLiteral(APP_BUILD_TYPE_STRING);
     QMessageBox::about(
         this,
         tr("About SIP Client"),
         tr("SIP Client - Audio / Video / RTT\n"
-           "Desktop Qt client for SIP communication, diagnostics and media testing."));
+           "Desktop Qt client for SIP communication, diagnostics and media testing.\n\n"
+           "Version: %1\n"
+           "Commit: %2\n"
+           "Build: %3")
+            .arg(QStringLiteral(APP_VERSION_STRING), QStringLiteral(APP_GIT_COMMIT_HASH), buildType));
 }
 
 void MainWindow::showDiagnosticsInfo()

@@ -31,6 +31,16 @@ private slots:
     void typingSendRequestedCarriesOwningPeer();
     void remoteTypingStateReflectsMostRecentInboundEntry();
     void remoteTypingStateEmptyWhenNeverSeen();
+
+    // Task W112 (Conversation Workspace): unread/last-message/last-activity.
+    void lastMessageForReturnsMostRecentEntry();
+    void lastMessageForDefaultWhenNoHistory();
+    void lastActivityForMatchesLastMessageTimestamp();
+    void unreadCountCountsAllInboundBeforeAnyRead();
+    void unreadCountIgnoresOutboundEntries();
+    void markReadZerosUnreadCount();
+    void markReadDoesNotAffectOtherConversations();
+    void newInboundAfterMarkReadIncrementsUnreadAgain();
 };
 
 void TestConversationModel::init()
@@ -172,6 +182,105 @@ void TestConversationModel::remoteTypingStateEmptyWhenNeverSeen()
 {
     ConversationModel model;
     QVERIFY(model.remoteTypingState(QStringLiteral("sip:nobody@example.com")).isEmpty());
+}
+
+void TestConversationModel::lastMessageForReturnsMostRecentEntry()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("first"), QStringLiteral("c1"), QString());
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("second"), QStringLiteral("c2"), QString());
+
+    QCOMPARE(model.lastMessageFor(QStringLiteral("sip:alice@example.com")).bodyPreview,
+             QStringLiteral("second"));
+}
+
+void TestConversationModel::lastMessageForDefaultWhenNoHistory()
+{
+    ConversationModel model;
+    QCOMPARE(model.lastMessageFor(QStringLiteral("sip:nobody@example.com")).id, qint64(0));
+}
+
+void TestConversationModel::lastActivityForMatchesLastMessageTimestamp()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("hi"), QStringLiteral("c1"), QString());
+
+    const auto last = model.lastMessageFor(QStringLiteral("sip:alice@example.com"));
+    QCOMPARE(model.lastActivityFor(QStringLiteral("sip:alice@example.com")), last.timestamp);
+}
+
+void TestConversationModel::unreadCountCountsAllInboundBeforeAnyRead()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("m1"), QStringLiteral("c1"), QString());
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("m2"), QStringLiteral("c2"), QString());
+
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 2);
+}
+
+void TestConversationModel::unreadCountIgnoresOutboundEntries()
+{
+    ConversationModel model;
+    SipMessageComposer::Options opts;
+    opts.toUri = QStringLiteral("sip:alice@example.com");
+    opts.contentType = MessagingContentKind::PlainText;
+    opts.body = QStringLiteral("outbound only");
+    MessageHistoryStore::instance().appendOutbound(SipMessageComposer::compose(opts));
+
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 0);
+}
+
+void TestConversationModel::markReadZerosUnreadCount()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("m1"), QStringLiteral("c1"), QString());
+
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 1);
+    model.markRead(QStringLiteral("sip:alice@example.com"));
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 0);
+}
+
+void TestConversationModel::markReadDoesNotAffectOtherConversations()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("from alice"), QStringLiteral("c1"), QString());
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:carol@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("from carol"), QStringLiteral("c2"), QString());
+
+    model.markRead(QStringLiteral("sip:alice@example.com"));
+
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 0);
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:carol@example.com")), 1);
+}
+
+void TestConversationModel::newInboundAfterMarkReadIncrementsUnreadAgain()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("m1"), QStringLiteral("c1"), QString());
+    model.markRead(QStringLiteral("sip:alice@example.com"));
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 0);
+
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("m2"), QStringLiteral("c2"), QString());
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 1);
 }
 
 QTEST_GUILESS_MAIN(TestConversationModel)

@@ -1,6 +1,7 @@
 #pragma once
 #include <QSettings>
 #include <QString>
+#include <QStringList>
 
 // Thin wrapper for consistent settings keys across the application.
 // Use QSettings directly for simple cases; extend this class for
@@ -126,6 +127,24 @@ public:
     // returns to where the user left off instead of always SIP Ladder.
     static QString toolsLastSubTab()             { return settings().value(QStringLiteral("ui/tools/lastSubTab"), QStringLiteral("sipladder")).toString(); }
     static void setToolsLastSubTab(const QString &key) { settings().setValue(QStringLiteral("ui/tools/lastSubTab"), key); }
+
+    // Conversation Workspace (Task W112): pinned/favorite conversations, a
+    // contact-level preference (like ContactStore's own persisted data),
+    // independent of MessageHistoryStore's session-only history — keyed by
+    // ConversationModel::normalizePeer()'d URI.
+    static QStringList pinnedConversationPeers() { return settings().value(QStringLiteral("ui/conversations/pinned")).toStringList(); }
+    static void setConversationPinned(const QString &normalizedPeer, bool pinned)
+    {
+        QStringList list = pinnedConversationPeers();
+        const bool alreadyPinned = list.contains(normalizedPeer);
+        if (pinned && !alreadyPinned)
+            list.append(normalizedPeer);
+        else if (!pinned && alreadyPinned)
+            list.removeAll(normalizedPeer);
+        else
+            return;
+        settings().setValue(QStringLiteral("ui/conversations/pinned"), list);
+    }
 
     // IMDN Foundation (Task W096). Auto Send Delivered defaults ON (a
     // "delivered" report is a transport-level acknowledgement with no

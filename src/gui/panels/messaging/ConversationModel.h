@@ -1,4 +1,5 @@
 #pragma once
+#include <QDateTime>
 #include <QHash>
 #include <QObject>
 #include <QString>
@@ -43,6 +44,26 @@ public:
     // ("active"/"idle"/"gone"), or empty if never seen.
     QString remoteTypingState(const QString &peerUri) const;
 
+    // Task W112 (Conversation Workspace). Most recent entry in this
+    // conversation (default-constructed, id == 0, if none) and its
+    // timestamp — used for a list row's preview/last-activity ordering.
+    MessageHistoryEntry lastMessageFor(const QString &peerUri) const;
+    QDateTime lastActivityFor(const QString &peerUri) const;
+
+    // Number of inbound entries in this conversation strictly newer than
+    // the last read marker set by markRead(). A conversation never read
+    // this session has every inbound entry counted as unread. This is a
+    // session-only, in-memory concept — MessageHistoryStore itself is not
+    // persisted across restarts, so a read cursor referencing its ids
+    // would be meaningless after one; it intentionally does not survive
+    // an app restart.
+    int unreadCountFor(const QString &peerUri) const;
+
+    // Marks every entry currently in this conversation as read (moves the
+    // cursor to the latest entry id seen so far). Never affects any other
+    // conversation's cursor.
+    void markRead(const QString &peerUri);
+
 signals:
     // Emitted whenever MessageHistoryStore appends/updates an entry
     // belonging to this conversation, so the UI can refresh just that
@@ -65,4 +86,5 @@ private:
 
     QHash<QString, TypingIndicatorController *> m_typingControllers;
     QStringList m_knownPeers; // normalized keys, first-seen order
+    QHash<QString, qint64> m_lastReadEntryId; // normalized peer -> last-read MessageHistoryEntry::id
 };

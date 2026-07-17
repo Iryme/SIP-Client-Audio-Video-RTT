@@ -29,20 +29,23 @@ class ClientMessagingView : public QWidget
 public:
     explicit ClientMessagingView(QWidget *parent = nullptr);
 
-    // Called by the Clients page when the dial target / active call peer
-    // changes, so the messaging surface follows the same "who am I talking
-    // to" concept as the call controls without a second target field.
+    // Called by ConversationWorkspacePanel (Task W112) when the selected
+    // conversation / active call peer changes — that panel is now the sole
+    // conversation picker; this view no longer has its own inline selector.
     void setPeerUri(const QString &peerUri);
     QString peerUri() const { return m_peerUri; }
 
+    // Task W112: exposes the controller (and therefore the single shared
+    // ConversationModel instance) so ConversationWorkspacePanel can read the
+    // same conversation state instead of owning a second, duplicate model.
+    ClientMessagingController *controller() const { return m_controller; }
+
 private slots:
-    void onConversationSelectionChanged();
     void onSendClicked();
     void onSendFileClicked();
     void onSaveReceivedFileClicked();
     void onBodyTextChanged();
     void onConversationUpdated(const QString &peerUri);
-    void onConversationListChanged();
     void onPresenceUpdated();
     void onMsrpFileTransferReceived(const QString &contentType, const QString &suggestedFileName,
                                     const QByteArray &body, const QString &msrpMessageId);
@@ -52,13 +55,11 @@ private slots:
 private:
     void appendHistoryRow(const MessageHistoryEntry &entry);
     void reloadHistory();
-    void reloadConversationList();
     QString currentPeer() const;
 
     ClientMessagingController *m_controller{nullptr};
     FileTransferModel *m_fileTransferModel{nullptr};
 
-    QComboBox      *m_conversationSelector{nullptr};
     QLineEdit      *m_toUriEdit{nullptr};
     QLabel         *m_presenceIndicator{nullptr};
     QLabel         *m_typingIndicator{nullptr};

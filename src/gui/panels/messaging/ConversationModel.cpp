@@ -3,6 +3,8 @@
 #include "sip/MessageHistoryStore.h"
 #include "sip/TypingIndicatorController.h"
 
+#include <algorithm>
+
 ConversationModel::ConversationModel(QObject *parent)
     : QObject(parent)
 {
@@ -89,4 +91,44 @@ QString ConversationModel::remoteTypingState(const QString &peerUri) const
             return it->typingState;
     }
     return QString();
+}
+
+MessageHistoryEntry ConversationModel::lastMessageFor(const QString &peerUri) const
+{
+    const auto history = historyFor(peerUri);
+    return history.isEmpty() ? MessageHistoryEntry() : history.last();
+}
+
+QDateTime ConversationModel::lastActivityFor(const QString &peerUri) const
+{
+    return lastMessageFor(peerUri).timestamp;
+}
+
+int ConversationModel::unreadCountFor(const QString &peerUri) const
+{
+    const QString key = normalizePeer(peerUri);
+    const qint64 lastRead = m_lastReadEntryId.value(key, 0);
+    int count = 0;
+    for (const MessageHistoryEntry &e : historyFor(peerUri)) {
+        if (e.direction == MessageHistoryEntry::Direction::Inbound && e.id > lastRead)
+            ++count;
+    }
+    return count;
+}
+
+void ConversationModel::markRead(const QString &peerUri)
+{
+    const QString key = normalizePeer(peerUri);
+    if (key.isEmpty())
+        return;
+    const qint64 previousCursor = m_lastReadEntryId.value(key, 0);
+    qint64 latestId = previousCursor;
+    for (const MessageHistoryEntry &e : historyFor(peerUri))
+        latestId = std::max(latestId, e.id);
+    if (latestId == previousCursor)
+        return; // no-op: avoids an infinite loop if a caller re-marks-read
+                // in response to conversationUpdated (e.g. a view that marks
+                // its own currently-open conversation read on every update)
+    m_lastReadEntryId.insert(key, latestId);
+    emit conversationUpdated(key);
 }
