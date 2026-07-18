@@ -6,13 +6,17 @@
 #include "media/MediaDeviceManager.h"
 #include "media/VideoQualityManager.h"
 #include "media/VideoStatistics.h"
+#include "sip/CodecManager.h"
 #include "sip/SipManager.h"
 
+#include <QBrush>
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QListWidgetItem>
 #include <QPushButton>
 #include <QShowEvent>
 #include <QHideEvent>
@@ -278,14 +282,49 @@ void VideoSettingsPanel::populateFps(const QString &cameraId, const QSize &resol
 
 void VideoSettingsPanel::populateCodecs(const QStringList &order)
 {
+    // knownCodecs() is a fixed reference list (H264/VP8/VP9/AV1/H265) used so
+    // a user's saved preference order survives switching to a PJSIP build
+    // that supports more or fewer codecs than the one that saved it. Not
+    // every name in it is necessarily compiled into *this* PJSIP build (e.g.
+    // this project currently links libvpx only — VP8 — with no H264/OpenH264
+    // codec available), so reordering an unavailable entry to the top has no
+    // effect on real negotiation (CodecManager::applyVideoCodecOrder() simply
+    // can't find it in videoCodecEnum2() and falls through). Mark those
+    // entries so the user isn't left guessing why their preferred codec never
+    // takes effect.
+    const QList<CodecEntry> real = CodecManager::instance().videoCodecs();
+    auto isAvailable = [&real](const QString &name) {
+        for (const auto &c : real) {
+            if (c.codecId.startsWith(name, Qt::CaseInsensitive))
+                return true;
+        }
+        return false;
+    };
+
     m_codecList->clear();
+    auto addCodecItem = [&](const QString &name) {
+        const bool available = isAvailable(name);
+        auto *item = new QListWidgetItem(available
+            ? name
+            : tr("%1 (not available in this build)").arg(name));
+        // The saved codecOrder must always be the plain codec name, never the
+        // annotated display text -- collectInto() reads this back.
+        item->setData(Qt::UserRole, name);
+        if (!available) {
+            item->setForeground(QBrush(QColor(150, 150, 150)));
+            item->setToolTip(tr("This PJSIP build does not have a %1 codec compiled in — "
+                                 "reordering it has no effect on the actual call.").arg(name));
+        }
+        m_codecList->addItem(item);
+    };
+
     // Ordered codecs first
     for (const QString &c : order)
-        m_codecList->addItem(c);
+        addCodecItem(c);
     // Then known codecs not already in the list
     for (const QString &c : VideoQualityManager::knownCodecs()) {
         if (!order.contains(c, Qt::CaseInsensitive))
-            m_codecList->addItem(c);
+            addCodecItem(c);
     }
     if (m_codecList->count() > 0)
         m_codecList->setCurrentRow(0);
@@ -359,7 +398,7 @@ VideoSettings VideoSettingsPanel::collectSettings() const
 
     QStringList codecs;
     for (int i = 0; i < m_codecList->count(); ++i)
-        codecs.append(m_codecList->item(i)->text());
+        codecs.append(m_codecList->item(i)->data(Qt::UserRole).toString());
     s.codecOrder = codecs;
 
     return s;

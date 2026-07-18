@@ -4,6 +4,70 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.5 — Video Latency & Framerate Investigation
+
+**Status:** complete
+**Branch:** `fix/video-latency-and-codec-investigation`
+**Version bump type:** PATCH
+**Scope:** Investigation requested ahead of W113E, after a manual Alice/Bob
+test session reported video/framerate problems and high latency on a
+local network. Two small, low-risk UX/logging fixes landed; the rest of
+the investigation's findings are documented for follow-up, not code
+changes, per what they actually require (see
+[video-latency-and-framerate-investigation.md](video-latency-and-framerate-investigation.md)
+for the full writeup).
+
+### What's fixed
+
+- `CodecManager::applyVideoCodecOrder()` now logs a clear warning when a
+  user's #1 preferred video codec has no matching entry in this PJSIP
+  build's `videoCodecEnum2()` (this build only has VP8 compiled in — no
+  H264/H265/AV1/VP9 — while the default preference order lists H264
+  first), instead of silently falling back with no trace of why.
+- `VideoSettingsPanel`'s codec reorder list now visually marks (grayed
+  text + tooltip) any codec name not backed by a real codec on the
+  current PJSIP build, so reordering an unavailable entry doesn't look
+  like it did something it can't. Also fixed the list's save path to read
+  the plain codec name from item data rather than the annotated display
+  text, so the new UI marker can't corrupt a saved `codecOrder`.
+
+### What's confirmed but NOT fixed (follow-up needed)
+
+- **No live in-call video telemetry exists.** The Call Workspace's
+  FPS/Video-Drops status cards and the diagnostics export's `videoFps`/
+  `videoBitrateKbps` all trace back to `VideoStatistics`, which is only
+  fed by the idle (out-of-call) Qt camera-preview loop —
+  `VideoPanel::onVideoMediaConnected()` stops that loop for the entire
+  duration of every real call. There is currently no way, from inside the
+  app, to see whether a call is actually hitting its configured fps or
+  badly under-delivering. Recommended follow-up: poll PJSIP's real video
+  stream stats (`pjmedia_vid_stream_get_stat()`) while a call's video is
+  active.
+- This PJSIP build has exactly one usable video codec, VP8, software-only
+  (no hardware H264 path). Likely a real contributor to perceived latency
+  under load, but adding H264/OpenH264 support is a MAJOR-scope build
+  change, not something to do inline here.
+- One side of the test session used an RDP-redirected camera, adding
+  latency inherent to that test setup, unrelated to the app's own code.
+- Repeated video-window re-attach log lines and one RTT negotiation
+  timeout observed in the test logs were both traced to expected behavior
+  (manual Camera On/Off toggling during the test; the RTT offer's
+  designed 12s timeout guard, respectively) — not defects.
+
+### Validation
+
+- Debug (`build/`) rebuilt clean, 80/80 CTest.
+- Release (`build-release/`) rebuilt clean, 80/80 CTest.
+- No new automated tests added: the codec-order warning only exercises
+  inside `#ifdef HAVE_PJSIP`, which the existing `test_codec_manager`
+  suite explicitly skips (`QSKIP` when `HAVE_PJSIP` is defined — it only
+  covers the stub-mode codec list); the `VideoSettingsPanel` UI change has
+  no existing widget-level test harness to extend. Verified by reading
+  through both code paths and by the two full Debug/Release rebuilds
+  above.
+
+---
+
 ## v1.6.4 — Portable Windows Test Bundle
 
 **Status:** complete

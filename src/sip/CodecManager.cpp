@@ -178,6 +178,33 @@ void CodecManager::applyVideoCodecOrder(const QStringList &order)
 #if defined(HAVE_PJSIP) && defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
     try {
         pj::CodecInfoVector2 pjVideo = pj::Endpoint::instance().videoCodecEnum2();
+
+        // The user's preferred order can list codecs this PJSIP build never
+        // compiled in (e.g. H264/OpenH264 support isn't linked — only
+        // libvpx's VP8 is). applyVideoCodecOrder() below silently no-ops for
+        // any name that doesn't match a real pjVideo entry, which previously
+        // gave no indication that the #1 preference was unachievable and the
+        // call fell back further down the list. Surface that explicitly once
+        // per call setup so it shows up in logs/diagnostics instead of only
+        // being discoverable by comparing this list against the codec matrix
+        // CodecManager::initialize() already logged at startup.
+        if (!order.isEmpty()) {
+            bool topChoiceAvailable = false;
+            for (const auto &c : pjVideo) {
+                if (QString::fromStdString(c.codecId).startsWith(order.first(), Qt::CaseInsensitive)) {
+                    topChoiceAvailable = true;
+                    break;
+                }
+            }
+            if (!topChoiceAvailable) {
+                Logger::instance().warn(LogCategory::Media,
+                    QStringLiteral("Preferred video codec '%1' is not available in this "
+                                   "PJSIP build (no matching entry in videoCodecEnum2()) — "
+                                   "falling back to the next available codec in the order")
+                        .arg(order.first()));
+            }
+        }
+
         for (const auto &c : pjVideo) {
             const QString id = QString::fromStdString(c.codecId);
             int rank = -1;
