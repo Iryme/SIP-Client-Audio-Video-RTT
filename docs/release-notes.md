@@ -4,6 +4,59 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.6 — RTT Request Visual Alert Parity with Video
+
+**Status:** complete
+**Branch:** `fix/w113e-rtt-request-visual-alert`
+**Version bump type:** PATCH
+**Scope:** UI/state-binding only. An incoming RTT request now flashes the
+Request RTT button exactly like an incoming video request flashes Request
+Video — same color, same 500ms interval, same start/stop conditions. No
+changes to RTT/video SDP negotiation, `requestRtt()`,
+`acceptIncomingRttRequest()`, `rejectIncomingRttRequest()`, RTP port
+allocation, or either state machine.
+
+### What changed
+
+- New `src/gui/widgets/RequestBlinker.{h,cpp}` — a small, reusable
+  flashing-indicator helper (500ms `QTimer` + bool, `start()`/`stop()`/
+  `isOn()`, both idempotent). Video's previously one-off
+  `m_videoRequestBlinkTimer`/`m_videoRequestBlinkOn` pair was replaced with
+  an instance of this class; RTT gets its own instance of the same class.
+  One shared implementation, not two that could drift apart.
+- `CallWorkspacePanel` now starts/stops `m_rttRequestBlinker` at every
+  point video already starts/stops its own blinker (request received,
+  accept, call disconnected/failed, media connected/disconnected, panel
+  reset), plus three RTT-only stop signals that have no video equivalent
+  (`rttRequestRejected`, `rttRequestWithdrawn`, `rttNegotiationFailed` —
+  the underlying `SipCall`/`SipManager` layer only exposes these for RTT).
+- `ThemeManager.cpp` — new shared `[rttAlert="true"]` QSS rule, identical
+  color to `[videoAlert="true"]`. Also fixed two style gaps found while
+  centralizing this: `callRole="acceptRtt"` previously had no QSS rule at
+  all (fell back to the unstyled platform default), and
+  `callRole="rttActive"` had no distinct "active" look unlike
+  `callRole="videoActive"`'s green style — both now share their video
+  counterpart's rule.
+- Both Request Video and Request RTT buttons now have a `toolTip()`,
+  `accessibleName()`, and `accessibleDescription()` that update with
+  state — neither had any accessibility metadata before, and the alert
+  was effectively color-only until now.
+
+### Validation
+
+- Debug (`build/`) rebuilt clean, 81/81 CTest (80 baseline + new
+  `test_request_blinker`, covering `RequestBlinker`'s default state,
+  start/stop idempotency, immediate-emit-on-start, and real timer-tick
+  toggling).
+- Release (`build-release/`) rebuilt clean, 81/81 CTest.
+- Manual GUI click-through of the two-peer incoming-request scenario (Bob
+  sends a video request, then an RTT request, confirm identical flashing,
+  accept/reject/timeout, multiple-calls isolation) is **NOT RUN** — no
+  live SIP peer or input-automation tooling available in this session,
+  same constraint flagged on every prior GUI-facing task.
+
+---
+
 ## v1.6.5 — Video Latency & Framerate Investigation
 
 **Status:** complete

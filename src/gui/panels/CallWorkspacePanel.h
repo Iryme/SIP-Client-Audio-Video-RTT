@@ -9,6 +9,7 @@
 #include "sip/CallStateMachine.h"
 #include "sip/CallMediaOptions.h"
 #include "media/RtpStats.h"
+#include "gui/widgets/RequestBlinker.h"
 
 class AudioLevelMeter;
 class QLabel;
@@ -173,8 +174,13 @@ private:
     QTimer m_durationTimer;
     int m_durationSeconds{0};
     QTimer m_holdConfirmTimer;
-    QTimer m_videoRequestBlinkTimer;
-    bool m_videoRequestBlinkOn{false};
+
+    // Shared flashing/pulsing "incoming media request" indicator -- see
+    // docs/incoming-media-request-alerts.md. Both Request Video and Request
+    // RTT drive the same RequestBlinker class so the alert's timing/behavior
+    // can never drift between the two media types.
+    RequestBlinker m_videoRequestBlinker;
+    RequestBlinker m_rttRequestBlinker;
 
     // Media state (mirrors the sources of truth in CallInfoModel; kept as
     // plain bools here too since several are also needed synchronously

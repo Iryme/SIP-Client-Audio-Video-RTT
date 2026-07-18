@@ -61,11 +61,8 @@ CallWorkspacePanel::CallWorkspacePanel(QLineEdit *targetInput, QWidget *parent)
     setObjectName(QStringLiteral("CallWorkspacePanel"));
     m_callInfoModel = new CallInfoModel(this);
 
-    m_videoRequestBlinkTimer.setInterval(500);
-    connect(&m_videoRequestBlinkTimer, &QTimer::timeout, this, [this]() {
-        m_videoRequestBlinkOn = !m_videoRequestBlinkOn;
-        refreshRequestVideoButton();
-    });
+    connect(&m_videoRequestBlinker, &RequestBlinker::toggled, this, &CallWorkspacePanel::refreshRequestVideoButton);
+    connect(&m_rttRequestBlinker, &RequestBlinker::toggled, this, &CallWorkspacePanel::refreshRequestRttButton);
 
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(12, 12, 12, 12);
@@ -504,13 +501,11 @@ CallWorkspacePanel::CallWorkspacePanel(QLineEdit *targetInput, QWidget *parent)
             m_videoRequestFailed = true;
             if (acceptMode) {
                 m_videoRequested = true;
-                m_videoRequestBlinkOn = true;
-                m_videoRequestBlinkTimer.start();
+                m_videoRequestBlinker.start();
             }
         } else if (acceptMode) {
             m_videoRequested = false;
-            m_videoRequestBlinkOn = false;
-            m_videoRequestBlinkTimer.stop();
+            m_videoRequestBlinker.stop();
         }
         refreshRequestVideoButton();
         refreshCards();
@@ -524,8 +519,10 @@ CallWorkspacePanel::CallWorkspacePanel(QLineEdit *targetInput, QWidget *parent)
             if (!SipManager::instance().acceptIncomingRtt()) {
                 m_rttRequestFailed = true;
                 m_rttRequested = true;
+                m_rttRequestBlinker.start();
             } else {
                 m_rttRequested = false;
+                m_rttRequestBlinker.stop();
             }
             refreshRequestRttButton();
             refreshCards();
@@ -594,6 +591,29 @@ CallWorkspacePanel::CallWorkspacePanel(QLineEdit *targetInput, QWidget *parent)
             this, &CallWorkspacePanel::onRttMediaDisconnected);
     connect(&SipManager::instance(), &SipManager::rttRequested,
             this, &CallWorkspacePanel::onRttRequested);
+    // RTT has explicit reject/withdraw/negotiation-failed signals that video
+    // has no equivalent for (see docs/incoming-media-request-alerts.md) --
+    // wired here so the alert can't keep flashing for a request that's no
+    // longer live (peer cancelled, user rejected via the MediaRequestDialog
+    // popup, or the re-INVITE itself failed at the transport/SDP level).
+    connect(&SipManager::instance(), &SipManager::rttRequestRejected, this, [this]() {
+        m_rttRequested = false;
+        m_rttRequestBlinker.stop();
+        refreshRequestRttButton();
+        refreshCards();
+    });
+    connect(&SipManager::instance(), &SipManager::rttRequestWithdrawn, this, [this]() {
+        m_rttRequested = false;
+        m_rttRequestBlinker.stop();
+        refreshRequestRttButton();
+        refreshCards();
+    });
+    connect(&SipManager::instance(), &SipManager::rttNegotiationFailed, this, [this](const QString &) {
+        m_rttRequested = false;
+        m_rttRequestBlinker.stop();
+        refreshRequestRttButton();
+        refreshCards();
+    });
     connect(&SipManager::instance(), &SipManager::rtpStatsChanged,
             this, [this](const RtpStatsSnapshot &stats) {
         m_callInfoModel->setRtpStats(stats);
@@ -765,18 +785,28 @@ void CallWorkspacePanel::refreshRequestVideoButton()
         m_btnRequestVideo->setProperty("videoAlert", false);
         m_btnRequestVideo->setEnabled(false);
         m_btnRequestVideo->setChecked(true);
+        m_btnRequestVideo->setToolTip(tr("Video is active on this call"));
+        m_btnRequestVideo->setAccessibleName(tr("Video active"));
+        m_btnRequestVideo->setAccessibleDescription(QString());
     } else if (acceptMode) {
         m_btnRequestVideo->setText(tr("Accept Video"));
         m_btnRequestVideo->setProperty("callRole", QStringLiteral("acceptVideo"));
-        m_btnRequestVideo->setProperty("videoAlert", m_videoRequestBlinkOn);
+        m_btnRequestVideo->setProperty("videoAlert", m_videoRequestBlinker.isOn());
         m_btnRequestVideo->setEnabled(true);
         m_btnRequestVideo->setChecked(false); // must be unchecked so click fires toggled(true)
+        m_btnRequestVideo->setToolTip(tr("Incoming video request — click to accept"));
+        m_btnRequestVideo->setAccessibleName(tr("Accept incoming video request"));
+        m_btnRequestVideo->setAccessibleDescription(
+            tr("The remote party is requesting to add video to this call."));
     } else {
         m_btnRequestVideo->setText(tr("Request Video"));
         m_btnRequestVideo->setProperty("callRole", QStringLiteral("requestVideo"));
         m_btnRequestVideo->setProperty("videoAlert", false);
         m_btnRequestVideo->setEnabled(true);
         m_btnRequestVideo->setChecked(false);
+        m_btnRequestVideo->setToolTip(tr("Request video for this call"));
+        m_btnRequestVideo->setAccessibleName(tr("Request video"));
+        m_btnRequestVideo->setAccessibleDescription(QString());
     }
     m_btnRequestVideo->style()->unpolish(m_btnRequestVideo);
     m_btnRequestVideo->style()->polish(m_btnRequestVideo);
@@ -792,18 +822,31 @@ void CallWorkspacePanel::refreshRequestRttButton()
     if (rttActive) {
         m_btnRequestRtt->setText(tr("RTT Active"));
         m_btnRequestRtt->setProperty("callRole", QStringLiteral("rttActive"));
+        m_btnRequestRtt->setProperty("rttAlert", false);
         m_btnRequestRtt->setEnabled(false);
         m_btnRequestRtt->setChecked(true);
+        m_btnRequestRtt->setToolTip(tr("RTT is active on this call"));
+        m_btnRequestRtt->setAccessibleName(tr("RTT active"));
+        m_btnRequestRtt->setAccessibleDescription(QString());
     } else if (acceptMode) {
         m_btnRequestRtt->setText(tr("Accept RTT"));
         m_btnRequestRtt->setProperty("callRole", QStringLiteral("acceptRtt"));
+        m_btnRequestRtt->setProperty("rttAlert", m_rttRequestBlinker.isOn());
         m_btnRequestRtt->setEnabled(true);
-        m_btnRequestRtt->setChecked(false);
+        m_btnRequestRtt->setChecked(false); // must be unchecked so click fires toggled(true)
+        m_btnRequestRtt->setToolTip(tr("Incoming RTT (real-time text) request — click to accept"));
+        m_btnRequestRtt->setAccessibleName(tr("Accept incoming RTT request"));
+        m_btnRequestRtt->setAccessibleDescription(
+            tr("The remote party is requesting to add real-time text to this call."));
     } else {
         m_btnRequestRtt->setText(tr("Request RTT"));
         m_btnRequestRtt->setProperty("callRole", QStringLiteral("requestRtt"));
+        m_btnRequestRtt->setProperty("rttAlert", false);
         m_btnRequestRtt->setEnabled(true);
         m_btnRequestRtt->setChecked(false);
+        m_btnRequestRtt->setToolTip(tr("Request RTT (real-time text) for this call"));
+        m_btnRequestRtt->setAccessibleName(tr("Request RTT"));
+        m_btnRequestRtt->setAccessibleDescription(QString());
     }
     m_btnRequestRtt->style()->unpolish(m_btnRequestRtt);
     m_btnRequestRtt->style()->polish(m_btnRequestRtt);
@@ -995,8 +1038,8 @@ void CallWorkspacePanel::resetStatusCards()
     m_rttRequested = false;
     m_rttRequestFailed = false;
     m_selectedMedia = CallMediaOptions();
-    m_videoRequestBlinkTimer.stop();
-    m_videoRequestBlinkOn = false;
+    m_videoRequestBlinker.stop();
+    m_rttRequestBlinker.stop();
     m_callInfoModel->reset();
 
     m_cardDuration->setValue(QStringLiteral("00:00:00"));
@@ -1044,9 +1087,9 @@ void CallWorkspacePanel::onCallStateChanged(CallState state, const QString &, in
         m_durationTimer.stop();
         m_durationSeconds = 0;
         m_videoRequested = false;
-        m_videoRequestBlinkOn = false;
-        m_videoRequestBlinkTimer.stop();
+        m_videoRequestBlinker.stop();
         m_rttRequested = false;
+        m_rttRequestBlinker.stop();
         refreshRequestVideoButton();
         refreshRequestRttButton();
         resetStatusCards();
@@ -1068,9 +1111,9 @@ void CallWorkspacePanel::onCallConnected(const QString &)
 void CallWorkspacePanel::onCallDisconnected(const QString &, const QString &, int)
 {
     m_videoRequested = false;
-    m_videoRequestBlinkOn = false;
-    m_videoRequestBlinkTimer.stop();
+    m_videoRequestBlinker.stop();
     m_rttRequested = false;
+    m_rttRequestBlinker.stop();
     refreshRequestVideoButton();
     refreshRequestRttButton();
     refreshCards();
@@ -1079,9 +1122,9 @@ void CallWorkspacePanel::onCallDisconnected(const QString &, const QString &, in
 void CallWorkspacePanel::onCallFailed(const QString &, const QString &, int)
 {
     m_videoRequested = false;
-    m_videoRequestBlinkOn = false;
-    m_videoRequestBlinkTimer.stop();
+    m_videoRequestBlinker.stop();
     m_rttRequested = false;
+    m_rttRequestBlinker.stop();
     refreshRequestVideoButton();
     refreshRequestRttButton();
     refreshCards();
@@ -1095,8 +1138,7 @@ void CallWorkspacePanel::onVideoMediaConnected()
     m_videoConnected = true;
     m_videoRequestFailed = false;
     m_videoRequested = false;
-    m_videoRequestBlinkOn = false;
-    m_videoRequestBlinkTimer.stop();
+    m_videoRequestBlinker.stop();
     refreshRequestVideoButton();
     refreshCards();
 }
@@ -1105,8 +1147,7 @@ void CallWorkspacePanel::onVideoMediaDisconnected()
 {
     m_videoConnected = false;
     m_videoRequested = false;
-    m_videoRequestBlinkOn = false;
-    m_videoRequestBlinkTimer.stop();
+    m_videoRequestBlinker.stop();
     refreshRequestVideoButton();
     refreshCards();
 }
@@ -1115,9 +1156,8 @@ void CallWorkspacePanel::onVideoRequested()
 {
     m_videoRequestFailed = false;
     m_videoRequested = true;
-    m_videoRequestBlinkOn = true;
     refreshRequestVideoButton();
-    m_videoRequestBlinkTimer.start();
+    m_videoRequestBlinker.start();
     refreshCards();
 }
 
@@ -1131,6 +1171,7 @@ void CallWorkspacePanel::onRttMediaConnected()
     m_rttConnected = true;
     m_rttRequested = false;
     m_rttRequestFailed = false;
+    m_rttRequestBlinker.stop();
     refreshRequestRttButton();
     refreshCards();
 }
@@ -1138,15 +1179,22 @@ void CallWorkspacePanel::onRttMediaConnected()
 void CallWorkspacePanel::onRttMediaDisconnected()
 {
     m_rttConnected = false;
+    // A disconnect while a request was still pending (never reached Active)
+    // means the offer was declined/withdrawn rather than a normal hangup of
+    // an established RTT stream -- either way the alert must not keep
+    // flashing for a request that's no longer live.
+    m_rttRequested = false;
+    m_rttRequestBlinker.stop();
     refreshRequestRttButton();
     refreshCards();
 }
 
 void CallWorkspacePanel::onRttRequested()
 {
-    m_rttRequested = true;
     m_rttRequestFailed = false;
+    m_rttRequested = true;
     refreshRequestRttButton();
+    m_rttRequestBlinker.start();
     refreshCards();
 }
 

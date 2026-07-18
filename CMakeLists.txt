@@ -7,7 +7,7 @@ set(CMAKE_DEPENDS_USE_COMPILER FALSE CACHE BOOL
     "Use CMake dependency discovery instead of compiler-generated deps" FORCE)
 
 project(SIPClient
-    VERSION 1.6.5
+    VERSION 1.6.6
     DESCRIPTION "Generic SIP Multimedia Client - Audio / Video / RTT"
     LANGUAGES CXX
 )
@@ -149,6 +149,7 @@ set(SOURCES
     src/gui/widgets/FlowLayout.cpp
     src/gui/widgets/StatusCard.cpp
     src/gui/widgets/AudioLevelMeter.cpp
+    src/gui/widgets/RequestBlinker.cpp
     src/sip/SipTraceLogger.cpp
     src/sip/SipRawMessageParser.cpp
     src/sip/PjsipTraceModule.cpp
@@ -373,6 +374,7 @@ set(HEADERS
     src/gui/theme/ThemeManager.h
     src/gui/widgets/FlowLayout.h
     src/gui/widgets/StatusCard.h
+    src/gui/widgets/RequestBlinker.h
     src/gui/widgets/AppStatusBar.h
     src/gui/dialogs/SipProfileEditorDialog.h
     src/gui/dialogs/IncomingCallDialog.h

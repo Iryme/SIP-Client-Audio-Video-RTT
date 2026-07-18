@@ -368,7 +368,8 @@ QPushButton#CallCtrlBtn[callRole="resume"]:disabled {
 
 QPushButton#CallCtrlBtn[callRole="requestVideo"],
 QPushButton#CallCtrlBtn[callRole="acceptVideo"],
-QPushButton#CallCtrlBtn[callRole="requestRtt"] {
+QPushButton#CallCtrlBtn[callRole="requestRtt"],
+QPushButton#CallCtrlBtn[callRole="acceptRtt"] {
     background-color: __BG3__;
     color: __T0__;
     border: 1px solid __B1__;
@@ -378,23 +379,27 @@ QPushButton#CallCtrlBtn[callRole="requestRtt"] {
 }
 QPushButton#CallCtrlBtn[callRole="requestVideo"]:hover,
 QPushButton#CallCtrlBtn[callRole="acceptVideo"]:hover,
-QPushButton#CallCtrlBtn[callRole="requestRtt"]:hover { background-color: __BG2__; border-color: __B1__; }
+QPushButton#CallCtrlBtn[callRole="requestRtt"]:hover,
+QPushButton#CallCtrlBtn[callRole="acceptRtt"]:hover { background-color: __BG2__; border-color: __B1__; }
 QPushButton#CallCtrlBtn[callRole="requestVideo"]:checked,
 QPushButton#CallCtrlBtn[callRole="acceptVideo"]:checked,
-QPushButton#CallCtrlBtn[callRole="requestRtt"]:checked {
+QPushButton#CallCtrlBtn[callRole="requestRtt"]:checked,
+QPushButton#CallCtrlBtn[callRole="acceptRtt"]:checked {
     background-color: __ACBG__;
     color: __AC__;
     border-color: __AC__;
 }
 QPushButton#CallCtrlBtn[callRole="requestVideo"]:disabled,
 QPushButton#CallCtrlBtn[callRole="acceptVideo"]:disabled,
-QPushButton#CallCtrlBtn[callRole="requestRtt"]:disabled {
+QPushButton#CallCtrlBtn[callRole="requestRtt"]:disabled,
+QPushButton#CallCtrlBtn[callRole="acceptRtt"]:disabled {
     background-color: __BG3__;
     color: __T2__;
     border-color: __B0__;
 }
 
-QPushButton#CallCtrlBtn[callRole="videoActive"] {
+QPushButton#CallCtrlBtn[callRole="videoActive"],
+QPushButton#CallCtrlBtn[callRole="rttActive"] {
     background-color: #144d23;
     color: #4ade80;
     border: 1px solid #2e7d32;
@@ -403,18 +408,27 @@ QPushButton#CallCtrlBtn[callRole="videoActive"] {
     font-size: 11px;
     font-weight: bold;
 }
-QPushButton#CallCtrlBtn[callRole="videoActive"]:disabled {
+QPushButton#CallCtrlBtn[callRole="videoActive"]:disabled,
+QPushButton#CallCtrlBtn[callRole="rttActive"]:disabled {
     background-color: #144d23;
     color: #4ade80;
     border-color: #2e7d32;
 }
 
-QPushButton#CallCtrlBtn[videoAlert="true"] {
+/* Incoming media request alert (Request Video / Request RTT) -- same color,
+   same flashing behavior for both media types by design (RequestBlinker
+   toggles this property on/off every 500ms; see
+   docs/incoming-media-request-alerts.md). Never the only signal: the button
+   text ("Accept Video"/"Accept RTT") and tooltip/accessibleName also change,
+   so the alert isn't color-only. */
+QPushButton#CallCtrlBtn[videoAlert="true"],
+QPushButton#CallCtrlBtn[rttAlert="true"] {
     background-color: #c86b12;
     color: #1f1200;
     border-color: #f3a43b;
 }
-QPushButton#CallCtrlBtn[videoAlert="true"]:hover {
+QPushButton#CallCtrlBtn[videoAlert="true"]:hover,
+QPushButton#CallCtrlBtn[rttAlert="true"]:hover {
     background-color: #d67d18;
     border-color: #ffb14a;
 }

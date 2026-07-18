@@ -13,8 +13,11 @@ below it, unchanged.
   saved contact name when one matches, via `ContactStore`), presence.
 - **Controls**: call/answer/reject/hangup, mute, hold/resume (same
   optimistic-UI + timeout-confirm pattern as before), request video /
-  request RTT (same accept-mode blink-timer behavior as before), camera
-  on/off, video mute.
+  request RTT, camera on/off, video mute. Both Request Video and Request
+  RTT share the exact same incoming-request visual alert (color, flashing
+  interval, start/stop conditions) via one `RequestBlinker` helper — see
+  [incoming-media-request-alerts.md](incoming-media-request-alerts.md)
+  (Task W113E).
 - **Media status grid**: split (Task W113a) into an always-visible
   **essential** row (Call State, Duration, Remote URI, Presence, Audio,
   Remote Video, RTT, Camera) and a collapsed-by-default **Advanced
