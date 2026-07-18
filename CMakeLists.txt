@@ -7,7 +7,7 @@ set(CMAKE_DEPENDS_USE_COMPILER FALSE CACHE BOOL
     "Use CMake dependency discovery instead of compiler-generated deps" FORCE)
 
 project(SIPClient
-    VERSION 1.6.3
+    VERSION 1.6.4
     DESCRIPTION "Generic SIP Multimedia Client - Audio / Video / RTT"
     LANGUAGES CXX
 )
@@ -95,6 +95,17 @@ configure_file(
     "${CMAKE_BINARY_DIR}/generated/AppVersion.h"
     @ONLY
 )
+
+# --- Windows FILEVERSION/PRODUCTVERSION resource ---
+# Same PROJECT_VERSION as AppVersion.h above, so Explorer's Properties >
+# Details tab reports the same version as the in-app About dialog.
+if(WIN32)
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/cmake/AppVersion.rc.in"
+        "${CMAKE_BINARY_DIR}/generated/AppVersion.rc"
+        @ONLY
+    )
+endif()
 
 # --- Sources ---
 set(SOURCES
@@ -421,6 +432,7 @@ set(HEADERS
 if(WIN32)
     list(APPEND SOURCES src/security/WindowsCredentialBackend.cpp)
     list(APPEND HEADERS src/security/WindowsCredentialBackend.h)
+    list(APPEND SOURCES "${CMAKE_BINARY_DIR}/generated/AppVersion.rc")
 endif()
 
 set(RESOURCES
