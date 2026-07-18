@@ -1,8 +1,8 @@
 # Project Status
 
 Last updated: 2026-07-19
-Current task count: 75 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W113 + W113a + W113b + W113c + W113D + video-latency-investigation + W113E + W113F + W113G complete)
-Active branch: `feature/w113g-macos-arm64-bundle`
+Current task count: 76 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W113 + W113a + W113b + W113c + W113D + video-latency-investigation + W113E + W113F + W113G + W113H complete)
+Active branch: `test/w113h-windows-macos-live-interoperability`
 Application version: 1.6.8 (see docs/versioning-and-rollout.md)
 
 ---
@@ -38,6 +38,7 @@ Application version: 1.6.8 (see docs/versioning-and-rollout.md)
 
 | # | Task | Branch | Status |
 |---|---|---|---|
+| W113H | Windows 1.6.8 Parity Build and Live Windows ↔ macOS Interoperability Validation — synced to W113G's `e82a496`, rebuilt Debug/Release Windows at 1.6.8 with real PJSIP (81/81 CTest each, no test disabled), reconfirmed LMPE-forced-disabled and no-raw-XML-in-Client-chat regressions still hold, rebuilt the stale `build-windows-x64-release` tree (was frozen at 1.6.4 since before W113E) and produced a clean 1.6.8 portable bundle (dependency/secret/architecture audits + smoke test all PASS). Discovered this Windows PJSIP build has `PJ_HAS_SSL_SOCK 0` (no OpenSSL found at PJSIP configure time) — TLS transport is UNSUPPORTED on Windows here, a build-configuration fact rather than a regression. No code changed | test/w113h-windows-macos-live-interoperability | COMPLETE for the Windows-only scope this environment supports. All live Windows↔macOS scenarios (REGISTER, audio/video calls, RTT, SIP MESSAGE/CPIM/IMDN/is-composing, Presence/XCAP, MSRP direct/relay, file transfer, hold/resume, re-INVITE) are BLOCKED — no macOS device, second Windows machine, or SIP test server available in this session; none declared PASS. See [agent-results/W113H-windows-macos-live-interoperability-result.md](agent-results/W113H-windows-macos-live-interoperability-result.md) |
 | W113G | Native macOS ARM64 Bundle — CMake Apple bundle, Info.plist privacy/version metadata, ARM64 PJSIP/Qt deployment, macOS Keychain adapter, architecture/dependency/RPATH/security audits, ad-hoc signing, relocation smoke test, ZIP/SHA/manifest and DMG | feature/w113g-macos-arm64-bundle | COMPLETE for build/package automation — Debug and Release native builds PASS; 82/82 CTest PASS on macOS ARM64; app deployment/audits/ad-hoc signature/relocation smoke PASS. Developer ID, notarization, second clean Mac, Windows build, and live Windows↔macOS SIP/audio/video/RTT/messaging tests NOT RUN/BLOCKED by unavailable infrastructure; see [agent-results/W113G-macos-arm64-bundle-result.md](agent-results/W113G-macos-arm64-bundle-result.md) |
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | COMPLETE |
 | 2 | GUI layout specification | feature/gui-layout-spec | COMPLETE (separate lineage) |

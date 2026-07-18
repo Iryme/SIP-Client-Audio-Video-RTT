@@ -25,3 +25,15 @@ W113G status: **NOT RUN / BLOCKED**. This session had one macOS ARM64 host, no
 Windows machine, no second clean Mac, no SIP credentials/server, and no
 reference peer. No cross-platform result is inferred from unit tests.
 
+W113H status: **NOT RUN / BLOCKED** (inverse of W113G). This session had one
+Windows 11 host at version 1.6.8 (Debug+Release build, 81/81 CTest, portable
+bundle generated and verified) but no macOS device, no SIP server/accounts,
+and no reference peer — the mirror image of W113G's gap. Combined, W113G and
+W113H have now separately validated that each platform builds, tests, and
+packages cleanly at 1.6.8 in isolation; neither session has been able to join
+both platforms to a live server at the same time. See
+[agent-results/W113H-windows-macos-live-interoperability-result.md](agent-results/W113H-windows-macos-live-interoperability-result.md)
+for the full matrix and the one Windows-specific finding (`PJ_HAS_SSL_SOCK 0`
+— this Windows PJSIP build has no TLS transport compiled in at all, so a
+future live TLS scenario needs a PJSIP rebuild with OpenSSL located first).
+
