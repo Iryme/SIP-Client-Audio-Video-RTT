@@ -34,7 +34,19 @@ public:
 
     // Chronological history for one conversation (a filtered snapshot of
     // MessageHistoryStore, not a separate copy kept in sync manually).
+    // Includes protocol-event rows (IMDN reports, is-composing
+    // notifications, unsupported/malformed payloads) — callers that need
+    // those (remoteTypingState() below, Tools' Message History table) use
+    // this; callers rendering the user-facing chat bubble list use
+    // userVisibleHistoryFor() instead (Task W113F).
     QList<MessageHistoryEntry> historyFor(const QString &peerUri) const;
+
+    // Task W113F: same as historyFor(), with every MessageHistoryEntry
+    // whose isProtocolEvent() is true removed — this is what the Client
+    // Messaging UI should render as chat bubbles, use for unread counts,
+    // and use for conversation preview text, so an IMDN report/is-composing
+    // notification/unsupported payload never appears as if a human sent it.
+    QList<MessageHistoryEntry> userVisibleHistoryFor(const QString &peerUri) const;
 
     // Lazily creates (once per peer) and returns this conversation's typing
     // controller. Same instance for the lifetime of this ConversationModel.
@@ -44,15 +56,20 @@ public:
     // ("active"/"idle"/"gone"), or empty if never seen.
     QString remoteTypingState(const QString &peerUri) const;
 
-    // Task W112 (Conversation Workspace). Most recent entry in this
-    // conversation (default-constructed, id == 0, if none) and its
+    // Task W112 (Conversation Workspace). Most recent *user-visible* entry
+    // in this conversation (default-constructed, id == 0, if none) and its
     // timestamp — used for a list row's preview/last-activity ordering.
+    // Task W113F: uses userVisibleHistoryFor(), so an IMDN report or
+    // is-composing notification can never become a conversation's preview
+    // text just because it happened to be the most recent entry.
     MessageHistoryEntry lastMessageFor(const QString &peerUri) const;
     QDateTime lastActivityFor(const QString &peerUri) const;
 
-    // Number of inbound entries in this conversation strictly newer than
-    // the last read marker set by markRead(). A conversation never read
-    // this session has every inbound entry counted as unread. This is a
+    // Number of user-visible inbound entries in this conversation strictly
+    // newer than the last read marker set by markRead() — protocol-event
+    // rows (IMDN/is-composing/unsupported) never contribute (Task W113F).
+    // A conversation never read this session has every inbound entry
+    // counted as unread. This is a
     // session-only, in-memory concept — MessageHistoryStore itself is not
     // persisted across restarts, so a read cursor referencing its ids
     // would be meaningless after one; it intentionally does not survive

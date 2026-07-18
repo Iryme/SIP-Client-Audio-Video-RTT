@@ -92,7 +92,7 @@ No monolithic class. Each concern is its own file:
 | Transactions | `MsrpTransaction` / `MsrpTransactionStore` | SEND/REPORT/response correlation |
 | Session registry | `MsrpSessionStore` | Global singleton, UI-facing |
 | Diagnostics | `MsrpDiagnosticsEvent` / `MsrpDiagnosticsStore` | Global singleton, frame log |
-| Payload dispatch | `MsrpPayloadDispatcher` | Reuses CpimParser/ImdnParser/IsComposingParser |
+| Payload dispatch (unused in production, see §8) | `MsrpPayloadDispatcher` | Modeled the right logic, never wired in — `SipManager::routeInboundMessagingPayload()` is the real one (Task W113F) |
 | Transport policy | `MessagingTransportPolicy` | Pure decision engine (§M) |
 | Live-call detection | `MsrpSipIntegration` | Read-only SDP observation (§0) |
 
@@ -195,19 +195,36 @@ completes within `msrpTransactionTimeoutMs`.
 
 ## 8. Payload dispatch — no duplicated parsers
 
-`MsrpPayloadDispatcher::dispatch()` reuses, unmodified: `CpimParser::parse`,
-`ImdnParser::parse`, `IsComposingParser::parse`,
-`MessagingContentKindDetector::detect`, and
-`MessageHistoryStore::appendInbound`/`appendInboundImdn`/
-`appendInboundTyping`/`correlateDelivery` — the exact same calls
-`SipManager::onAccountInstantMessageReceived` already makes for SIP
-MESSAGE, just fed from `MsrpSession::payloadReceived` instead. CPIM is
-unwrapped first (inner Content-Type re-classified); IMDN reports correlate
-delivery state onto the original outbound Message-ID; is-composing updates
-the existing typing-indicator history rows. An unrecognized Content-Type is
-only added to Message History if it plausibly is text (conservative binary
-sniff: no NUL bytes, <5% non-printable) — genuinely binary content stays
-diagnostics-only, per requirement L.
+**Task W113F correction**: this section originally described
+`MsrpPayloadDispatcher::dispatch()` as the thing actually classifying
+MSRP-carried payloads in production. That class exists and is unit tested
+(`tests/test_msrp_payload_dispatcher.cpp`), reusing `CpimParser::parse`,
+`ImdnParser::parse`, `IsComposingParser::parse`, and
+`MessagingContentKindDetector::detect` correctly — but it was **never
+actually connected** to the live receive path: `SipCall`'s
+`msrpPayloadReceived` signal went straight into `SipManager`'s connect
+lambda, calling `MessageHistoryStore::appendInbound()` directly with the
+raw, unclassified MSRP body. A CPIM envelope, an IMDN report, or an
+is-composing notification carried over MSRP landed in Message History (and
+the Client Messaging chat bubble list) as if it were a plain message
+containing raw XML.
+
+W113F fixed this by moving the unwrap-and-classify logic directly into
+`SipManager::routeInboundMessagingPayload()` — a single private method now
+shared by both `onAccountInstantMessageReceived` (SIP MESSAGE) and the
+`msrpPayloadReceived` handler (MSRP), so the two transports can't drift
+into different behavior again. It performs the same steps
+`MsrpPayloadDispatcher` already modeled: CPIM is unwrapped first (inner
+Content-Type re-classified, so a CPIM-wrapped IMDN/is-composing
+notification is caught too); IMDN reports correlate delivery state onto the
+original outbound Message-ID; is-composing updates the existing
+typing-indicator history rows; a CPIM envelope that fails to parse becomes
+a safe placeholder row (`MessageHistoryStore::appendInboundUnsupported()`,
+`isUnsupportedOrMalformed=true`) instead of ever storing the raw envelope
+text. See [messaging-content-type-routing.md](messaging-content-type-routing.md)
+for the full routing rules. `MsrpPayloadDispatcher` itself is unchanged and
+still passes its own tests, but is no longer the class to look at for how
+production MSRP payload classification actually happens.
 
 ## 9. Transport selection / fallback
 

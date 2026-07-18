@@ -12,6 +12,7 @@ class QListWidget;
 class QListWidgetItem;
 class QPlainTextEdit;
 class QPushButton;
+class QToolButton;
 
 class ClientMessagingController;
 class FileTransferModel;
@@ -51,6 +52,7 @@ private slots:
                                     const QByteArray &body, const QString &msrpMessageId);
     void refreshTransportStatus();
     void refreshCapabilities();
+    void onAdvancedOptionsToggled(bool expanded);
 
 private:
     void appendHistoryRow(const MessageHistoryEntry &entry);
@@ -63,6 +65,12 @@ private:
     QLineEdit      *m_toUriEdit{nullptr};
     QLabel         *m_presenceIndicator{nullptr};
     QLabel         *m_typingIndicator{nullptr};
+    // Task W113F: transport/content-type/delivery-receipt controls moved
+    // behind this collapsed-by-default disclosure ("Messaging options") so
+    // the default Client view only shows contact/history/composer/Send —
+    // see docs/client-messaging-simplified.md.
+    QToolButton    *m_advancedToggle{nullptr};
+    QWidget        *m_advancedHost{nullptr};
     QComboBox      *m_transportSelector{nullptr};
     QComboBox      *m_contentTypeSelector{nullptr};
     QCheckBox      *m_requestDeliveredCheck{nullptr};

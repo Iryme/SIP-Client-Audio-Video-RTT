@@ -4,6 +4,107 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.7 — Simplify Client Messaging, Hide Protocol XML and Force LMPE Inactive
+
+**Status:** complete
+**Branch:** `fix/w113f-simplify-client-messaging-and-disable-lmpe`
+**Version bump type:** PATCH (task spec assumed a starting version of
+1.6.5 and a new version of 1.6.6; the real starting version was already
+1.6.6 (W113E) at the time this task began, so this bumps 1.6.6 → 1.6.7 —
+documented substitution, see the agent-result report)
+**Scope:** Messaging pipeline correctness fix + Client UI simplification +
+LMPE hard-disable. No changes to RTT/video negotiation, no new protocols,
+no pjproject changes.
+
+### Root cause: protocol XML in the conversation
+
+Two real bugs, both now fixed via one shared routing function
+(`SipManager::routeInboundMessagingPayload()`):
+
+- Plain SIP MESSAGE had no `message/cpim` branch — a CPIM-wrapped message
+  rendered as a chat bubble containing the raw envelope text.
+- MSRP's inbound path never classified anything at all. A separate class,
+  `MsrpPayloadDispatcher`, already modeled the correct unwrap-and-classify
+  logic and had its own passing tests — but nothing in the production
+  receive path ever called it (confirmed by a full-repo grep). Any CPIM/
+  IMDN/is-composing payload carried over MSRP rendered as a plain message
+  too.
+
+Both paths now share one function: CPIM is unwrapped first (inner
+Content-Type re-classified, so a CPIM-wrapped IMDN/is-composing
+notification is caught), then IMDN/is-composing are classified and routed
+to their own history rows exactly like the plain-SIP-MESSAGE path already
+did for unwrapped payloads. A CPIM envelope that fails to parse becomes a
+safe "Unsupported or malformed message" placeholder
+(`MessageHistoryStore::appendInboundUnsupported()`) — the raw envelope
+text is never stored or rendered.
+
+### Client Messaging UI: protocol events excluded, view simplified
+
+- New `MessageHistoryEntry::isProtocolEvent()` (true for IMDN reports,
+  is-composing notifications, unsupported/malformed payloads) and
+  `ConversationModel::userVisibleHistoryFor()` (the same history filtered
+  to exclude them). `ClientMessagingView`'s history list, and
+  `ConversationModel::lastMessageFor()`/`unreadCountFor()` (conversation
+  preview text / unread badge, read by `ConversationWorkspacePanel`), all
+  now use this — an IMDN report or typing notification can never appear as
+  a chat bubble, become a conversation's preview text, or count toward its
+  unread badge. Tools' Message History table intentionally still shows
+  every row, protocol events included.
+- `ClientMessagingView`'s transport selector, content-type selector, and
+  delivery-receipt checkboxes moved behind a collapsed-by-default
+  "Messaging options" disclosure (same persistence pattern as
+  `CallWorkspacePanel`'s "Advanced diagnostics" from Task W113a).
+- CPIM removed as a manually selectable content type — it was never what
+  actually controlled CPIM wrapping anyway (a separate
+  `AppSettings::enableCpim()` global toggle already does that); exposing
+  it as a per-message choice only invited confusion. Only Plain text and
+  HTML remain as content-type options.
+
+### LMPE: permanently unavailable everywhere
+
+LMPE has no interoperable wire format (`UnconfirmedLmpeCodec` always
+returns a blocked result) — was already fully inert at the call/media
+level, but the UI didn't show that:
+
+- `SipProfileEditorDialog`'s "Enable LMPE" checkbox: disabled, relabeled
+  "Enable LMPE — unavailable", tooltip explaining why, force-unchecked
+  regardless of a saved profile's value.
+- `RttPanel`'s LMPE tab was previously a fully interactive panel with its
+  own input box, Send button, and a local-echo list — none of which ever
+  sent anything anywhere. Replaced with a single disabled label,
+  "LMPE — unavailable", with the same tooltip.
+- `CallWorkspacePanel`'s LMPE status card: `"—"` (ambiguous) →
+  `"Unavailable"` (explicit), always.
+- `SipProfileManager::loadAllProfiles()` forces `enableLmpe=false` at the
+  single authoritative load point, regardless of what's saved — an old
+  profile or hand-edited/imported config with `enableLmpe: true` logs one
+  redacted warning (profile id only) and loads disabled, never crashes.
+
+### Documentation corrections
+
+`docs/imdn.md`, `docs/is-composing.md`, and `docs/msrp-foundation.md`
+previously claimed MSRP-carried IMDN/is-composing reused
+`MsrpPayloadDispatcher` — corrected to describe the actual production path
+(`SipManager::routeInboundMessagingPayload()`), with a note that
+`MsrpPayloadDispatcher` itself is untouched, still tested, but not what's
+actually wired into the live receive path.
+
+### Validation
+
+- Debug (`build/`) rebuilt clean, 81/81 CTest (80 baseline + 15 new test
+  cases: `test_message_history` gained placeholder/dedup/`isProtocolEvent()`
+  coverage, `test_conversation_model` gained `userVisibleHistoryFor()`/
+  preview/unread-count exclusion coverage, `test_sip_profile_manager`
+  gained an LMPE-forced-disabled-on-reload test).
+- Release (`build-release/`) rebuilt clean, 81/81 CTest.
+- Manual two-peer GUI test (Alice/Bob exchanging plain text, typing, IMDN,
+  Presence, CPIM, explicit SIP MESSAGE/MSRP transport, fallback, LMPE
+  unavailable confirmation, restart) — **NOT RUN**: no live SIP peer or
+  second client instance available this session. Not declared PASS.
+
+---
+
 ## v1.6.6 — RTT Request Visual Alert Parity with Video
 
 **Status:** complete

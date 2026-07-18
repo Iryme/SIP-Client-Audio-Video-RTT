@@ -3,8 +3,20 @@
 **Task W100** — [MSRP Foundation](msrp-foundation.md) (branch
 `feature/w100-msrp-foundation`) reuses `ImdnParser`/`ImdnGenerator`
 unchanged for IMDN reports carried inside an MSRP SEND body
-(`message/imdn+xml`), via `MsrpPayloadDispatcher` — no IMDN parsing logic
-is duplicated for the MSRP transport.
+(`message/imdn+xml`) — no IMDN parsing logic is duplicated for the MSRP
+transport.
+
+**Task W113F correction** — this doc previously said MSRP-carried IMDN
+went through `MsrpPayloadDispatcher`. That class exists and is tested
+(`tests/test_msrp_payload_dispatcher.cpp`) but was never actually wired
+into the production MSRP receive path — `SipCall`'s MSRP payload signal
+went straight to `SipManager` without passing through it. W113F fixed the
+real gap this caused (an MSRP-carried IMDN/is-composing/CPIM payload
+rendered as a plain chat bubble instead of being classified) by adding the
+unwrap-and-classify logic directly in
+`SipManager::routeInboundMessagingPayload()`, shared by both the plain SIP
+MESSAGE and MSRP inbound paths — see
+[messaging-content-type-routing.md](messaging-content-type-routing.md).
 **Task W096** — Added in branch `feature/w096-imdn-foundation`, built on top of
 [SIP MESSAGE Foundation (W092)](sip-message.md), [Message History
 (W093)](message-history.md), and the read-only IMDN *parsing* support

@@ -183,7 +183,8 @@ CallWorkspacePanel::CallWorkspacePanel(QLineEdit *targetInput, QWidget *parent)
 
     m_cardAudioCodec = makeStatusCard(tr("Audio Codec"), tr("Negotiated audio codec"));
     m_cardLocalVideo = makeStatusCard(tr("Local Video"), tr("Local camera preview state"));
-    m_cardLmpe = makeStatusCard(tr("LMPE"), tr("LMPE capability state"));
+    m_cardLmpe = makeStatusCard(tr("LMPE"), tr(
+        "LMPE is disabled because the required interoperable format is not available."));
     m_cardVideoCodec = makeStatusCard(tr("Video Codec"), tr("Negotiated video codec"));
     m_cardBitrate = makeStatusCard(tr("Bitrate"), tr("Negotiated/configured video bitrate"));
     m_cardResolution = makeStatusCard(tr("Resolution"), tr("Negotiated/configured video resolution"));
@@ -939,7 +940,11 @@ void CallWorkspacePanel::refreshCards()
         m_cardRtt->setStatus(rttActive ? QStringLiteral("ok")
                                         : (m_btnRequestRtt->isChecked() ? QStringLiteral("warn") : QString()));
     }
-    m_cardLmpe->setValue(QStringLiteral("—"));
+    // Task W113F: LMPE has no interoperable wire format yet and can never
+    // become active/negotiated/selected in this build (see
+    // docs/lmpe-disabled-status.md) -- always show that plainly instead of
+    // an ambiguous "—" that could be misread as "not checked yet".
+    m_cardLmpe->setValue(tr("Unavailable"));
     m_cardLmpe->setStatus({});
     m_cardLocalVideo->setValue(localVideo ? tr("On") : tr("Off"));
     m_cardLocalVideo->setStatus(localVideo ? QStringLiteral("ok") : QString());
@@ -1045,7 +1050,7 @@ void CallWorkspacePanel::resetStatusCards()
     m_cardDuration->setValue(QStringLiteral("00:00:00"));
     m_cardDuration->setStatus({});
     StatusCard *allCards[] = {
-        m_cardAudio, m_cardAudioCodec, m_cardLocalVideo, m_cardRemoteVideo, m_cardRtt, m_cardLmpe,
+        m_cardAudio, m_cardAudioCodec, m_cardLocalVideo, m_cardRemoteVideo, m_cardRtt,
         m_cardVideoCodec, m_cardBitrate, m_cardResolution, m_cardFps, m_cardRemoteUri, m_cardPresence,
         m_cardInitialOffer, m_cardLocalAccount, m_cardPacketLoss, m_cardVideoDrops, m_cardJitter, m_cardLatency
     };
@@ -1053,6 +1058,10 @@ void CallWorkspacePanel::resetStatusCards()
         c->setValue(QStringLiteral("—"));
         c->setStatus({});
     }
+    // Task W113F: never "—" -- LMPE is permanently unavailable, not merely
+    // "not checked yet" (see docs/lmpe-disabled-status.md).
+    m_cardLmpe->setValue(tr("Unavailable"));
+    m_cardLmpe->setStatus({});
     if (m_inputMeter) m_inputMeter->setLevel(0);
     if (m_outputMeter) m_outputMeter->setLevel(0);
 }

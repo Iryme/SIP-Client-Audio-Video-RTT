@@ -96,6 +96,27 @@ struct MessageHistoryEntry
     bool          isTypingNotification{false};
     QString       typingState; // "active" / "idle" / "gone"
 
+    // Task W113F: set only on a row created for a message/cpim envelope that
+    // failed to parse (CpimParser::parse() returned !present, or an empty
+    // wrapped body/content-type). bodyPreview is a fixed safe placeholder
+    // ("Unsupported or malformed message"), never the raw envelope text —
+    // the raw payload stays available only in the separate Tools/diagnostics
+    // feed (MessagingDiagnosticsStore), which is fed independently from raw
+    // SIP trace capture, not from this store.
+    bool          isUnsupportedOrMalformed{false};
+
+    // True for any row that represents a protocol control event rather than
+    // a message a human actually wrote — IMDN reports, is-composing
+    // notifications, and unsupported/malformed payloads. The Client
+    // Messaging UI (ConversationModel/ClientMessagingView) uses this to
+    // exclude such rows from the rendered chat bubble list, the unread
+    // count, and the conversation preview text; Tools' Message History
+    // table intentionally keeps showing every row regardless.
+    bool isProtocolEvent() const
+    {
+        return isImdnReport || isTypingNotification || isUnsupportedOrMalformed;
+    }
+
     // Task W111 (Client Messaging View): outbound entries only. The actual
     // transport MessagingTransportPolicy/SipManager::sendSipMessage used for
     // this specific send, set once the transport decision is known (empty

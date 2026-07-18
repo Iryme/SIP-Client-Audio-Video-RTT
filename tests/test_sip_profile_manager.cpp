@@ -162,6 +162,27 @@ private slots:
         QVERIFY(loaded.enableEtsiCompatibility);
     }
 
+    // Task W113F: LMPE has no interoperable wire format and must never load
+    // as enabled, even if an old saved profile (or a hand-edited settings
+    // file) has enableLmpe=true -- loadAllProfiles()/profile() must force it
+    // false, not merely the UI checkbox that reads it.
+    void enableLmpeForcedFalseOnLoadRegardlessOfSavedValue()
+    {
+        const QString id = [&]() {
+            SipProfileManager mgr(kTestOrg, kTestApp);
+            SipProfile p = makeValid();
+            p.enableLmpe = true; // simulates stale/imported config with LMPE enabled
+            return mgr.add(p);
+        }();
+
+        // Fresh manager instance -> forces a real reload from QSettings,
+        // exercising the same load path a restarted application would use.
+        SipProfileManager mgr2(kTestOrg, kTestApp);
+        const SipProfile loaded = mgr2.profile(id);
+        QVERIFY2(!loaded.enableLmpe,
+            "enableLmpe must be forced false on load even if saved as true");
+    }
+
     // 8. No password or secret fields are stored in the settings file
     void noPasswordFieldsStored()
     {

@@ -22,6 +22,7 @@
 #include <QMimeDatabase>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace {
@@ -41,6 +42,8 @@ QString formatHistoryRow(const MessageHistoryEntry &e)
         status = QStringLiteral("typing: %1").arg(e.typingState);
     } else if (e.isImdnReport) {
         status = QStringLiteral("IMDN report");
+    } else if (e.isUnsupportedOrMalformed) {
+        status = QStringLiteral("unsupported");
     }
     const QString time = e.timestamp.toLocalTime().toString(QStringLiteral("HH:mm:ss"));
     return QStringLiteral("[%1] %2: %3%4").arg(time, who, e.bodyPreview,
@@ -81,10 +84,22 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
     statusRow->addWidget(m_typingIndicator, 1);
     root->addLayout(statusRow);
 
-    // ---- Transport / content-type / IMDN selectors ----
-    auto *optionsGroup = new QGroupBox(tr("Send options"), this);
-    auto *optionsLayout = new QHBoxLayout(optionsGroup);
-    m_transportSelector = new QComboBox(optionsGroup);
+    // ---- Transport / content-type / delivery-receipt selectors ----
+    // Task W113F: collapsed behind a disclosure by default -- the normal
+    // Client Messaging user never needs to see or touch these; Tools ->
+    // Messaging keeps the full technical picture regardless of this
+    // control's state. See docs/client-messaging-simplified.md.
+    m_advancedToggle = new QToolButton(this);
+    m_advancedToggle->setCheckable(true);
+    m_advancedToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_advancedToggle->setArrowType(Qt::RightArrow);
+    m_advancedToggle->setText(tr("Messaging options"));
+    m_advancedToggle->setAutoRaise(true);
+    root->addWidget(m_advancedToggle);
+
+    m_advancedHost = new QGroupBox(this);
+    auto *optionsLayout = new QHBoxLayout(m_advancedHost);
+    m_transportSelector = new QComboBox(m_advancedHost);
     m_transportSelector->setObjectName(QStringLiteral("messagingTransportSelector"));
     m_transportSelector->addItem(tr("Automatic"), QStringLiteral("automatic"));
     m_transportSelector->addItem(tr("SIP MESSAGE"), QStringLiteral("sip-message-only"));
@@ -95,37 +110,48 @@ ClientMessagingView::ClientMessagingView(QWidget *parent)
     connect(m_transportSelector, &QComboBox::currentIndexChanged, this, [this](int) {
         AppSettings::setMessagingTransportMode(m_transportSelector->currentData().toString());
     });
-    optionsLayout->addWidget(new QLabel(tr("Transport:"), optionsGroup));
+    optionsLayout->addWidget(new QLabel(tr("Transport:"), m_advancedHost));
     optionsLayout->addWidget(m_transportSelector);
 
-    m_contentTypeSelector = new QComboBox(optionsGroup);
+    // Task W113F: CPIM is no longer a manual per-message choice here -- it's
+    // applied automatically (AppSettings::enableCpim(), a global toggle in
+    // Settings, drives ClientMessagingController's composerOpts.cpimEnabled)
+    // rather than exposed as a raw content-type option a user could pick
+    // without understanding what it does. Only the two real user-visible
+    // content types remain.
+    m_contentTypeSelector = new QComboBox(m_advancedHost);
     m_contentTypeSelector->setObjectName(QStringLiteral("messagingContentTypeSelector"));
     m_contentTypeSelector->addItem(tr("Plain text"), static_cast<int>(MessagingContentKind::PlainText));
     m_contentTypeSelector->addItem(tr("HTML"), static_cast<int>(MessagingContentKind::Html));
-    m_contentTypeSelector->addItem(tr("CPIM"), static_cast<int>(MessagingContentKind::Cpim));
     m_contentTypeSelector->setCurrentIndex(
-        m_contentTypeSelector->findData(AppSettings::clientMessagingContentType()));
+        qMax(0, m_contentTypeSelector->findData(AppSettings::clientMessagingContentType())));
     connect(m_contentTypeSelector, &QComboBox::currentIndexChanged, this, [this](int) {
         AppSettings::setClientMessagingContentType(m_contentTypeSelector->currentData().toInt());
     });
-    optionsLayout->addWidget(new QLabel(tr("Content:"), optionsGroup));
+    optionsLayout->addWidget(new QLabel(tr("Content:"), m_advancedHost));
     optionsLayout->addWidget(m_contentTypeSelector);
 
-    m_requestDeliveredCheck = new QCheckBox(tr("Delivered"), optionsGroup);
+    m_requestDeliveredCheck = new QCheckBox(tr("Delivered"), m_advancedHost);
     m_requestDeliveredCheck->setObjectName(QStringLiteral("messagingRequestDelivered"));
     m_requestDeliveredCheck->setChecked(AppSettings::clientMessagingRequestDelivered());
     connect(m_requestDeliveredCheck, &QCheckBox::toggled, this,
             &AppSettings::setClientMessagingRequestDelivered);
-    m_requestDisplayedCheck = new QCheckBox(tr("Displayed"), optionsGroup);
+    m_requestDisplayedCheck = new QCheckBox(tr("Read"), m_advancedHost);
     m_requestDisplayedCheck->setObjectName(QStringLiteral("messagingRequestDisplayed"));
     m_requestDisplayedCheck->setChecked(AppSettings::clientMessagingRequestDisplayed());
     connect(m_requestDisplayedCheck, &QCheckBox::toggled, this,
             &AppSettings::setClientMessagingRequestDisplayed);
-    optionsLayout->addWidget(new QLabel(tr("Request IMDN:"), optionsGroup));
+    optionsLayout->addWidget(new QLabel(tr("Delivery receipts:"), m_advancedHost));
     optionsLayout->addWidget(m_requestDeliveredCheck);
     optionsLayout->addWidget(m_requestDisplayedCheck);
     optionsLayout->addStretch(1);
-    root->addWidget(optionsGroup);
+    root->addWidget(m_advancedHost);
+
+    const bool advancedExpanded = AppSettings::clientMessagingAdvancedOptionsExpanded();
+    m_advancedToggle->setChecked(advancedExpanded);
+    m_advancedToggle->setArrowType(advancedExpanded ? Qt::DownArrow : Qt::RightArrow);
+    m_advancedHost->setVisible(advancedExpanded);
+    connect(m_advancedToggle, &QToolButton::toggled, this, &ClientMessagingView::onAdvancedOptionsToggled);
 
     // ---- History ----
     m_historyList = new QListWidget(this);
@@ -329,7 +355,10 @@ void ClientMessagingView::reloadHistory()
     const QString peer = currentPeer();
     if (peer.trimmed().isEmpty())
         return;
-    for (const MessageHistoryEntry &e : m_controller->conversationModel()->historyFor(peer))
+    // Task W113F: only user-visible entries become chat bubbles -- IMDN
+    // reports, is-composing notifications, and unsupported/malformed
+    // payloads are excluded (see ConversationModel::userVisibleHistoryFor).
+    for (const MessageHistoryEntry &e : m_controller->conversationModel()->userVisibleHistoryFor(peer))
         appendHistoryRow(e);
     m_historyList->scrollToBottom();
 }
@@ -356,6 +385,13 @@ void ClientMessagingView::refreshTransportStatus()
     }
     m_actualTransportLabel->clear();
     m_fallbackStatusLabel->clear();
+}
+
+void ClientMessagingView::onAdvancedOptionsToggled(bool expanded)
+{
+    m_advancedToggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+    m_advancedHost->setVisible(expanded);
+    AppSettings::setClientMessagingAdvancedOptionsExpanded(expanded);
 }
 
 void ClientMessagingView::refreshCapabilities()

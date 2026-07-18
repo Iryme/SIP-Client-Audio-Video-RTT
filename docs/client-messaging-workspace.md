@@ -1,5 +1,15 @@
 # Client Messaging Workspace (Task W111)
 
+> **Task W113F update**: fixed a real bug where CPIM/IMDN/is-composing
+> payloads leaked into the conversation as raw-XML chat bubbles (root
+> cause and fix: [messaging-content-type-routing.md](messaging-content-type-routing.md)),
+> simplified `ClientMessagingView` (transport/content-type/delivery-receipt
+> controls moved behind a collapsed-by-default "Messaging options"
+> disclosure — see [client-messaging-simplified.md](client-messaging-simplified.md)),
+> and permanently disabled the LMPE UI surface project-wide
+> ([lmpe-disabled-status.md](lmpe-disabled-status.md)). The architecture
+> diagram and layering description below are otherwise unchanged.
+
 Integrates SIP MESSAGE, MSRP, CPIM, IMDN, is-composing, Presence, and
 (experimental) file transfer directly into the Clients page, instead of
 requiring the technical Messaging Diagnostics / MSRP / Presence pages for

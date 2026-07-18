@@ -55,7 +55,10 @@ SipProfile SipProfileEditorDialog::profile() const
     p.outboundProxy  = m_outboundProxy->text().trimmed();
     p.emergencyServiceUri = m_emergencyUri->text().trimmed();
     p.enableRtt              = m_enableRtt->isChecked();
-    p.enableLmpe             = m_enableLmpe->isChecked();
+    // Never saved as true regardless of the (disabled, force-unchecked)
+    // checkbox's state -- see the checkbox setup above and
+    // docs/lmpe-disabled-status.md.
+    p.enableLmpe             = false;
     p.enableEtsiCompatibility = m_enableEtsi->isChecked();
 
     if (m_udp->isChecked())       p.transport = SipTransport::UDP;
@@ -231,7 +234,14 @@ void SipProfileEditorDialog::buildUi()
     extLayout->setContentsMargins(8, 4, 8, 8);
     extLayout->setSpacing(4);
     m_enableRtt  = new QCheckBox(tr("Enable RTT (Real-Time Text)"), extGroup);
-    m_enableLmpe = new QCheckBox(tr("Enable LMPE"), extGroup);
+    // Task W113F: LMPE has no interoperable wire format yet (see
+    // src/etsi/UnconfirmedLmpeCodec.h) and must never appear selectable —
+    // permanently disabled, force-unchecked, with a clear label/tooltip
+    // instead of a live control a user could turn on expecting it to work.
+    m_enableLmpe = new QCheckBox(tr("Enable LMPE — unavailable"), extGroup);
+    m_enableLmpe->setEnabled(false);
+    m_enableLmpe->setToolTip(tr(
+        "LMPE is disabled because the required interoperable format is not available."));
     m_enableEtsi = new QCheckBox(tr("Enable ETSI Compatibility"), extGroup);
     extLayout->addWidget(m_enableRtt);
     extLayout->addWidget(m_enableLmpe);
@@ -347,7 +357,13 @@ void SipProfileEditorDialog::populateFrom(const SipProfile &profile)
     m_emergencyUri->setText(profile.emergencyServiceUri);
 
     m_enableRtt->setChecked(profile.enableRtt);
-    m_enableLmpe->setChecked(profile.enableLmpe);
+    // Task W113F: always unchecked -- SipProfileManager::loadAllProfiles()
+    // already forces enableLmpe to false at the single authoritative load
+    // point (with its own redacted warning if an old saved value was
+    // true), so `profile.enableLmpe` reaching here is always false; this
+    // just keeps the checkbox from ever being anything but unchecked even
+    // if a caller constructs a SipProfile some other way.
+    m_enableLmpe->setChecked(false);
     m_enableEtsi->setChecked(profile.enableEtsiCompatibility);
 
     switch (profile.transport) {

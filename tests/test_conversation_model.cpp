@@ -41,6 +41,17 @@ private slots:
     void markReadZerosUnreadCount();
     void markReadDoesNotAffectOtherConversations();
     void newInboundAfterMarkReadIncrementsUnreadAgain();
+
+    // Task W113F: protocol events (IMDN reports, is-composing notifications,
+    // unsupported/malformed payloads) must never surface as chat bubbles,
+    // unread count, or conversation preview.
+    void userVisibleHistoryExcludesImdnReports();
+    void userVisibleHistoryExcludesTypingNotifications();
+    void userVisibleHistoryExcludesUnsupportedPayloads();
+    void userVisibleHistoryKeepsPlainMessages();
+    void historyForStillIncludesProtocolEvents();
+    void lastMessageForSkipsTrailingImdnReport();
+    void unreadCountIgnoresImdnReportsAndTypingNotifications();
 };
 
 void TestConversationModel::init()
@@ -280,6 +291,103 @@ void TestConversationModel::newInboundAfterMarkReadIncrementsUnreadAgain()
     MessageHistoryStore::instance().appendInbound(
         QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
         QStringLiteral("text/plain"), QStringLiteral("m2"), QStringLiteral("c2"), QString());
+    QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 1);
+}
+
+void TestConversationModel::userVisibleHistoryExcludesImdnReports()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("hello"), QStringLiteral("c1"), QString());
+    MessageHistoryStore::instance().appendInboundImdn(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("<imdn/>"), QStringLiteral("c2"), QString(), QStringLiteral("msg-1"));
+
+    const auto visible = model.userVisibleHistoryFor(QStringLiteral("sip:alice@example.com"));
+    QCOMPARE(visible.size(), 1);
+    QCOMPARE(visible.first().bodyPreview, QStringLiteral("hello"));
+}
+
+void TestConversationModel::userVisibleHistoryExcludesTypingNotifications()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("hello"), QStringLiteral("c1"), QString());
+    MessageHistoryStore::instance().appendInboundTyping(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("<isComposing/>"), QStringLiteral("c2"), QString(), QStringLiteral("active"));
+
+    const auto visible = model.userVisibleHistoryFor(QStringLiteral("sip:alice@example.com"));
+    QCOMPARE(visible.size(), 1);
+    QCOMPARE(visible.first().bodyPreview, QStringLiteral("hello"));
+}
+
+void TestConversationModel::userVisibleHistoryExcludesUnsupportedPayloads()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("hello"), QStringLiteral("c1"), QString());
+    MessageHistoryStore::instance().appendInboundUnsupported(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("message/cpim"), QStringLiteral("c2"), QString());
+
+    const auto visible = model.userVisibleHistoryFor(QStringLiteral("sip:alice@example.com"));
+    QCOMPARE(visible.size(), 1);
+    QCOMPARE(visible.first().bodyPreview, QStringLiteral("hello"));
+}
+
+void TestConversationModel::userVisibleHistoryKeepsPlainMessages()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("hi"), QStringLiteral("c1"), QString());
+    QCOMPARE(model.userVisibleHistoryFor(QStringLiteral("sip:alice@example.com")).size(), 1);
+}
+
+void TestConversationModel::historyForStillIncludesProtocolEvents()
+{
+    // historyFor() stays unfiltered -- remoteTypingState() and Tools' full
+    // Message History table both rely on seeing every row.
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInboundTyping(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("<isComposing/>"), QStringLiteral("c1"), QString(), QStringLiteral("active"));
+    QCOMPARE(model.historyFor(QStringLiteral("sip:alice@example.com")).size(), 1);
+}
+
+void TestConversationModel::lastMessageForSkipsTrailingImdnReport()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("real message"), QStringLiteral("c1"), QString());
+    // An IMDN report arrives after the real message and would otherwise
+    // become the "most recent entry" for preview purposes.
+    MessageHistoryStore::instance().appendInboundImdn(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("<imdn/>"), QStringLiteral("c2"), QString(), QStringLiteral("msg-1"));
+
+    QCOMPARE(model.lastMessageFor(QStringLiteral("sip:alice@example.com")).bodyPreview,
+             QStringLiteral("real message"));
+}
+
+void TestConversationModel::unreadCountIgnoresImdnReportsAndTypingNotifications()
+{
+    ConversationModel model;
+    MessageHistoryStore::instance().appendInbound(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("text/plain"), QStringLiteral("real message"), QStringLiteral("c1"), QString());
+    MessageHistoryStore::instance().appendInboundImdn(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("<imdn/>"), QStringLiteral("c2"), QString(), QStringLiteral("msg-1"));
+    MessageHistoryStore::instance().appendInboundTyping(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"), QString(),
+        QStringLiteral("<isComposing/>"), QStringLiteral("c3"), QString(), QStringLiteral("active"));
+
     QCOMPARE(model.unreadCountFor(QStringLiteral("sip:alice@example.com")), 1);
 }
 

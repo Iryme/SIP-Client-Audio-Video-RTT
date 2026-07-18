@@ -54,6 +54,10 @@ set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/ImdnGenerator.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipMessageComposer.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CpimBuilder.cpp
+    # Task W113F: SipManager::routeInboundMessagingPayload() (shared by the
+    # plain SIP MESSAGE and MSRP inbound paths) calls CpimParser::parse
+    # directly to unwrap message/cpim before reclassifying.
+    ${CMAKE_SOURCE_DIR}/src/sip/CpimParser.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/SipUriNormalizer.cpp
     # Task W097: SipManager::onAccountInstantMessageReceived now also calls
     # IsComposingParser::parse directly, and SipMessageComposer.cpp now

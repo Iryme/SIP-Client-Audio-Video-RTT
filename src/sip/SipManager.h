@@ -337,6 +337,24 @@ private:
     bool sendImdnReport(const QString &toUri, const QString &originalMessageId,
                         ImdnInfo::Disposition disposition, qint64 inboundEntryId, QString &error);
 
+    // Task W113F: classifies and routes one inbound messaging payload into
+    // MessageHistoryStore, regardless of which transport delivered it (SIP
+    // MESSAGE or MSRP). Unwraps message/cpim first (re-classifying by the
+    // wrapped inner Content-Type) so a CPIM-wrapped IMDN/is-composing
+    // notification is routed the same as an unwrapped one, then dispatches
+    // to appendInboundImdn/appendInboundTyping/appendInbound as appropriate.
+    // A CPIM envelope that fails to parse becomes a safe "unsupported"
+    // placeholder row instead of ever storing/rendering the raw envelope
+    // text. Shared by onAccountInstantMessageReceived (plain SIP MESSAGE)
+    // and the SipCall::msrpPayloadReceived handler (MSRP) so the two
+    // transports can't drift into different Client-visible behavior again
+    // (see docs/messaging-content-type-routing.md).
+    void routeInboundMessagingPayload(const QString &fromUri, const QString &toUri,
+                                      const QString &contactUri, const QString &contentType,
+                                      const QString &body, const QString &callId,
+                                      const QString &profileId, const QString &messageId,
+                                      const QString &dispositionNotification);
+
     // Task W098: schedules a backoff-delayed automatic re-SUBSCRIBE for
     // entityUri after its subscription terminated with a retryable reason
     // (see PresenceResubscribePolicy). No-op if auto-resubscribe/presence/

@@ -160,6 +160,23 @@ public:
         settings().setValue(QStringLiteral("ui/callWorkspace/advancedDiagnosticsExpanded"), expanded);
     }
 
+    // Task W113F (Client Messaging simplification): whether the "Messaging
+    // options" disclosure (transport selector, content-type selector,
+    // delivery-receipt checkboxes) is expanded. Collapsed by default so the
+    // Client Messaging view shows only contact/history/composer/Send —
+    // protocol-level controls live in Tools for anyone who needs them, and
+    // here only for the rare user who wants to override the default
+    // Automatic transport. Persisted the same way as the Call Workspace's
+    // advanced-diagnostics disclosure above.
+    static bool clientMessagingAdvancedOptionsExpanded()
+    {
+        return settings().value(QStringLiteral("ui/clientMessaging/advancedOptionsExpanded"), false).toBool();
+    }
+    static void setClientMessagingAdvancedOptionsExpanded(bool expanded)
+    {
+        settings().setValue(QStringLiteral("ui/clientMessaging/advancedOptionsExpanded"), expanded);
+    }
+
     // IMDN Foundation (Task W096). Auto Send Delivered defaults ON (a
     // "delivered" report is a transport-level acknowledgement with no
     // privacy implication — it does not disclose whether/when the user

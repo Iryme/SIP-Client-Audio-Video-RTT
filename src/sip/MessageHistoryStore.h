@@ -63,6 +63,18 @@ public:
                                const QString &callId, const QString &profileId,
                                const QString &state);
 
+    // Task W113F: appends a placeholder row for an inbound payload this
+    // client could not safely interpret (e.g. a message/cpim envelope that
+    // failed to parse) — bodyPreview is always the fixed
+    // "Unsupported or malformed message" text, never the raw payload, and
+    // isUnsupportedOrMalformed is set so the Client UI excludes it from the
+    // normal chat bubble list the same way it excludes IMDN/is-composing
+    // rows. originalContentType is kept for Tools/diagnostics display only.
+    qint64 appendInboundUnsupported(const QString &fromUri, const QString &toUri,
+                                    const QString &contactUri,
+                                    const QString &originalContentType,
+                                    const QString &callId, const QString &profileId);
+
     // Appends an outbound entry at send time (status Queued), from an
     // already-composed message. Returns the new entry's id.
     qint64 appendOutbound(const ComposedSipMessage &msg);

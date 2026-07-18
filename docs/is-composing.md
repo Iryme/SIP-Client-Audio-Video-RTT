@@ -2,9 +2,16 @@
 
 **Task W100** — [MSRP Foundation](msrp-foundation.md) (branch
 `feature/w100-msrp-foundation`) reuses `IsComposingParser` unchanged for
-`application/im-iscomposing+xml` bodies carried inside an MSRP SEND, via
-`MsrpPayloadDispatcher` — updating the same typing-indicator history rows
-this document describes, no duplicated parsing.
+`application/im-iscomposing+xml` bodies carried inside an MSRP SEND —
+updating the same typing-indicator history rows this document describes,
+no duplicated parsing.
+
+**Task W113F correction** — this doc previously said MSRP-carried
+is-composing went through `MsrpPayloadDispatcher`. That class was never
+actually wired into the production MSRP receive path; see the same
+correction note in [imdn.md](imdn.md) and
+[messaging-content-type-routing.md](messaging-content-type-routing.md)
+for the actual fix.
 **Task W097** — Added in branch `feature/w097-is-composing`, built on top of
 [IMDN Foundation (W096)](imdn.md), [SIP MESSAGE Foundation
 (W092)](sip-message.md), and the read-only is-composing *parsing* support

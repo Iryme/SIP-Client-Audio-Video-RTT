@@ -66,6 +66,16 @@ QList<MessageHistoryEntry> ConversationModel::historyFor(const QString &peerUri)
     return result;
 }
 
+QList<MessageHistoryEntry> ConversationModel::userVisibleHistoryFor(const QString &peerUri) const
+{
+    QList<MessageHistoryEntry> result;
+    for (const MessageHistoryEntry &e : historyFor(peerUri)) {
+        if (!e.isProtocolEvent())
+            result.append(e);
+    }
+    return result;
+}
+
 TypingIndicatorController *ConversationModel::typingControllerFor(const QString &peerUri)
 {
     const QString key = normalizePeer(peerUri);
@@ -95,7 +105,7 @@ QString ConversationModel::remoteTypingState(const QString &peerUri) const
 
 MessageHistoryEntry ConversationModel::lastMessageFor(const QString &peerUri) const
 {
-    const auto history = historyFor(peerUri);
+    const auto history = userVisibleHistoryFor(peerUri);
     return history.isEmpty() ? MessageHistoryEntry() : history.last();
 }
 
@@ -109,7 +119,7 @@ int ConversationModel::unreadCountFor(const QString &peerUri) const
     const QString key = normalizePeer(peerUri);
     const qint64 lastRead = m_lastReadEntryId.value(key, 0);
     int count = 0;
-    for (const MessageHistoryEntry &e : historyFor(peerUri)) {
+    for (const MessageHistoryEntry &e : userVisibleHistoryFor(peerUri)) {
         if (e.direction == MessageHistoryEntry::Direction::Inbound && e.id > lastRead)
             ++count;
     }

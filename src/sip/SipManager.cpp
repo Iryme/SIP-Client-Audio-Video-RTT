@@ -21,6 +21,7 @@
 #include "sip/MessagingContentKind.h"
 #include "sip/ImdnParser.h"
 #include "sip/IsComposingParser.h"
+#include "sip/CpimParser.h"
 #include "sip/PresenceInfo.h"
 #include "sip/PresenceResubscribePolicy.h"
 #include "sip/PresenceStore.h"
@@ -1145,15 +1146,21 @@ void SipManager::wireActiveCall(SipCall *call)
             this, &SipManager::rttTextReceived);
     // Task W101 Phase 6: MSRP payload received on this call's own session
     // becomes its own Message History row, same shape as an inbound SIP
-    // MESSAGE (appendInbound already dedups, so a retransmitted MSRP SEND
-    // for the same messageId never produces two rows).
+    // MESSAGE. Task W113F: routed through the same
+    // routeInboundMessagingPayload() the plain-SIP-MESSAGE path uses, so a
+    // CPIM/IMDN/is-composing payload carried over MSRP gets the same
+    // unwrap-and-classify treatment instead of always landing in the store
+    // as a plain user-visible message (appendInbound's dedup still applies,
+    // so a retransmitted MSRP SEND for the same messageId never produces
+    // two rows).
     connect(call, &SipCall::msrpPayloadReceived, this,
         [this, call](const QString &contentType, const QByteArray &body, const QString &msrpMessageId) {
             const SipProfile cp = SipProfileManager::instance().activeProfile();
             const QString toUri = cp.isNull() ? QString() : cp.effectiveSipUri();
-            MessageHistoryStore::instance().appendInbound(
+            routeInboundMessagingPayload(
                 call->remoteUri(), toUri, call->remoteUri(), contentType,
-                QString::fromUtf8(body), call->callId(), cp.profileId, msrpMessageId);
+                QString::fromUtf8(body), call->callId(), cp.profileId,
+                msrpMessageId, QString());
         });
     // Task W111: MSRP delivery status (SEND response / REPORT) correlates
     // into MessageHistoryStore via its own msrpMessageId key space —
@@ -1542,16 +1549,49 @@ void SipManager::onAccountInstantMessageReceived(const QString &fromUri, const Q
     // PjsipTraceModule's raw-trace tap (Task W090), which is the sole
     // source for the SIP Ladder / Messaging Diagnostics feed. Routing this
     // callback into MessageHistoryStore only is what avoids the duplicate.
+    routeInboundMessagingPayload(fromUri, toUri, contactUri, contentType, body,
+                                 callId, profileId, messageId, dispositionNotification);
+}
 
-    // Task W096: an incoming message/imdn+xml body is itself an IMDN
-    // report — parse it, log it as its own history row, and correlate its
-    // disposition against the *outbound* entry it refers to. It never
-    // triggers a further IMDN of its own (RFC 5438 reports are not
-    // acknowledged).
-    if (MessagingContentKindDetector::detect(contentType) == MessagingContentKind::Imdn) {
-        const ImdnInfo info = ImdnParser::parse(body);
+void SipManager::routeInboundMessagingPayload(const QString &fromUri, const QString &toUri,
+                                              const QString &contactUri, const QString &contentType,
+                                              const QString &body, const QString &callId,
+                                              const QString &profileId, const QString &messageId,
+                                              const QString &dispositionNotification)
+{
+    // Task W113F: unwrap message/cpim first and re-classify by the wrapped
+    // inner Content-Type, so a CPIM-wrapped IMDN/is-composing notification
+    // (common per RFC 5438) is routed exactly like an unwrapped one instead
+    // of falling through to appendInbound() as a plain user-visible message
+    // containing the raw CPIM envelope text. Previously this unwrap only
+    // ever happened in MsrpPayloadDispatcher, which nothing in the
+    // production receive path actually called — see
+    // docs/messaging-content-type-routing.md.
+    QString effectiveContentType = contentType;
+    QString effectiveBody = body;
+    if (MessagingContentKindDetector::detect(contentType) == MessagingContentKind::Cpim) {
+        const CpimInfo cpim = CpimParser::parse(body);
+        if (!cpim.present || cpim.contentType.trimmed().isEmpty()) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Inbound message/cpim failed to parse (callId=%1) — "
+                               "storing as unsupported, not the raw envelope").arg(callId));
+            MessageHistoryStore::instance().appendInboundUnsupported(
+                fromUri, toUri, contactUri, contentType, callId, profileId);
+            return;
+        }
+        effectiveContentType = cpim.contentType;
+        effectiveBody = cpim.wrappedBody;
+    }
+
+    // Task W096: an incoming message/imdn+xml body (unwrapped from CPIM or
+    // not) is itself an IMDN report — parse it, log it as its own history
+    // row, and correlate its disposition against the *outbound* entry it
+    // refers to. It never triggers a further IMDN of its own (RFC 5438
+    // reports are not acknowledged).
+    if (MessagingContentKindDetector::detect(effectiveContentType) == MessagingContentKind::Imdn) {
+        const ImdnInfo info = ImdnParser::parse(effectiveBody);
         MessageHistoryStore::instance().appendInboundImdn(
-            fromUri, toUri, contactUri, body, callId, profileId, info.messageId);
+            fromUri, toUri, contactUri, effectiveBody, callId, profileId, info.messageId);
         if (info.present && !info.messageId.isEmpty()) {
             MessageHistoryEntry::DeliveryState state = MessageHistoryEntry::DeliveryState::None;
             switch (info.disposition) {
@@ -1569,21 +1609,21 @@ void SipManager::onAccountInstantMessageReceived(const QString &fromUri, const Q
         return;
     }
 
-    // Task W097: an incoming application/im-iscomposing+xml body is a
-    // typing-state notification, not a chat message — log it as its own
-    // history row (MessagingEventStore/Messaging Diagnostics already
-    // receive it unchanged via the independent raw-trace pipeline, Task
-    // W090, so nothing further is duplicated here).
-    if (MessagingContentKindDetector::detect(contentType) == MessagingContentKind::IsComposing) {
-        const IsComposingInfo info = IsComposingParser::parse(body);
+    // Task W097: an incoming application/im-iscomposing+xml body (unwrapped
+    // from CPIM or not) is a typing-state notification, not a chat message —
+    // log it as its own history row (MessagingEventStore/Messaging
+    // Diagnostics already receive it unchanged via the independent
+    // raw-trace pipeline, Task W090, so nothing further is duplicated here).
+    if (MessagingContentKindDetector::detect(effectiveContentType) == MessagingContentKind::IsComposing) {
+        const IsComposingInfo info = IsComposingParser::parse(effectiveBody);
         MessageHistoryStore::instance().appendInboundTyping(
-            fromUri, toUri, contactUri, body, callId, profileId,
+            fromUri, toUri, contactUri, effectiveBody, callId, profileId,
             IsComposingInfo::stateToString(info.state));
         return;
     }
 
     const qint64 entryId = MessageHistoryStore::instance().appendInbound(
-        fromUri, toUri, contactUri, contentType, body, callId, profileId,
+        fromUri, toUri, contactUri, effectiveContentType, effectiveBody, callId, profileId,
         messageId, dispositionNotification);
 
     if (messageId.trimmed().isEmpty())

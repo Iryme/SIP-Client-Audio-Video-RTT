@@ -6,7 +6,6 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTabWidget>
-#include <QListWidget>
 #include <QFrame>
 #include "sip/SipManager.h"
 #include "rtt/RttTextUtils.h"
@@ -91,36 +90,30 @@ RttPanel::RttPanel(QWidget *parent)
     tabs->addTab(rttTab, tr("RTT"));
 
     // -----------------------------------------------------------------------
-    // LMPE Tab
-    // -----------------------------------------------------------------------
+    // LMPE Tab (Task W113F: permanently unavailable -- see
+    // docs/lmpe-disabled-status.md). LMPE has no interoperable wire format
+    // yet (src/etsi/UnconfirmedLmpeCodec.h always returns blockedResult()),
+    // so this used to be a fully interactive tab with its own input/Send
+    // button and a local-echo list -- it looked like a working feature but
+    // never sent anything anywhere (lmpeMessageSent was emitted with no
+    // listener connected to it). Replaced with a single disabled, clearly
+    // labeled placeholder: no input, no send, no local echo, nothing that
+    // could look like real messaging.
     auto *lmpeTab = new QWidget();
     auto *lmpeLayout = new QVBoxLayout(lmpeTab);
     lmpeLayout->setContentsMargins(8, 8, 8, 8);
     lmpeLayout->setSpacing(6);
 
-    m_lmpeState = new QLabel(tr("LMPE: Inactive"), lmpeTab);
+    m_lmpeState = new QLabel(tr("LMPE — unavailable"), lmpeTab);
     m_lmpeState->setObjectName("LmpeState");
-    m_lmpeState->setStyleSheet("color: #aaaaaa; font-size: 11px;");
+    m_lmpeState->setStyleSheet("color: #888888; font-size: 12px; font-weight: bold;");
+    m_lmpeState->setToolTip(tr(
+        "LMPE is disabled because the required interoperable format is not available."));
+    m_lmpeState->setAccessibleName(tr("LMPE unavailable"));
+    m_lmpeState->setAccessibleDescription(tr(
+        "LMPE is disabled because the required interoperable format is not available."));
     lmpeLayout->addWidget(m_lmpeState);
-
-    m_lmpeList = new QListWidget(lmpeTab);
-    m_lmpeList->setObjectName("LmpeList");
-    lmpeLayout->addWidget(m_lmpeList, 1);
-
-    m_lmpeInput = new QLineEdit(lmpeTab);
-    m_lmpeInput->setObjectName("LmpeInput");
-    m_lmpeInput->setPlaceholderText(tr("Type LMPE message..."));
-    lmpeLayout->addWidget(m_lmpeInput);
-
-    auto *lmpeBtnRow = new QHBoxLayout();
-    m_lmpeSend = new QPushButton(tr("Send"), lmpeTab);
-    m_lmpeSend->setObjectName("SendBtn");
-    lmpeBtnRow->addStretch();
-    lmpeBtnRow->addWidget(m_lmpeSend);
-    lmpeLayout->addLayout(lmpeBtnRow);
-
-    connect(m_lmpeSend,  &QPushButton::clicked, this, &RttPanel::onLmpeSend);
-    connect(m_lmpeInput, &QLineEdit::returnPressed, this, &RttPanel::onLmpeSend);
+    lmpeLayout->addStretch(1);
 
     tabs->addTab(lmpeTab, tr("LMPE"));
 
@@ -207,16 +200,6 @@ void RttPanel::onRttSend()
     m_rttInput->clear();
 
     emit rttMessageSent(text);
-}
-
-void RttPanel::onLmpeSend()
-{
-    const QString text = m_lmpeInput->text().trimmed();
-    if (text.isEmpty())
-        return;
-    m_lmpeList->addItem(tr("You: %1").arg(text));
-    m_lmpeInput->clear();
-    emit lmpeMessageSent(text);
 }
 
 void RttPanel::onRttStateChanged(RttState state)

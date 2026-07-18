@@ -8,7 +8,6 @@ class QTextEdit;
 class QLineEdit;
 class QPushButton;
 class QTabWidget;
-class QListWidget;
 
 class RttPanel : public QWidget
 {
@@ -21,11 +20,9 @@ public:
 
 signals:
     void rttMessageSent(const QString &text);
-    void lmpeMessageSent(const QString &text);
 
 private slots:
     void onRttSend();
-    void onLmpeSend();
     void onRttStateChanged(RttState state);
     // Fires on every QLineEdit textChanged — computes T.140 delta and sends.
     void onRttInputChanged(const QString &newText);
@@ -46,11 +43,9 @@ private:
     QPushButton *m_rttSend{nullptr};
     QPushButton *m_rttClear{nullptr};
 
-    // LMPE tab
+    // LMPE tab (Task W113F: permanently unavailable, a single disabled
+    // label -- no input/send/local-echo widgets anymore)
     QLabel      *m_lmpeState{nullptr};
-    QListWidget *m_lmpeList{nullptr};
-    QLineEdit   *m_lmpeInput{nullptr};
-    QPushButton *m_lmpeSend{nullptr};
 
     RttSession  *m_rttSession{nullptr};
 

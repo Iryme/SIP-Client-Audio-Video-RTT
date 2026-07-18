@@ -213,6 +213,60 @@ qint64 MessageHistoryStore::appendInboundTyping(const QString &fromUri, const QS
     return entry.id;
 }
 
+qint64 MessageHistoryStore::appendInboundUnsupported(const QString &fromUri, const QString &toUri,
+                                                     const QString &contactUri,
+                                                     const QString &originalContentType,
+                                                     const QString &callId, const QString &profileId)
+{
+    // No raw body is ever hashed into the fingerprint here (there is none to
+    // store) -- callId plus contentType is enough to dedup a retransmitted
+    // callback for the same malformed message without needing the payload.
+    const QString fp = inboundFingerprint(fromUri, toUri,
+                                          originalContentType,
+                                          QStringLiteral("unsupported"), callId);
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+
+    MessageHistoryEntry entry;
+    {
+        QMutexLocker locker(&m_mutex);
+
+        for (auto it = m_recentInboundFingerprints.begin(); it != m_recentInboundFingerprints.end();) {
+            if (nowMs - it.value() > kDedupWindowMs * 4)
+                it = m_recentInboundFingerprints.erase(it);
+            else
+                ++it;
+        }
+
+        const auto seenIt = m_recentInboundFingerprints.constFind(fp);
+        if (seenIt != m_recentInboundFingerprints.constEnd()
+            && (nowMs - seenIt.value()) < kDedupWindowMs) {
+            return m_recentInboundFingerprintToEntryId.value(fp, 0);
+        }
+
+        entry.id                       = m_nextId++;
+        entry.timestamp                = QDateTime::currentDateTimeUtc();
+        entry.direction                = MessageHistoryEntry::Direction::Inbound;
+        entry.peerUri                  = fromUri;
+        entry.contentType              = originalContentType;
+        entry.bodyPreview              = QStringLiteral("Unsupported or malformed message");
+        entry.callId                   = callId;
+        entry.contactUri               = contactUri;
+        entry.profileId                = profileId;
+        entry.isUnsupportedOrMalformed = true;
+        Q_UNUSED(toUri)
+
+        m_entries.append(entry);
+        m_recentInboundFingerprints.insert(fp, nowMs);
+        m_recentInboundFingerprintToEntryId.insert(fp, entry.id);
+
+        while (m_entries.size() > m_maxEntriesRetained)
+            m_entries.removeFirst();
+    }
+
+    emit entryAppended(entry);
+    return entry.id;
+}
+
 qint64 MessageHistoryStore::appendOutbound(const ComposedSipMessage &msg)
 {
     MessageHistoryEntry entry;

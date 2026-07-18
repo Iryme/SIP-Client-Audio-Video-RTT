@@ -45,6 +45,15 @@ private slots:
     void appendInboundTypingStoresState();
     void duplicateInboundTypingIsDeduped();
 
+    // Task W113F: unsupported/malformed payload placeholder rows, and the
+    // isProtocolEvent() classification the Client Messaging UI filters on.
+    void appendInboundUnsupportedStoresPlaceholderNotRawBody();
+    void duplicateInboundUnsupportedIsDeduped();
+    void isProtocolEventTrueForImdnReport();
+    void isProtocolEventTrueForTypingNotification();
+    void isProtocolEventTrueForUnsupported();
+    void isProtocolEventFalseForPlainMessage();
+
     // Task W111 (Client Messaging View): transport outcome + MSRP delivery
     // correlation, a distinct id space from correlateDelivery()'s SIP
     // Message-ID matching.
@@ -395,6 +404,61 @@ void TestMessageHistory::duplicateInboundTypingIsDeduped()
     }
     QCOMPARE(MessageHistoryStore::instance().count(), 1);
     QVERIFY(MessageHistoryStore::instance().snapshot().first().isTypingNotification);
+}
+
+void TestMessageHistory::appendInboundUnsupportedStoresPlaceholderNotRawBody()
+{
+    const qint64 id = MessageHistoryStore::instance().appendInboundUnsupported(
+        QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"),
+        QString(), QStringLiteral("message/cpim"),
+        QStringLiteral("call-unsupported-1"), QString());
+
+    const MessageHistoryEntry e = MessageHistoryStore::instance().entryById(id);
+    QVERIFY(e.isUnsupportedOrMalformed);
+    QCOMPARE(e.bodyPreview, QStringLiteral("Unsupported or malformed message"));
+    QCOMPARE(e.contentType, QStringLiteral("message/cpim"));
+    QCOMPARE(e.direction, MessageHistoryEntry::Direction::Inbound);
+}
+
+void TestMessageHistory::duplicateInboundUnsupportedIsDeduped()
+{
+    for (int i = 0; i < 3; ++i) {
+        MessageHistoryStore::instance().appendInboundUnsupported(
+            QStringLiteral("sip:alice@example.com"), QStringLiteral("sip:bob@example.com"),
+            QString(), QStringLiteral("message/cpim"),
+            QStringLiteral("call-unsupported-dup"), QString());
+    }
+    QCOMPARE(MessageHistoryStore::instance().count(), 1);
+    QVERIFY(MessageHistoryStore::instance().snapshot().first().isUnsupportedOrMalformed);
+}
+
+void TestMessageHistory::isProtocolEventTrueForImdnReport()
+{
+    MessageHistoryEntry e;
+    e.isImdnReport = true;
+    QVERIFY(e.isProtocolEvent());
+}
+
+void TestMessageHistory::isProtocolEventTrueForTypingNotification()
+{
+    MessageHistoryEntry e;
+    e.isTypingNotification = true;
+    QVERIFY(e.isProtocolEvent());
+}
+
+void TestMessageHistory::isProtocolEventTrueForUnsupported()
+{
+    MessageHistoryEntry e;
+    e.isUnsupportedOrMalformed = true;
+    QVERIFY(e.isProtocolEvent());
+}
+
+void TestMessageHistory::isProtocolEventFalseForPlainMessage()
+{
+    MessageHistoryEntry e;
+    e.contentType = QStringLiteral("text/plain");
+    e.bodyPreview = QStringLiteral("Hello");
+    QVERIFY(!e.isProtocolEvent());
 }
 
 void TestMessageHistory::updateTransportOutcomeRecordsMsrpMessageId()

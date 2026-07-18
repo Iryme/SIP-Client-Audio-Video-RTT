@@ -361,7 +361,20 @@ void SipProfileManager::loadAll()
         p.authUsername      = m_settings.value(grp + "/authUsername").toString();
         p.emergencyServiceUri = m_settings.value(grp + "/emergencyServiceUri").toString();
         p.enableRtt              = m_settings.value(grp + "/enableRtt", false).toBool();
-        p.enableLmpe             = m_settings.value(grp + "/enableLmpe", false).toBool();
+        // Task W113F: LMPE has no interoperable wire format yet and must
+        // never be treated as enabled at runtime, regardless of what an
+        // old saved profile (or a hand-edited/imported settings file) has
+        // stored -- force false here, at the single point every profile is
+        // loaded from disk, rather than trusting every later reader of
+        // SipProfile::enableLmpe to re-check it. Redacted warning only
+        // (profile id, never any message/account content) so a stale
+        // config is visible without needing to inspect QSettings by hand.
+        if (m_settings.value(grp + "/enableLmpe", false).toBool()) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Profile %1 has enableLmpe=true in saved settings — "
+                               "LMPE is unavailable, forcing disabled at load").arg(p.profileId));
+        }
+        p.enableLmpe             = false;
         p.enableEtsiCompatibility = m_settings.value(grp + "/enableEtsiCompatibility", false).toBool();
         p.createdAt = QDateTime::fromString(m_settings.value(grp + "/createdAt").toString(), Qt::ISODate);
         p.updatedAt = QDateTime::fromString(m_settings.value(grp + "/updatedAt").toString(), Qt::ISODate);
