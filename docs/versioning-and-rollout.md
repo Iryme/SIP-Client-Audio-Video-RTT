@@ -71,6 +71,21 @@ A version may be tagged and released **only after** all three gates pass:
 
 ---
 
+## Portable distribution artifacts
+
+Starting with **v1.6.4** (Task W113D), a portable Windows x64 Release bundle
+is produced alongside each release via
+[scripts/package-windows.ps1](../scripts/package-windows.ps1) — see
+[windows-portable-bundle.md](windows-portable-bundle.md). The bundle's
+`applicationVersion`/`backendVersion`/`frontendUiVersion` in its
+`version-info.json` are always identical, since SIPClient is a single binary
+with a single `PROJECT_VERSION` (no separate backend/frontend build). The
+Windows binary's own `FILEVERSION`/`PRODUCTVERSION` resource
+(`cmake/AppVersion.rc.in`, added in W113D) is generated from the same
+`PROJECT_VERSION` as the in-app About dialog and diagnostics export, so
+`git tag vMAJOR.MINOR.PATCH` for a release should never drift from what
+Explorer's Properties > Details tab or the packaged bundle reports.
+
 ## Future MAJOR releases (roadmap items)
 
 These items are explicitly deferred to a future MAJOR version because they change the SIP wire protocol or introduce a new protocol stack:

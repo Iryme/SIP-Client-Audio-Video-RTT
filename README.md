@@ -45,6 +45,13 @@ cmake --build build --parallel
 
 See [docs/build-linux.md](docs/build-linux.md) and [docs/build-windows.md](docs/build-windows.md) for detailed instructions.
 
+### Portable Windows bundle
+
+For testing on a Windows machine without Qt/Visual Studio installed, see
+[docs/windows-portable-bundle.md](docs/windows-portable-bundle.md) — build with
+`scripts/package-windows.ps1`, then copy the resulting `-portable.zip` and
+unzip/run `SIPClient.exe`.
+
 ---
 
 ## Repository Layout
@@ -79,6 +86,9 @@ tests/          Qt Test suite (placeholder)
 - [Architecture Decisions](docs/architecture-decisions.md)
 - [Build — Linux](docs/build-linux.md)
 - [Build — Windows](docs/build-windows.md)
+- [Windows Portable Bundle](docs/windows-portable-bundle.md)
+- [Windows Deployment Dependencies](docs/windows-deployment-dependencies.md)
+- [Windows Clean-Machine Test Procedure](docs/windows-clean-machine-test.md)
 - [ETSI Compatibility Overview](docs/etsi-compatibility/overview.md)
 
 ---

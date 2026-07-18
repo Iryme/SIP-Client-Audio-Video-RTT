@@ -4,6 +4,77 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.4 — Portable Windows Test Bundle
+
+**Status:** complete
+**Branch:** `release/w113d-portable-windows-bundle`
+**Version bump type:** PATCH
+**Scope:** New distribution artifact — a self-contained, portable Windows
+x64 Release bundle for testing SIPClient on a machine with no Qt, Visual
+Studio, or PJSIP dev environment installed. No product-feature changes.
+
+### What's new
+
+- `cmake/AppVersion.rc.in` — a real Windows `FILEVERSION`/`PRODUCTVERSION`
+  resource, generated from the same `PROJECT_VERSION` CMake already uses
+  for the in-app version strings. Previously `SIPClient.exe` carried no
+  Windows version metadata at all (Explorer's Properties > Details tab had
+  nothing to show); now it reports `1.6.4.0`, matching the About dialog,
+  startup log, and Diagnostics export.
+- `scripts/package-windows.ps1` — reproducible packaging script
+  (parameters: `BuildDir`, `Configuration`, `QtBinDir`, `OutputDir`,
+  `Version`, `IncludeSymbols`, `IncludeVcRedist`, `Clean`, `Archive`) that:
+  stages `SIPClient.exe` + a generated `README-PORTABLE.txt` +
+  `version-info.json`; runs `windeployqt --compiler-runtime
+  --no-translations`; copies the VC++ runtime DLLs directly from the
+  toolchain's own redist folder (`%VCToolsRedistDir%`) — `windeployqt
+  --compiler-runtime` turned out to silently deploy zero CRT DLLs on this
+  machine's VC 14.51 toolset, caught by the dependency audit rather than
+  assumed to have worked; audits every staged DLL with `dumpbin
+  /dependents` against a Windows-system-DLL allow-list (PJSIP, OpenSSL,
+  zlib, and vpx are statically linked into `SIPClient.exe` — there is no
+  runtime DLL for any of them to ship); scans staging for
+  secrets/credentials/local paths; verifies x64-only and no Debug-suffixed
+  DLLs; smoke-tests the **staged** exe (never the build-tree copy) under a
+  `PATH` reduced to `%SystemRoot%\System32` so it can't accidentally
+  resolve a build-machine Qt/VS DLL; and produces the zip, its SHA-256, a
+  per-file manifest JSON, and an optional separate symbols zip. Fails with
+  a non-zero exit on any critical problem — no step is masked with
+  continue-on-error.
+- `docs/windows-portable-bundle.md`, `docs/windows-deployment-dependencies.md`,
+  `docs/windows-clean-machine-test.md` — the packaging procedure, the full
+  dependency audit rationale, and the manual clean-machine test checklist.
+
+### Artifact
+
+`SIP-Client-Audio-Video-RTT-1.6.4-windows-x64-portable.zip` (43 files, one
+top-level folder, no `.pdb`/source/build-cache/test binaries/personal
+config), SHA-256 `78e55734f5e12d50287f97f6a48baa075356947a784e3ecedaf46618d548003c`,
+plus `-manifest.json` and a separate `-symbols.zip`.
+
+### Validation
+
+- Debug (`build/`) rebuilt clean, 80/80 CTest.
+- A from-scratch, freshly-configured Release x64 tree
+  (`build-windows-x64-release/`, `ENABLE_PJSIP=ON`) built clean, 80/80
+  CTest.
+- Packaging script: dependency audit PASS (no unresolved non-system DLL),
+  secrets/local-path scan PASS, x64/no-Debug-DLL check PASS, staging smoke
+  test PASS (process starts and closes cleanly under a minimal `PATH`).
+- `version-info.json` and the staged exe's own Windows version resource
+  both report `1.6.4` / commit `4d05a04` / Qt `6.11.1` / PJSIP `2.17.0`
+  consistently.
+- **Clean-machine test (second VM/PC/Windows Sandbox): NOT RUN** — no
+  clean Windows machine was available in this session. The in-session
+  smoke test only proves the dependency closure is complete on *this*
+  machine with a minimized `PATH`; it does not substitute for verifying
+  REGISTER, audio/video calls, RTT, camera LED behavior, messaging, and
+  config persistence on a machine that never had Qt/VS/PJSIP installed.
+  See [windows-clean-machine-test.md](windows-clean-machine-test.md) for
+  the checklist to run before treating this bundle as fully field-validated.
+
+---
+
 ## v1.6.3 — Camera LED Stays On After Camera Off
 
 **Status:** complete
