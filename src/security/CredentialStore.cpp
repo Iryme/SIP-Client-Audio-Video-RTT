@@ -4,6 +4,8 @@
 
 #ifdef _WIN32
 #  include "security/WindowsCredentialBackend.h"
+#elif defined(__APPLE__)
+#  include "security/MacKeychainBackend.h"
 #endif
 
 // ---- singleton -------------------------------------------------------
@@ -21,12 +23,18 @@ CredentialStore::CredentialStore(QObject *parent)
     m_backend = std::make_unique<WindowsCredentialBackend>();
     Logger::instance().info(LogCategory::Platform,
         QStringLiteral("CredentialStore: using backend '%1'").arg(m_backend->backendName()));
+#elif defined(__APPLE__)
+    m_backend = std::make_unique<MacKeychainBackend>();
+    Logger::instance().info(LogCategory::Platform,
+        QStringLiteral("CredentialStore: using backend '%1'").arg(m_backend->backendName()));
 #else
     Logger::instance().warn(LogCategory::Platform,
         QStringLiteral("CredentialStore: no secure backend available on this platform — "
                        "credential operations will fail"));
 #endif
 }
+
+CredentialStore::~CredentialStore() = default;
 
 // ---- backend injection -----------------------------------------------
 

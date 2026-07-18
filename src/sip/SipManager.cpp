@@ -103,9 +103,14 @@ static void logVideoDevices()
 #if defined(PJMEDIA_HAS_VIDEO) && PJMEDIA_HAS_VIDEO
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("PJSIP video support: ENABLED (PJMEDIA_HAS_VIDEO=1)"));
+#if defined(_WIN32)
     Logger::instance().info(LogCategory::Media,
         QStringLiteral("Qt GDI renderer device index: %1")
             .arg(PjsipGdiRenderer::deviceIndex()));
+#elif defined(__APPLE__)
+    Logger::instance().info(LogCategory::Media,
+        QStringLiteral("PJSIP video backend: AVFoundation capture / Metal render"));
+#endif
     try {
         pj::VidDevManager &vdm = pj::Endpoint::instance().vidDevManager();
         const unsigned count = vdm.getDevCount();
@@ -123,10 +128,15 @@ static void logVideoDevices()
             } catch (...) {}
         }
         if (count == 0) {
+#if defined(_WIN32)
             Logger::instance().warn(LogCategory::Media,
                 QStringLiteral("PJSIP video: no capture/render devices "
                                "(PJMEDIA_VIDEO_DEV_HAS_DSHOW=0; "
                                "no DirectShow backend compiled)"));
+#else
+            Logger::instance().warn(LogCategory::Media,
+                QStringLiteral("PJSIP video: no capture/render devices available"));
+#endif
         }
     } catch (const pj::Error &e) {
         Logger::instance().warn(LogCategory::Media,

@@ -6,7 +6,8 @@
 class ICredentialBackend;
 
 // Secure credential store for SIP profile passwords.
-// Production singleton uses the OS keychain backend (Windows Credential Manager).
+// Production singleton uses the OS keychain backend (Windows Credential Manager
+// or macOS Keychain Services).
 // Tests inject a MemoryCredentialBackend via setBackend() before use.
 //
 // IMPORTANT: passwords are NEVER passed to Logger. Only profileId, username, and
@@ -16,6 +17,7 @@ class CredentialStore : public QObject
     Q_OBJECT
 public:
     static CredentialStore &instance();
+    ~CredentialStore() override;
 
     // Replace the active backend (intended for unit tests only).
     // Must be called before the first credential operation.

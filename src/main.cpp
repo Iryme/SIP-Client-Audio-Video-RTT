@@ -3,6 +3,9 @@
 #include <QCommandLineOption>
 #include <QDir>
 #include <QProcessEnvironment>
+#include <QTextStream>
+#include <cstring>
+#include "AppVersion.h"
 #include "app/Application.h"
 #include "core/AppSettings.h"
 #include "core/PerfScope.h"
@@ -82,6 +85,18 @@ void applyEarlyCommandLineOverrides(int argc, char **argv)
 
 int main(int argc, char *argv[])
 {
+    // A dependency-loading smoke test for packaged bundles.  This path runs
+    // before QApplication, opens no windows, touches no profiles or devices,
+    // and still proves that the Mach-O executable and its linked libraries can
+    // be loaded from the relocated bundle.
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--bundle-smoke-test") == 0) {
+            QTextStream(stdout) << "SIP Client " << APP_VERSION_STRING
+                                << " bundle smoke test PASS\n";
+            return 0;
+        }
+    }
+
     PerfScope::initAppClock();
 
     applyEarlyCommandLineOverrides(argc, argv);

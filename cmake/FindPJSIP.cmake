@@ -186,8 +186,14 @@ set(PJSIP_LIBRARIES "")
 set(_PJSIP_ALL_FOUND TRUE)
 
 foreach(_lib IN LISTS _PJSIP_REQUIRED_LIBS)
+    set(_PJSIP_LIBRARY_NAMES ${_lib} lib${_lib})
+    if(_lib STREQUAL "pjsua-lib")
+        list(APPEND _PJSIP_LIBRARY_NAMES pjsua libpjsua)
+    elseif(_lib STREQUAL "pj")
+        list(APPEND _PJSIP_LIBRARY_NAMES pjlib libpjlib)
+    endif()
     find_library(_PJSIP_LIB_${_lib}
-        NAMES ${_lib} lib${_lib}
+        NAMES ${_PJSIP_LIBRARY_NAMES}
         HINTS
             ${_PJSIP_SEARCH_HINT}/lib
             ${_PJSIP_SEARCH_HINT}/bin
@@ -199,6 +205,29 @@ foreach(_lib IN LISTS _PJSIP_REQUIRED_LIBS)
             "C:/pjproject/lib"
             "C:/pjsip/lib"
     )
+    # The supported GNU/configure install on macOS names static archives with
+    # the target triple (for example libpjsua2-arm64-apple-darwin.a). CMake's
+    # find_library does not accept wildcards, so resolve that official layout
+    # only after ordinary discovery has failed.
+    if(APPLE AND NOT _PJSIP_LIB_${_lib} AND _PJSIP_SEARCH_HINT)
+        set(_PJSIP_ARCHIVE_STEM "${_lib}")
+        if(_lib STREQUAL "pjsua-lib")
+            set(_PJSIP_ARCHIVE_STEM "pjsua")
+        elseif(_lib STREQUAL "pj")
+            set(_PJSIP_ARCHIVE_STEM "pj")
+        endif()
+        file(GLOB _PJSIP_ARCHIVE_CANDIDATES
+            "${_PJSIP_SEARCH_HINT}/lib/lib${_PJSIP_ARCHIVE_STEM}-*.a")
+        list(FILTER _PJSIP_ARCHIVE_CANDIDATES INCLUDE REGEX
+            "/lib${_PJSIP_ARCHIVE_STEM}-(arm64|aarch64)-apple-darwin[^/]*\\.a$")
+        list(LENGTH _PJSIP_ARCHIVE_CANDIDATES _PJSIP_ARCHIVE_COUNT)
+        if(_PJSIP_ARCHIVE_COUNT EQUAL 1)
+            list(GET _PJSIP_ARCHIVE_CANDIDATES 0 _PJSIP_LIB_${_lib})
+        elseif(_PJSIP_ARCHIVE_COUNT GREATER 1)
+            message(FATAL_ERROR
+                "Multiple PJSIP archives match ${_lib}; use a clean single-architecture prefix")
+        endif()
+    endif()
     if(_PJSIP_LIB_${_lib})
         list(APPEND PJSIP_LIBRARIES "${_PJSIP_LIB_${_lib}}")
     else()
@@ -209,6 +238,29 @@ foreach(_lib IN LISTS _PJSIP_REQUIRED_LIBS)
     endif()
     mark_as_advanced(_PJSIP_LIB_${_lib})
 endforeach()
+
+if(APPLE AND _PJSIP_SEARCH_HINT)
+    foreach(_third_party IN ITEMS
+            srtp resample gsmcodec speex ilbccodec g7221codec yuv webrtc)
+        file(GLOB _PJSIP_THIRD_PARTY_CANDIDATES
+            "${_PJSIP_SEARCH_HINT}/lib/lib${_third_party}-*.a")
+        list(LENGTH _PJSIP_THIRD_PARTY_CANDIDATES _PJSIP_THIRD_PARTY_COUNT)
+        if(_PJSIP_THIRD_PARTY_COUNT EQUAL 1)
+            list(GET _PJSIP_THIRD_PARTY_CANDIDATES 0 _PJSIP_THIRD_PARTY_LIBRARY)
+            list(APPEND PJSIP_LIBRARIES "${_PJSIP_THIRD_PARTY_LIBRARY}")
+        endif()
+    endforeach()
+
+    find_package(OpenSSL REQUIRED COMPONENTS SSL Crypto)
+    list(APPEND PJSIP_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
+    foreach(_framework IN ITEMS
+            CoreAudio CoreServices AudioUnit AudioToolbox Foundation AppKit
+            AVFoundation CoreGraphics QuartzCore CoreVideo CoreMedia Metal
+            MetalKit VideoToolbox)
+        find_library(_PJSIP_FRAMEWORK_${_framework} ${_framework} REQUIRED)
+        list(APPEND PJSIP_LIBRARIES "${_PJSIP_FRAMEWORK_${_framework}}")
+    endforeach()
+endif()
 
 find_library(_PJSIP_VPX_LIBRARY
     NAMES vpx libvpx
@@ -247,5 +299,10 @@ if(PJSIP_FOUND)
             INTERFACE_INCLUDE_DIRECTORIES "${PJSIP_INCLUDE_DIRS}"
             INTERFACE_LINK_LIBRARIES      "${PJSIP_LIBRARIES}"
         )
+        if(APPLE)
+            set_target_properties(PJSIP::pjsua2 PROPERTIES
+                INTERFACE_COMPILE_DEFINITIONS
+                    "PJ_AUTOCONF=1;PJMEDIA_HAS_VIDEO=1;PJ_IS_BIG_ENDIAN=0;PJ_IS_LITTLE_ENDIAN=1")
+        endif()
     endif()
 endif()

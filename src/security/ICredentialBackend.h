@@ -2,7 +2,8 @@
 #include <QString>
 
 // Pure interface for credential storage backends.
-// Implementations: WindowsCredentialBackend (production), MemoryCredentialBackend (tests).
+// Implementations: WindowsCredentialBackend and MacKeychainBackend (production),
+// MemoryCredentialBackend (tests).
 class ICredentialBackend
 {
 public:

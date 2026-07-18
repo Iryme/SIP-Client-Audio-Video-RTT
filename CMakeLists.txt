@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 
+if(APPLE)
+    # Set before project() so compiler feature tests use the same deployment
+    # target as the final application and all linked dependencies.
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING
+        "Minimum supported macOS version")
+endif()
+
 # NMake + MSVC can generate malformed compiler dependency files in this
 # environment. Fall back to CMake's legacy dependency discovery so the
 # generated makefiles stay readable by nmake.
@@ -7,10 +14,12 @@ set(CMAKE_DEPENDS_USE_COMPILER FALSE CACHE BOOL
     "Use CMake dependency discovery instead of compiler-generated deps" FORCE)
 
 project(SIPClient
-    VERSION 1.6.7
+    VERSION 1.6.8
     DESCRIPTION "Generic SIP Multimedia Client - Audio / Video / RTT"
     LANGUAGES CXX
 )
+
+include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,6 +28,34 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
+
+# --- Configurable dependency and macOS bundle inputs ---
+# CMAKE_PREFIX_PATH remains the standard Qt discovery mechanism.  These
+# project-scoped aliases make scripted builds self-documenting without baking
+# any developer machine path into generated files or the bundle.
+set(SIPCLIENT_QT_ROOT "" CACHE PATH "Qt installation prefix (optional; prepended to CMAKE_PREFIX_PATH)")
+set(PJSIP_ROOT "" CACHE PATH "PJSIP installation prefix (optional alias for PJSIP_DIR)")
+set(SIPCLIENT_PACKAGE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist" CACHE PATH
+    "Directory for generated distribution artifacts")
+
+if(SIPCLIENT_QT_ROOT)
+    list(PREPEND CMAKE_PREFIX_PATH "${SIPCLIENT_QT_ROOT}")
+endif()
+if(PJSIP_ROOT AND NOT PJSIP_DIR)
+    set(PJSIP_DIR "${PJSIP_ROOT}" CACHE PATH "PJSIP installation prefix" FORCE)
+endif()
+
+if(APPLE)
+    set(SIPCLIENT_BUNDLE_IDENTIFIER "org.sipclient.multimedia" CACHE STRING
+        "macOS bundle identifier")
+    set(SIPCLIENT_SIGNING_IDENTITY "-" CACHE STRING
+        "macOS signing identity ('-' for ad-hoc signing)")
+    set(SIPCLIENT_BUILD_NUMBER "${PROJECT_VERSION_MAJOR}${PROJECT_VERSION_MINOR}${PROJECT_VERSION_PATCH}"
+        CACHE STRING "Numeric CFBundleVersion")
+    if(NOT SIPCLIENT_BUILD_NUMBER MATCHES "^[0-9]+$")
+        message(FATAL_ERROR "SIPCLIENT_BUILD_NUMBER must contain decimal digits only")
+    endif()
+endif()
 
 # Release builds otherwise ship with no .pdb, so any crash dump collected from
 # a Release install (the only config end users run) can only be symbolicated
@@ -95,6 +132,14 @@ configure_file(
     "${CMAKE_BINARY_DIR}/generated/AppVersion.h"
     @ONLY
 )
+
+if(APPLE)
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/cmake/Info.plist.in"
+        "${CMAKE_BINARY_DIR}/generated/Info.plist"
+        @ONLY
+    )
+endif()
 
 # --- Windows FILEVERSION/PRODUCTVERSION resource ---
 # Same PROJECT_VERSION as AppVersion.h above, so Explorer's Properties >
@@ -243,7 +288,6 @@ set(SOURCES
     src/media/MediaDeviceManager.cpp
     src/media/MediaDeviceSelectionModel.cpp
     src/media/QtMediaDeviceBackend.cpp
-    src/media/PjsipGdiRenderer.cpp
     src/media/VideoSettings.cpp
     src/media/VideoQualityManager.cpp
     src/media/VideoStatistics.cpp
@@ -421,7 +465,6 @@ set(HEADERS
     src/media/MediaDevice.h
     src/media/IMediaDeviceBackend.h
     src/media/QtMediaDeviceBackend.h
-    src/media/PjsipGdiRenderer.h
     src/media/VideoSettings.h
     src/media/VideoQualityManager.h
     src/media/VideoStatistics.h
@@ -434,7 +477,12 @@ set(HEADERS
 if(WIN32)
     list(APPEND SOURCES src/security/WindowsCredentialBackend.cpp)
     list(APPEND HEADERS src/security/WindowsCredentialBackend.h)
+    list(APPEND SOURCES src/media/PjsipGdiRenderer.cpp)
+    list(APPEND HEADERS src/media/PjsipGdiRenderer.h)
     list(APPEND SOURCES "${CMAKE_BINARY_DIR}/generated/AppVersion.rc")
+elseif(APPLE)
+    list(APPEND SOURCES src/security/MacKeychainBackend.cpp)
+    list(APPEND HEADERS src/security/MacKeychainBackend.h)
 endif()
 
 set(RESOURCES
@@ -446,6 +494,21 @@ qt_add_executable(SIPClient
     ${HEADERS}
     ${RESOURCES}
 )
+
+if(APPLE)
+    set_target_properties(SIPClient PROPERTIES
+        MACOSX_BUNDLE TRUE
+        OUTPUT_NAME "SIP Client"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_BINARY_DIR}/generated/Info.plist"
+        MACOSX_BUNDLE_BUNDLE_NAME "SIP Client"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "${SIPCLIENT_BUNDLE_IDENTIFIER}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${SIPCLIENT_BUILD_NUMBER}"
+        BUILD_WITH_INSTALL_RPATH TRUE
+        INSTALL_RPATH "@executable_path/../Frameworks;@loader_path/../Frameworks"
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "${SIPCLIENT_SIGNING_IDENTITY}"
+    )
+endif()
 
 target_link_libraries(SIPClient PRIVATE
     Qt6::Core
@@ -464,26 +527,31 @@ endif()
 
 if(WIN32)
     target_link_libraries(SIPClient PRIVATE Advapi32 Psapi)
+elseif(APPLE)
+    find_library(SECURITY_FRAMEWORK Security REQUIRED)
+    target_link_libraries(SIPClient PRIVATE "${SECURITY_FRAMEWORK}")
 endif()
 
 if(ENABLE_PJSIP AND PJSIP_FOUND)
-    set(_PJSIP_BIN_DIR "${CMAKE_SOURCE_DIR}/.deps/pjsip-msvc-install/bin")
-    set(_PJSIP_THIRD_PARTY_DIR "${_PJSIP_BIN_DIR}/pjproject/third_party")
-
     target_compile_definitions(SIPClient PRIVATE PJMEDIA_HAS_VIDEO=1)
-
-    target_link_libraries(SIPClient PRIVATE
-        "${_PJSIP_BIN_DIR}/pjlib.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/resample.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/g7221.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/gsm.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/ilbc.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/speex.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/srtp.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/webrtc.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/webrtc_aec3.lib"
-        "${_PJSIP_THIRD_PARTY_DIR}/yuv.lib"
-    )
+    if(WIN32)
+        # Preserve the stable W113F MSVC layout.  Non-Windows builds use the
+        # imported PJSIP target and never see these Windows-only archives.
+        set(_PJSIP_BIN_DIR "${CMAKE_SOURCE_DIR}/.deps/pjsip-msvc-install/bin")
+        set(_PJSIP_THIRD_PARTY_DIR "${_PJSIP_BIN_DIR}/pjproject/third_party")
+        target_link_libraries(SIPClient PRIVATE
+            "${_PJSIP_BIN_DIR}/pjlib.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/resample.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/g7221.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/gsm.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/ilbc.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/speex.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/srtp.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/webrtc.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/webrtc_aec3.lib"
+            "${_PJSIP_THIRD_PARTY_DIR}/yuv.lib"
+        )
+    endif()
     target_link_libraries(SIPClient PRIVATE PJSIP::pjsua2)
     if(PJSIP_LIBRARIES)
         target_link_libraries(SIPClient PRIVATE ${PJSIP_LIBRARIES})
@@ -500,6 +568,15 @@ option(BUILD_TESTS "Build unit tests" OFF)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+    if(APPLE)
+        add_test(NAME test_macos_bundle_configuration
+            COMMAND "${CMAKE_COMMAND}"
+                -DINFO_PLIST=${CMAKE_BINARY_DIR}/generated/Info.plist
+                -DPACKAGING_SCRIPT=${CMAKE_SOURCE_DIR}/scripts/package-macos.sh
+                -DEXPECTED_VERSION=${PROJECT_VERSION}
+                -DEXPECTED_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
+                -P ${CMAKE_SOURCE_DIR}/tests/verify_macos_configuration.cmake)
+    endif()
 endif()
 
 # --- Deploy Qt runtime (Windows) ---
