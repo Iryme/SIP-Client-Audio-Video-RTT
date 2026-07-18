@@ -17,6 +17,7 @@ CredentialStore (src/security/CredentialStore.h)
   │
   └── ICredentialBackend (interface)
         ├── WindowsCredentialBackend  — Windows Credential Manager (Advapi32)
+        ├── MacKeychainBackend        — macOS Keychain (Security framework)
         └── MemoryCredentialBackend   — in-memory, tests only, NOT secure
 ```
 
@@ -25,7 +26,8 @@ CredentialStore (src/security/CredentialStore.h)
 | Platform | Backend | isSecure() |
 |---|---|---|
 | Windows | `WindowsCredentialBackend` | true |
-| Other | null — all operations return false | false |
+| macOS | `MacKeychainBackend` | true |
+| Linux/other | null — all operations return false | false |
 
 Tests inject `MemoryCredentialBackend` via `CredentialStore::instance().setBackend(...)` before any test operation.
 
@@ -85,6 +87,11 @@ SIPClient/sip/<profileId>/<username>
 - The UserName field is set to `<username>`.
 - The CredentialBlob contains the UTF-16 encoded password.
 - Persist mode: `CRED_PERSIST_LOCAL_MACHINE`.
+
+On macOS the same logical key is stored as a generic Keychain password: the
+logical credential key is the service and the SIP username is the account.
+The application links Apple's Security framework; no password is persisted in
+Qt settings or bundled diagnostics.
 
 ---
 

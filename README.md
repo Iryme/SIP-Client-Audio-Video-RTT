@@ -2,28 +2,26 @@
 
 A generic, cross-platform SIP multimedia desktop client with a professional dark GUI.
 
-**Platforms:** Windows 10/11, Linux (Ubuntu 22.04+, Fedora 38+)
+**Platforms:** Windows 10/11, macOS 13+ (Apple Silicon), Linux (Ubuntu 22.04+, Fedora 38+)
 **GUI:** Qt 6 C++
 **Build:** CMake 3.16+
-**Status:** Foundation skeleton — GUI layout only, no SIP networking yet
+**Status:** Active development — real PJSIP backend; platform validation varies by feature
 
 ---
 
-## Features (planned)
+## Feature summary
 
 | Feature | Status |
 |---|---|
 | Qt 6 GUI skeleton | IMPLEMENTED |
 | Dark professional theme | IMPLEMENTED |
-| SIP profile management | NOT STARTED |
-| SIP registration | NOT STARTED |
-| Audio calls | NOT STARTED |
-| Video calls | NOT STARTED |
-| RFC 4103 RTT | NOT STARTED |
-| LMPE messaging | NOT STARTED |
-| ETSI TS 103 479 | NOT STARTED |
-| ETSI TS 103 480 | NOT STARTED |
-| ETSI TS 103 698 | NOT STARTED |
+| SIP profile management | IMPLEMENTED |
+| SIP registration | IMPLEMENTED; live environment required |
+| Audio calls | IMPLEMENTED; macOS live interop pending |
+| Video calls | IMPLEMENTED; platform/codec limitations documented |
+| RFC 4103 RTT | IMPLEMENTED; macOS live interop pending |
+| LMPE messaging | UNAVAILABLE / HARD-DISABLED |
+| ETSI emergency foundations | IMPLEMENTED; test/lab scope |
 
 ---
 
@@ -43,7 +41,14 @@ cmake --build build --parallel
 ./build/SIPClient
 ```
 
-See [docs/build-linux.md](docs/build-linux.md) and [docs/build-windows.md](docs/build-windows.md) for detailed instructions.
+See [docs/build-linux.md](docs/build-linux.md), [docs/build-windows.md](docs/build-windows.md),
+and [docs/macos-arm64-build.md](docs/macos-arm64-build.md) for detailed instructions.
+
+### macOS ARM64 bundle
+
+The native Release packaging workflow is `scripts/package-macos.sh`. It
+produces a relocatable, signed `SIP Client.app`, ZIP, SHA-256, manifest, and
+optional DMG; see [macOS deployment](docs/macos-deployment.md).
 
 ### Portable Windows bundle
 
@@ -86,6 +91,12 @@ tests/          Qt Test suite (placeholder)
 - [Architecture Decisions](docs/architecture-decisions.md)
 - [Build — Linux](docs/build-linux.md)
 - [Build — Windows](docs/build-windows.md)
+- [Build — macOS ARM64](docs/macos-arm64-build.md)
+- [macOS Deployment](docs/macos-deployment.md)
+- [macOS Platform Services](docs/macos-platform-services.md)
+- [macOS Audio and Video](docs/macos-audio-video.md)
+- [macOS Signing and Notarization](docs/macos-signing-notarization.md)
+- [Windows ↔ macOS Interoperability Test](docs/windows-macos-interoperability-test.md)
 - [Windows Portable Bundle](docs/windows-portable-bundle.md)
 - [Windows Deployment Dependencies](docs/windows-deployment-dependencies.md)
 - [Windows Clean-Machine Test Procedure](docs/windows-clean-machine-test.md)

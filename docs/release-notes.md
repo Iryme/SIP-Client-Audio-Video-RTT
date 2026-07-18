@@ -4,6 +4,39 @@ See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning po
 
 ---
 
+## v1.6.8 — Native macOS ARM64 Bundle
+
+**Status:** complete for native build/package automation; external
+interoperability gates remain open
+**Branch:** `feature/w113g-macos-arm64-bundle`
+**Version bump type:** PATCH (1.6.7 → 1.6.8 as required by W113G)
+**Scope:** Apple Silicon build and deployment support. No pjproject source
+changes, no LMPE activation, and no deliberate Windows call-flow change.
+
+- Added a native macOS `SIP Client.app` with minimum macOS 13.0, bundle
+  identifier, version/build metadata, and camera/microphone usage strings.
+- Isolated Windows GDI and Credential Manager sources; added a real macOS
+  Keychain backend through Apple's Security framework.
+- Extended PJSIP discovery for official GNU-install, target-suffixed static
+  archives and macOS system frameworks. The validated PJSIP 2.17 build uses
+  CoreAudio, AVFoundation, Metal, VideoToolbox, libyuv, WebRTC AEC, and static
+  OpenSSL without editing upstream sources.
+- Added `scripts/package-macos.sh`: native ARM64 configure/build/test,
+  `macdeployqt`, slice thinning, Mach-O/dependency/RPATH/security audits,
+  nested-first signing, relocated smoke test, ZIP/SHA/manifest, optional DMG,
+  Developer ID and notarization workflow.
+- Native Debug and Release builds PASS; 82/82 tests PASS; deployed app
+  architecture/audit/ad-hoc signature/smoke/relocation checks PASS.
+- Developer ID signing and notarization: **NOT RUN / BLOCKED** (no identity or
+  keychain profile). Second clean Apple Silicon Mac: **NOT RUN / BLOCKED**.
+  Windows build and Windows↔macOS live REGISTER/audio/video/RTT/messaging:
+  **NOT RUN / BLOCKED** (no Windows host, SIP server/accounts, or peer).
+- PJSIP's validated private build had no VPX/OpenH264/FFmpeg video codec, so
+  native capture/render backends compiled but a real video call is not
+  certified. See [macos-audio-video.md](macos-audio-video.md).
+
+Full evidence and artifact metadata: [W113G result](agent-results/W113G-macos-arm64-bundle-result.md).
+
 ## v1.6.7 — Simplify Client Messaging, Hide Protocol XML and Force LMPE Inactive
 
 **Status:** complete

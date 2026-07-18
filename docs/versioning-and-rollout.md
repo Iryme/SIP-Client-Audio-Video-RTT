@@ -86,6 +86,14 @@ Windows binary's own `FILEVERSION`/`PRODUCTVERSION` resource
 `git tag vMAJOR.MINOR.PATCH` for a release should never drift from what
 Explorer's Properties > Details tab or the packaged bundle reports.
 
+Starting with **v1.6.8** (Task W113G), the corresponding Apple Silicon
+artifact is produced by `scripts/package-macos.sh`. It uses the same single
+`PROJECT_VERSION`, records the native architecture, deployment target, Qt and
+PJSIP versions, commit, signing mode, and notarization status in both the app
+and distribution manifest, and publishes a SHA-256 sidecar. A Developer-ID
+signature, successful notarization, and clean-machine result remain release
+gates; an ad-hoc signed engineering artifact does not satisfy those gates.
+
 ## Future MAJOR releases (roadmap items)
 
 These items are explicitly deferred to a future MAJOR version because they change the SIP wire protocol or introduce a new protocol stack:

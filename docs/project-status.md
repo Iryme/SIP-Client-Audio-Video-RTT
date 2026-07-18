@@ -1,9 +1,9 @@
 # Project Status
 
 Last updated: 2026-07-19
-Current task count: 74 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W113 + W113a + W113b + W113c + W113D + video-latency-investigation + W113E + W113F complete)
-Active branch: `fix/w113f-simplify-client-messaging-and-disable-lmpe`
-Application version: 1.6.7 (see docs/versioning-and-rollout.md)
+Current task count: 75 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W113 + W113a + W113b + W113c + W113D + video-latency-investigation + W113E + W113F + W113G complete)
+Active branch: `feature/w113g-macos-arm64-bundle`
+Application version: 1.6.8 (see docs/versioning-and-rollout.md)
 
 ---
 
@@ -38,6 +38,7 @@ Application version: 1.6.7 (see docs/versioning-and-rollout.md)
 
 | # | Task | Branch | Status |
 |---|---|---|---|
+| W113G | Native macOS ARM64 Bundle — CMake Apple bundle, Info.plist privacy/version metadata, ARM64 PJSIP/Qt deployment, macOS Keychain adapter, architecture/dependency/RPATH/security audits, ad-hoc signing, relocation smoke test, ZIP/SHA/manifest and DMG | feature/w113g-macos-arm64-bundle | COMPLETE for build/package automation — Debug and Release native builds PASS; 82/82 CTest PASS on macOS ARM64; app deployment/audits/ad-hoc signature/relocation smoke PASS. Developer ID, notarization, second clean Mac, Windows build, and live Windows↔macOS SIP/audio/video/RTT/messaging tests NOT RUN/BLOCKED by unavailable infrastructure; see [agent-results/W113G-macos-arm64-bundle-result.md](agent-results/W113G-macos-arm64-bundle-result.md) |
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | COMPLETE |
 | 2 | GUI layout specification | feature/gui-layout-spec | COMPLETE (separate lineage) |
 | 3 | Diagnostics logger | feature/diagnostics-logger | COMPLETE (separate lineage, not merged) |
@@ -123,7 +124,7 @@ Application version: 1.6.7 (see docs/versioning-and-rollout.md)
 | AppSettings | COMPLETE | QSettings wrapper |
 | SipProfile model | COMPLETE | All fields, URI derivation |
 | SipProfileManager | COMPLETE | CRUD, validation, persistence, credential helpers |
-| CredentialStore | COMPLETE | Windows Credential Manager; MemoryBackend for tests |
+| CredentialStore | COMPLETE | Windows Credential Manager; macOS Keychain; MemoryBackend for tests |
 | MediaDeviceManager | COMPLETE | Qt Multimedia backed; IMediaDeviceBackend |
 | MediaDeviceSelectionModel | COMPLETE | Persistence + fallback to default |
 | MediaPanel | COMPLETE | Mic/Speaker/Camera combos + Refresh |
@@ -215,7 +216,7 @@ Application version: 1.6.7 (see docs/versioning-and-rollout.md)
 | Incoming call notification | NOT STARTED | |
 | Call history | NOT STARTED | |
 | Network recovery | NOT STARTED | |
-| Linux/macOS credential backends | NOT STARTED | |
+| Linux credential backend | NOT STARTED | macOS Keychain completed by W113G |
 | Debug bundle export | NOT STARTED | |
 
 ---
@@ -230,7 +231,7 @@ Application version: 1.6.7 (see docs/versioning-and-rollout.md)
 - Hot-plug device detection not forwarded to MediaDeviceManager.
 - Incoming call not tested live (GUI flow only verified in stub mode).
 - ETSI / NG112 not implemented.
-- CredentialStore: Windows backend only; Linux/macOS return failure.
+- CredentialStore: Windows Credential Manager and macOS Keychain; Linux returns failure.
 - Contact list hardcoded; contact management not implemented.
 - Debug bundle export not implemented.
 - SIP trace: raw SIP capture not implemented (synthetic traces only).
