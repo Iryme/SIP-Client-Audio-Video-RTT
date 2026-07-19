@@ -1,5 +1,23 @@
 # Release Notes
 
+## macOS v1.6.9 — Camera Off Video Stream Guard
+
+**Platform version:** macOS 1.6.8 → 1.6.9 (build 169). Windows remains 1.6.8.
+
+- Fixes the macOS SIGABRT path
+  `CameraController → SipManager → SipCall → Call::vidSetStream →
+  pjmedia_vid_stream_pause` when Camera Off arrived without a valid PJSIP
+  video stream.
+- STOP/START_TRANSMIT now requires a live call, non-teardown state, valid call
+  ID, matching video media/index, ACTIVE status, and transmit direction.
+- Missing codec/media, audio-only, inactive/error, post-BYE, teardown, and
+  repeated actions are safe no-ops at the PJSIP boundary. Local Qt preview is
+  still stopped independently, and Camera On does not imply active call video.
+- `pj::Error` diagnostics include status, title, reason, call state, and media
+  index. No pjproject sources or codecs changed.
+- The guard is common code. Windows rebuild/live regression is required in a
+  separate task; Windows is not declared updated by this macOS release.
+
 See [versioning-and-rollout.md](versioning-and-rollout.md) for the versioning policy, rollout gate, and branch model.
 
 ---

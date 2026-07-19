@@ -1,9 +1,9 @@
 # Project Status
 
 Last updated: 2026-07-19
-Current task count: 75 of N (Tasks 1–28.6 + Task 34–43 + Task W090–W113 + W113a + W113b + W113c + W113D + video-latency-investigation + W113E + W113F + W113G complete)
-Active branch: `feature/w113g-macos-arm64-bundle`
-Application version: 1.6.8 (see docs/versioning-and-rollout.md)
+Current task count: 76 of N (through W113I)
+Active branch: `fix/w113i-macos-camera-off-video-stream-guard`
+Platform versions: macOS 1.6.9; Windows 1.6.8 (see docs/versioning-and-rollout.md)
 
 ---
 
@@ -38,6 +38,7 @@ Application version: 1.6.8 (see docs/versioning-and-rollout.md)
 
 | # | Task | Branch | Status |
 |---|---|---|---|
+| W113I | Guard Camera On/Off against absent, inactive, invalid, or torn-down PJSIP video streams; separate macOS/Windows version metadata | fix/w113i-macos-camera-off-video-stream-guard | IN VALIDATION — native macOS Debug build and focused tests PASS; full Release/package and live infrastructure gates pending; Windows follow-up REQUIRED because `SipCall` is common code |
 | W113G | Native macOS ARM64 Bundle — CMake Apple bundle, Info.plist privacy/version metadata, ARM64 PJSIP/Qt deployment, macOS Keychain adapter, architecture/dependency/RPATH/security audits, ad-hoc signing, relocation smoke test, ZIP/SHA/manifest and DMG | feature/w113g-macos-arm64-bundle | COMPLETE for build/package automation — Debug and Release native builds PASS; 82/82 CTest PASS on macOS ARM64; app deployment/audits/ad-hoc signature/relocation smoke PASS. Developer ID, notarization, second clean Mac, Windows build, and live Windows↔macOS SIP/audio/video/RTT/messaging tests NOT RUN/BLOCKED by unavailable infrastructure; see [agent-results/W113G-macos-arm64-bundle-result.md](agent-results/W113G-macos-arm64-bundle-result.md) |
 | 1 | Project skeleton, GUI layout, documentation | feature/project-skeleton | COMPLETE |
 | 2 | GUI layout specification | feature/gui-layout-spec | COMPLETE (separate lineage) |

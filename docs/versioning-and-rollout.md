@@ -86,9 +86,16 @@ Windows binary's own `FILEVERSION`/`PRODUCTVERSION` resource
 `git tag vMAJOR.MINOR.PATCH` for a release should never drift from what
 Explorer's Properties > Details tab or the packaged bundle reports.
 
+Starting with W113I, platform releases are numbered independently. The CMake
+`PROJECT_VERSION` remains the Windows version and feeds the Windows resource;
+`SIPCLIENT_APP_VERSION` overrides application/runtime/bundle metadata only on
+Apple. Thus this branch reports macOS 1.6.9/build 169 while Windows remains
+1.6.8. A common-code fix does not imply that Windows has shipped it: Windows
+version metadata changes only in its separate build and regression task.
+
 Starting with **v1.6.8** (Task W113G), the corresponding Apple Silicon
 artifact is produced by `scripts/package-macos.sh`. It uses the same single
-`PROJECT_VERSION`, records the native architecture, deployment target, Qt and
+platform application version, records the native architecture, deployment target, Qt and
 PJSIP versions, commit, signing mode, and notarization status in both the app
 and distribution manifest, and publishes a SHA-256 sidecar. A Developer-ID
 signature, successful notarization, and clean-machine result remain release

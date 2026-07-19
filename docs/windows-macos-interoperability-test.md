@@ -25,3 +25,8 @@ W113G status: **NOT RUN / BLOCKED**. This session had one macOS ARM64 host, no
 Windows machine, no second clean Mac, no SIP credentials/server, and no
 reference peer. No cross-platform result is inferred from unit tests.
 
+W113I adds a required Camera On/Off matrix: no call, audio-only, offered video
+without a common codec, valid active video, hold/resume, repeated toggles,
+immediately before/after BYE, remote BYE, teardown, and shutdown. The guard is
+common code, so Windows validation is **REQUIRED and NOT RUN/BLOCKED** until the
+separate Windows follow-up is executed. Windows remains version 1.6.8.
