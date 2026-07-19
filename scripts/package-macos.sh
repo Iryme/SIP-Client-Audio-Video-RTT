@@ -12,7 +12,7 @@ usage() {
       '  --pjsip-root PATH              PJSIP 2.17 installation prefix' \
       '  --openssl-root PATH            Static OpenSSL installation prefix' \
       '  --output-dir PATH              Artifact directory (default: dist)' \
-      '  --version VERSION              Expected application version (default: 1.6.8)' \
+      '  --version VERSION              Expected application version (default: 1.6.9)' \
       '  --bundle-identifier ID         Bundle identifier' \
       '  --signing-identity ID          - for ad-hoc, or a real Developer ID identity' \
       '  --notarization-profile NAME    Existing notarytool keychain profile' \
@@ -31,7 +31,7 @@ qt_path=""
 pjsip_root=""
 openssl_root=""
 output_dir="$source_dir/dist"
-version="1.6.8"
+version="1.6.9"
 bundle_identifier="org.sipclient.multimedia"
 signing_identity="-"
 notarization_profile=""
@@ -67,7 +67,7 @@ done
 [[ "$configuration" == "Debug" || "$configuration" == "Release" ]] || {
     printf 'Configuration must be Debug or Release\n' >&2; exit 1;
 }
-[[ "$version" == "1.6.8" ]] || { printf 'W113G version must be 1.6.8\n' >&2; exit 1; }
+[[ "$version" == "1.6.9" ]] || { printf 'W113I macOS version must be 1.6.9\n' >&2; exit 1; }
 [[ -n "$qt_path" && -d "$qt_path" ]] || { printf 'A valid --qt-path is required\n' >&2; exit 1; }
 
 cmake_bin="$(command -v cmake)"
@@ -103,6 +103,7 @@ configure_args=(
     "-DSIPCLIENT_QT_ROOT=$qt_path"
     "-DSIPCLIENT_BUNDLE_IDENTIFIER=$bundle_identifier"
     "-DSIPCLIENT_SIGNING_IDENTITY=$signing_identity"
+    "-DSIPCLIENT_BUILD_NUMBER=169"
     -DENABLE_PJSIP=ON
     -DBUILD_TESTS=ON
 )

@@ -19,6 +19,14 @@ project(SIPClient
     LANGUAGES CXX
 )
 
+# Windows and macOS releases are versioned independently. PROJECT_VERSION is
+# deliberately the unchanged Windows version; Apple targets override only the
+# application/bundle version consumed by generated runtime metadata.
+set(SIPCLIENT_APP_VERSION "${PROJECT_VERSION}")
+if(APPLE)
+    set(SIPCLIENT_APP_VERSION "1.6.9")
+endif()
+
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -50,8 +58,9 @@ if(APPLE)
         "macOS bundle identifier")
     set(SIPCLIENT_SIGNING_IDENTITY "-" CACHE STRING
         "macOS signing identity ('-' for ad-hoc signing)")
-    set(SIPCLIENT_BUILD_NUMBER "${PROJECT_VERSION_MAJOR}${PROJECT_VERSION_MINOR}${PROJECT_VERSION_PATCH}"
-        CACHE STRING "Numeric CFBundleVersion")
+    # This source branch is the macOS 1.6.9 release. FORCE prevents an older
+    # W113G build directory from silently retaining build number 168.
+    set(SIPCLIENT_BUILD_NUMBER "169" CACHE STRING "Numeric CFBundleVersion" FORCE)
     if(NOT SIPCLIENT_BUILD_NUMBER MATCHES "^[0-9]+$")
         message(FATAL_ERROR "SIPCLIENT_BUILD_NUMBER must contain decimal digits only")
     endif()
@@ -271,6 +280,7 @@ set(SOURCES
     src/sip/SipManager.cpp
     src/sip/SipAccount.cpp
     src/sip/SipCall.cpp
+    src/sip/VideoStreamGuard.cpp
     src/sip/RtpPortRangeConfig.cpp
     src/sip/RtpPortDiagnostics.cpp
     src/sip/SipUriNormalizer.cpp
@@ -502,7 +512,7 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_BINARY_DIR}/generated/Info.plist"
         MACOSX_BUNDLE_BUNDLE_NAME "SIP Client"
         MACOSX_BUNDLE_GUI_IDENTIFIER "${SIPCLIENT_BUNDLE_IDENTIFIER}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${SIPCLIENT_APP_VERSION}"
         MACOSX_BUNDLE_BUNDLE_VERSION "${SIPCLIENT_BUILD_NUMBER}"
         BUILD_WITH_INSTALL_RPATH TRUE
         INSTALL_RPATH "@executable_path/../Frameworks;@loader_path/../Frameworks"
@@ -573,7 +583,8 @@ if(BUILD_TESTS)
             COMMAND "${CMAKE_COMMAND}"
                 -DINFO_PLIST=${CMAKE_BINARY_DIR}/generated/Info.plist
                 -DPACKAGING_SCRIPT=${CMAKE_SOURCE_DIR}/scripts/package-macos.sh
-                -DEXPECTED_VERSION=${PROJECT_VERSION}
+                -DEXPECTED_VERSION=${SIPCLIENT_APP_VERSION}
+                -DEXPECTED_BUILD_NUMBER=${SIPCLIENT_BUILD_NUMBER}
                 -DEXPECTED_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
                 -P ${CMAKE_SOURCE_DIR}/tests/verify_macos_configuration.cmake)
     endif()

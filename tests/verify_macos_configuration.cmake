@@ -4,6 +4,7 @@ endif()
 file(READ "${INFO_PLIST}" _plist)
 foreach(_required IN ITEMS
         "<string>${EXPECTED_VERSION}</string>"
+        "<string>${EXPECTED_BUILD_NUMBER}</string>"
         "LSMinimumSystemVersion"
         "<string>${EXPECTED_DEPLOYMENT_TARGET}</string>"
         "NSMicrophoneUsageDescription"

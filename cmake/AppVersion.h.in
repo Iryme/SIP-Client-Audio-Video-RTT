@@ -1,7 +1,7 @@
 #pragma once
-// Generated at CMake configure time from the top-level project() version and
+// Generated at CMake configure time from the platform application version and
 // (best-effort) the current git commit. Do not edit — edit CMakeLists.txt instead.
 
-#define APP_VERSION_STRING   "@PROJECT_VERSION@"
+#define APP_VERSION_STRING   "@SIPCLIENT_APP_VERSION@"
 #define APP_GIT_COMMIT_HASH  "@APP_GIT_COMMIT_HASH@"
 #define APP_BUILD_TYPE_STRING "@CMAKE_BUILD_TYPE@"

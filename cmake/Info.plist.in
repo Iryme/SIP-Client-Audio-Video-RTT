@@ -13,7 +13,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>@PROJECT_VERSION@</string>
+    <string>@SIPCLIENT_APP_VERSION@</string>
     <key>CFBundleVersion</key>
     <string>@SIPCLIENT_BUILD_NUMBER@</string>
     <key>LSMinimumSystemVersion</key>

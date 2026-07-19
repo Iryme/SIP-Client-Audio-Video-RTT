@@ -40,6 +40,7 @@ set(CODEC_MANAGER_SOURCES
 # Call subsystem sources — required by any test that compiles SipManager.cpp
 set(CALL_SOURCES
     ${CMAKE_SOURCE_DIR}/src/sip/SipCall.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/VideoStreamGuard.cpp
     ${CMAKE_SOURCE_DIR}/src/sip/CallStateMachine.cpp
     ${CMAKE_SOURCE_DIR}/src/rtt/RttSession.cpp
     # Task W109A: SipCall.cpp classifies RTP bind errors via
@@ -704,6 +705,17 @@ target_link_libraries(test_video_media PRIVATE
 )
 
 add_test(NAME test_video_media COMMAND test_video_media)
+
+# ---- test_video_stream_guard (Task W113I) ------------------------------
+# Pure policy test: validates every unsafe PJSIP media state without calling
+# the real API (whose invalid-stream path asserts instead of returning error).
+qt_add_executable(test_video_stream_guard
+    test_video_stream_guard.cpp
+    ${CMAKE_SOURCE_DIR}/src/sip/VideoStreamGuard.cpp
+)
+target_include_directories(test_video_stream_guard PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(test_video_stream_guard PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_video_stream_guard COMMAND test_video_stream_guard)
 
 # ---- test_codec_manager ------------------------------------------------
 qt_add_executable(test_codec_manager

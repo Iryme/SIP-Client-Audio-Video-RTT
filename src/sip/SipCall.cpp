@@ -1,5 +1,7 @@
 #include "SipCall.h"
 
+#include <algorithm>
+
 #include <QPointer>
 #include <QUuid>
 
@@ -18,6 +20,7 @@
 #include "msrp/MsrpRelayClient.h"
 #include "msrp/MsrpTypes.h"
 #include "sip/RtpPortDiagnostics.h"
+#include "sip/VideoStreamGuard.h"
 
 #ifdef HAVE_PJSIP
 #include <pjsua2.hpp>
@@ -1052,6 +1055,7 @@ struct SipCall::Impl
 
         void stopVideoBridge()
         {
+            m_impl->videoMuteAppliedMediaIndex = -1;
             if (!m_impl->callVideoMedia)
                 return;
             m_impl->callVideoMedia = nullptr;
@@ -1455,6 +1459,7 @@ struct SipCall::Impl
     bool                rttRequestPendingLocal{false}; // local user requested RTT and is awaiting completion
     bool                rttMediaActive{false};         // true while T.140 text stream is active
     bool                videoMediaActive{false};       // true while video stream is active (mirrors rttMediaActive)
+    int                 videoMuteAppliedMediaIndex{-1}; // idempotency across media renegotiation
     bool                holdActive{false};             // true while local hold is in effect (PJSIP mode)
     bool                videoActiveBeforeHold{false};  // video was negotiated when local hold was sent
     bool                rttActiveBeforeHold{false};    // T.140 text was active when local hold was sent
@@ -2165,53 +2170,124 @@ int SipCall::speakerVolume() const
 
 bool SipCall::setVideoMuted(bool muted)
 {
-    if (m_videoMuted == muted)
-        return true;
-
-    m_videoMuted = muted;
-    Logger::instance().info(LogCategory::Sip,
-        QStringLiteral("Video mute %1: call id=%2")
-            .arg(muted ? QStringLiteral("ON") : QStringLiteral("OFF"), m_callId));
-
 #ifdef HAVE_PJSIP
-    if (m_impl->pjCall) {
-        // Do NOT gate this on callVideoMedia: that pointer goes stale across
-        // renegotiations (hold/resume, video re-INVITE) even while the video
-        // stream itself is active.  Ask PJSIP for the current video stream
-        // index instead — vidSetStream needs only the call and the index.
-        const pjsua_call_id cid =
-            static_cast<pjsua_call_id>(m_impl->pjCall->getId());
-        const int vidIdx = pjsua_call_get_vid_stream_idx(cid);
-        if (vidIdx < 0) {
-            Logger::instance().info(LogCategory::Sip,
-                QStringLiteral("Video mute ignored: no active PJSIP video stream (call id=%1)")
-                    .arg(m_callId));
-        } else {
-            try {
-                pj::CallVidSetStreamParam prm;
-                prm.medIdx = vidIdx;
-                if (muted) {
-                    m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_STOP_TRANSMIT, prm);
-                    m_impl->pauseCapture();
-                } else {
-                    m_impl->resumeCapture();
-                    m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_START_TRANSMIT, prm);
+    VideoStreamGuard::Snapshot snapshot;
+    snapshot.callObjectExists = m_impl && m_impl->pjCall;
+    snapshot.teardownInProgress = isTeardownState(m_stateMachine.state());
+
+    pj::CallInfo ci;
+    if (snapshot.callObjectExists) {
+        try {
+            snapshot.callId = m_impl->pjCall->getId();
+            ci = m_impl->pjCall->getInfo();
+            if (ci.state == PJSIP_INV_STATE_NULL)
+                snapshot.callState = VideoStreamGuard::CallState::Null;
+            else if (ci.state == PJSIP_INV_STATE_DISCONNECTED)
+                snapshot.callState = VideoStreamGuard::CallState::Disconnected;
+            else if (ci.state == PJSIP_INV_STATE_CONFIRMED)
+                snapshot.callState = VideoStreamGuard::CallState::Confirmed;
+            else
+                snapshot.callState = VideoStreamGuard::CallState::Connecting;
+
+            snapshot.currentVideoStreamIndex =
+                snapshot.callId >= 0
+                    ? pjsua_call_get_vid_stream_idx(snapshot.callId)
+                    : PJSUA_INVALID_ID;
+            snapshot.media.reserve(ci.media.size());
+            for (const pj::CallMediaInfo &mi : ci.media) {
+                VideoStreamGuard::Media media;
+                media.index = static_cast<int>(mi.index);
+                media.type = mi.type == PJMEDIA_TYPE_VIDEO
+                    ? VideoStreamGuard::MediaType::Video
+                    : (mi.type == PJMEDIA_TYPE_AUDIO
+                        ? VideoStreamGuard::MediaType::Audio
+                        : VideoStreamGuard::MediaType::Other);
+                switch (mi.status) {
+                case PJSUA_CALL_MEDIA_ACTIVE:
+                    media.status = VideoStreamGuard::MediaStatus::Active; break;
+                case PJSUA_CALL_MEDIA_LOCAL_HOLD:
+                    media.status = VideoStreamGuard::MediaStatus::LocalHold; break;
+                case PJSUA_CALL_MEDIA_REMOTE_HOLD:
+                    media.status = VideoStreamGuard::MediaStatus::RemoteHold; break;
+                case PJSUA_CALL_MEDIA_ERROR:
+                    media.status = VideoStreamGuard::MediaStatus::Error; break;
+                default:
+                    media.status = VideoStreamGuard::MediaStatus::None; break;
                 }
-                Logger::instance().info(LogCategory::Sip,
-                    QStringLiteral("Video transmit %1 via vidSetStream: call id=%2 medIdx=%3")
-                        .arg(muted ? QStringLiteral("stopped") : QStringLiteral("started"),
-                             m_callId)
-                        .arg(vidIdx));
-            } catch (const pj::Error &e) {
-                Logger::instance().warn(LogCategory::Sip,
-                    QStringLiteral("vidSetStream error (call id=%1): %2")
-                        .arg(m_callId, QString::fromStdString(e.reason)));
-            } catch (...) {}
+                media.canTransmit = (mi.dir & PJMEDIA_DIR_ENCODING) != 0;
+                snapshot.media.push_back(media);
+            }
+        } catch (const pj::Error &e) {
+            Logger::instance().warn(LogCategory::Sip,
+                QStringLiteral("Camera %1: PJSIP call inspection failed; local capture changed only. "
+                               "status=%2 title=%3 reason=%4 callState=%5 mediaIndex=-1")
+                    .arg(muted ? QStringLiteral("Off") : QStringLiteral("On"))
+                    .arg(e.status)
+                    .arg(QString::fromStdString(e.title), QString::fromStdString(e.reason),
+                         callStateName(m_stateMachine.state())));
+            return true;
         }
     }
-#endif
 
+    const VideoStreamGuard::Decision decision = VideoStreamGuard::evaluate(snapshot);
+    if (!decision.mayOperate) {
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Camera %1: no active PJSIP video stream; local capture %2 only. "
+                           "reason=%3 callId=%4 callState=%5 mediaCount=%6 videoMediaCount=%7 "
+                           "videoStreamIndex=%8")
+                .arg(muted ? QStringLiteral("Off") : QStringLiteral("On"),
+                     muted ? QStringLiteral("stopped") : QStringLiteral("preview state changed"),
+                     QString::fromLatin1(decision.reason))
+                .arg(snapshot.callId)
+                .arg(callStateName(m_stateMachine.state()))
+                .arg(snapshot.media.size())
+                .arg(std::count_if(snapshot.media.cbegin(), snapshot.media.cend(),
+                    [](const VideoStreamGuard::Media &media) {
+                        return media.type == VideoStreamGuard::MediaType::Video;
+                    }))
+                .arg(snapshot.currentVideoStreamIndex));
+        return true;
+    }
+
+    if (m_videoMuted == muted
+            && m_impl->videoMuteAppliedMediaIndex == decision.mediaIndex) {
+        return true;
+    }
+
+    try {
+        pj::CallVidSetStreamParam prm;
+        prm.medIdx = decision.mediaIndex;
+        if (muted) {
+            m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_STOP_TRANSMIT, prm);
+            m_impl->pauseCapture();
+        } else {
+            m_impl->resumeCapture();
+            m_impl->pjCall->vidSetStream(PJSUA_CALL_VID_STRM_START_TRANSMIT, prm);
+        }
+        m_videoMuted = muted;
+        m_impl->videoMuteAppliedMediaIndex = decision.mediaIndex;
+        Logger::instance().info(LogCategory::Sip,
+            QStringLiteral("Video transmit %1 via vidSetStream: call id=%2 medIdx=%3")
+                .arg(muted ? QStringLiteral("stopped") : QStringLiteral("started"),
+                     m_callId)
+                .arg(decision.mediaIndex));
+        emit videoMuteChanged(muted);
+    } catch (const pj::Error &e) {
+        Logger::instance().warn(LogCategory::Sip,
+            QStringLiteral("vidSetStream error: status=%1 title=%2 reason=%3 "
+                           "callState=%4 mediaIndex=%5")
+                .arg(e.status)
+                .arg(QString::fromStdString(e.title), QString::fromStdString(e.reason),
+                     callStateName(m_stateMachine.state()))
+                .arg(decision.mediaIndex));
+        return false;
+    }
+#else
+    if (m_videoMuted == muted)
+        return true;
+    m_videoMuted = muted;
     emit videoMuteChanged(muted);
+#endif
     return true;
 }
 
