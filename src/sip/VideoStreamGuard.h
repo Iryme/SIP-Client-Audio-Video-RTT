@@ -43,6 +43,7 @@ struct Snapshot {
     CallState callState{CallState::Null};
     bool teardownInProgress{false};
     int currentVideoStreamIndex{-1};
+    bool streamExists{false};
     std::vector<Media> media;
 };
 

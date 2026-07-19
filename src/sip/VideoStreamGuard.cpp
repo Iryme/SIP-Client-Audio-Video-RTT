@@ -16,6 +16,8 @@ Decision evaluate(const Snapshot &snapshot)
     }
     if (snapshot.currentVideoStreamIndex < 0)
         return {false, -1, "video stream was not created"};
+    if (!snapshot.streamExists)
+        return {false, -1, "PJSIP video stream object does not exist"};
 
     for (const Media &media : snapshot.media) {
         if (media.type != MediaType::Video)

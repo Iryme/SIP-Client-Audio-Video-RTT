@@ -23,6 +23,7 @@ static Snapshot validSnapshot()
     snapshot.callId = 7;
     snapshot.callState = CallState::Confirmed;
     snapshot.currentVideoStreamIndex = 1;
+    snapshot.streamExists = true;
     snapshot.media = {
         {0, MediaType::Audio, MediaStatus::Active, true},
         {1, MediaType::Video, MediaStatus::Active, true}
@@ -47,6 +48,7 @@ void TestVideoStreamGuard::rejectsUnsafeState_data()
     QTest::newRow("receive-only-video") << 11;
     QTest::newRow("local-hold") << 12;
     QTest::newRow("remote-hold") << 13;
+    QTest::newRow("null-internal-stream") << 14;
 }
 
 void TestVideoStreamGuard::rejectsUnsafeState()
@@ -71,6 +73,7 @@ void TestVideoStreamGuard::rejectsUnsafeState()
     case 11: snapshot.media[1].canTransmit = false; break;
     case 12: snapshot.media[1].status = MediaStatus::LocalHold; break;
     case 13: snapshot.media[1].status = MediaStatus::RemoteHold; break;
+    case 14: snapshot.streamExists = false; break;
     }
 
     const Decision decision = evaluate(snapshot);

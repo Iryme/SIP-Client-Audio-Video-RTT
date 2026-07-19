@@ -2217,6 +2217,20 @@ bool SipCall::setVideoMuted(bool muted)
                 media.canTransmit = (mi.dir & PJMEDIA_DIR_ENCODING) != 0;
                 snapshot.media.push_back(media);
             }
+
+            // Unlike pjsua_call_get_vid_stream_idx(), this public API checks
+            // call_med->strm.v.stream under PJSUA's lock. A media slot can
+            // still be returned while that pointer is null (the exact W113I
+            // assert state), so CallInfo/status alone is insufficient.
+            if (snapshot.currentVideoStreamIndex >= 0) {
+                pjsua_stream_info streamInfo{};
+                const pj_status_t streamStatus = pjsua_call_get_stream_info(
+                    snapshot.callId,
+                    static_cast<unsigned>(snapshot.currentVideoStreamIndex),
+                    &streamInfo);
+                snapshot.streamExists = streamStatus == PJ_SUCCESS
+                    && streamInfo.type == PJMEDIA_TYPE_VIDEO;
+            }
         } catch (const pj::Error &e) {
             Logger::instance().warn(LogCategory::Sip,
                 QStringLiteral("Camera %1: PJSIP call inspection failed; local capture changed only. "
